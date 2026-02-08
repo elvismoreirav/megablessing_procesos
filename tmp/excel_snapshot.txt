@@ -1,0 +1,220 @@
+====================================================================================================
+HOJA: PROCESO Y REGISTROS 
+Filas con contenido: 52 | Max col usada: 6
+----------------------------------------------------------------------------------------------------
+R1: C1:Área Encargada || C2:Etapa del Proceso || C3:Actividad (Tarea Individual) || C4:Registros/Fichas || C5:Registros || C6:Comentarios Megablessing (Yandry)
+R2: C1:Centro de Acopio || C2:Recepción y verificación visual || C3:Recepción del productor y verificación de identificación de proveedor por nombre, tipo de entrega (rutas, comerciales o entrega individual) y/o código de proveedor || C4:Ficha de REGISTRO, VERIFICACIÓN VISUAL Y PRECIO DE COMPRA || C5:Se registra: | fecha, nombre proveedor, tipo de entrega (rutas, comerciales o entrega individual) y/o código de proveedor
+R3: C3:Revisión rápida del cacao para verificar: limpieza, olor normal, ausencia de moho visible, estado del grano (fresco, escurrido o semiseco) || C5:Se verifica (Cumple/No Cumple): | limpieza, olor normal, ausencia de moho visible,  | Se clasifica: | estado del grano (fresco, escurrido o semiseco)
+R4: C3:El cacao se pesa en una balanza calibrada, considerando: Peso bruto, Tara del envase, Peso neto final. El pesaje se realiza en presencia del productor. || C5:Se registra: | Peso bruto, Tara del envase, Peso neto final.
+R5: C3:Se determina la calidad del cacao según: Humedad aparente, Grado de fermentación visible, Presencia de defectos. Se clasifica como: Apto, Apto con descuent, No apto || C5:Se registra: | Humedad aparente, Grado de fermentación visible, Presencia de defectos.  | Se clasifica como: Apto, Apto con descuent, No apto
+R6: C2:Determinación de Precio || C3:Se establece el precio de compra de acuerdo con:  Precio base del día, Calidad asignada, Descuentos o bonificaciones. El precio final se comunica al productor antes del pago || C5:Se registra: | Precio de compra de acuerdo con:  Precio base del día, Calidad asignada, Descuentos o bonificaciones.
+R7: C2:Registro y Pago || C3:Se asigna un código de lote y se identifica el cacao para garantizar la trazabilidad desde el momento de la compra.
+R8: C3:Se registra la información de la compra: Fecha, Productor,Cantidad comprada, Tipo de cacao, Calidad, Precio unitario y total, Código de lote || C5:Se registra:  | Fecha, Productor, Código de lote, Cantidad comprada, Tipo de cacao, Calidad, Precio unitario y total
+R9: C3:Se realiza el pago correspondiente (efectivo o transferencia) y se entrega el | comprobante de compra.
+R10: C2:Recepción en área de acopio || C3:El cacao se ubica en el área asignada, separado por tipo, calidad y lote, | evitando mezclas.
+R11: C1:Planta || C2:Recepción || C3:Pesar el producto a recibir (báscula o balanza).
+R12: C3:Separar el producto según el estado (escurrido, semiseco o seco).
+R13: C3:Identificar y separar variedades (CCN51, Nacional, Orgánico, Convencional).
+R14: C3:Identificar el producto con nombre del productor y tipo de certificación.
+R15: C3:Codificar lote || C4:Codificación || C5:Se crea: Codificación
+R16: C3:Llenar el "Registro de recepción de materia prima y materiales". || C4:Ficha de Registro || C5:Se registra: Tipo de producto, proveedor o ruta, fecha de entrada, Fermentación, Responsable || C6:Añadir codigo de recepción
+R17: C3:Ubicar en el área de desbabado (solo si es grano en baba del día).
+R18: C2:Calidad || C3:Tomar muestra de cada recipiente con la sonda de muestreo. || C4:Ficha de Registro de Prueba de corte || C5:Se registra: | •	Fecha	, Código de lote, Proveedor/Origen, Tipo de cacao, Estado, Cantidad (QQ), Número de granos analizados, Peso de 100 granos (g), Peso de 100 gramos (No. granos), Responsable del análisis		 | •	Resultados prueba de corte: Bien fermentados	,Violeta,Pizarrosos	, Mohosos, Insectados,Germinados,Planos/ Vanos	 | •	Defectos totales (%), Cumple especificación, Decisión del lote, No conformidad, Acción Tomada, Responsable,Fecha, Observaciones, Firma responsable
+R19: C3:Analizar visualmente la sanidad: moho, impurezas y materias extrañas. || C6:El codigo que se usa en la recepción se lo utiliza en todo el proceso se le incluye el numero de secadora una vez que salga del proceso de secado.
+R20: C3:Verificar ausencia de piedras, hojas, tierra, cáscara o placenta.
+R21: C3:Evaluar el olor de los granos debe ser normal, sin combustibles. || C6:En grano escurido se realiza prueba de corte para ver estado de los granos tiernos o maduros
+R22: C2:Clasificación || C3:Dirigir el grano escurrido directamente al proceso de pre-secado.
+R23: C3:Ubicar el grano semiseco por humedad para su fermentación.
+R24: C2:Pre-secado || C3:Llenar el "Registro de secado". || C4:Ficha de Registro de secado || C5:•	Datos Generales: Fecha, Responsable, Lote/Finca, Variedad, Estado,Cantidad total	 | •	Revisión inicial: Limpieza general del área de secado realizada, Secadora sin residuos del día anterior, Verificación energía/combustible, Bandejas o camas limpias, Termómetros/higrómetros funcionando,Registro clima del día		 | •	Carga de cacao: Fecha de carga,	Hora de carga, QQ cargados, Humedad inicial (%), Observaciones		 | •	Control de temperatura: 08h00,10h00,12h00,14h00,16h00,18h00 | •	Control de Humedad: humedad 12h || C6:Llenar el registro de secado se registran temperatura, tiempo y humedad cada 2 horas
+R25: C3:Limpiar y evaluar visualmente la limpieza de la secadora industrial.
+R26: C3:Transportar cacao en pallets con montacargas hacia las máquinas.
+R27: C3:Descargar el grano dentro de las secadoras asignadas.
+R28: C3:Programar temperatura y tiempo en el panel según humedad inicial.
+R29: C3:Monitorear hasta que el grano alcance entre 25% y 30% de humedad.
+R30: C2:Fermentación || C3:Ingresar granos en cajones y transportar al área de fermentación. || C4:Ficha de Registro de Fermentación || C5:•	Lote, Fecha de inicio, Variedad, Productor/Finca, Peso del lote (kg) | •	Datos iniciales del grano: Humedad Inicial (%), Temperatura inicial (C), pH pulpa inicial, Grado de madurez (visual).	 | •	Control diario de fermentación: Día,Hora, Volteo(Sí/No), Temp. Masa (c),Temp. Ambiente (c),	pH pulpa,pH cotileón,Olor,Color,Observaciones,	Responsable. | •	Evaluación Final: Aroma final,Color de cotiledón, Corte de grano (porcentaje violeta, pizarrosos, fermentados, mohosos), Humedad final (%), Aprobado para secado
+R31: C3:Llenar cajón dejando un espacio de 10 cm en la parte superior.
+R32: C3:Cubrir cajones con sacos (fase anaerobia de 38 a 48 horas).
+R33: C3:Identificar cajón (código, productor, fecha de ingreso y día de volteo). || C6:Llenar el registro de fermentación
+R34: C3:Realizar remoción o cambio de cajón cada 12 o 24 horas (fase aerobia). || C6:Llenar el registro de fermentación
+R35: C3:Llenar Ficha de registro de Fermentación
+R36: C2:Secado Final || C3:Limpiar y adecuar la secadora industrial antes de empezar. || C4:Ficha de Registro de secado || C5:•	Control de temperatura: 20h00, 22h00, 24h00, 02h00, 04h00, 06h00 | •	Control de Humedad: humedad final, (7-8 %) | •	Descarga y enfriado	: Hora de descarga,	Temperatura grano, Color/ Olor adecuado,Observaciones
+R37: C3:Transportar cajones de fermentación hacia las secadoras con montacargas.
+R38: C3:Abrir compuerta de los cajones para llenar las secadoras.
+R39: C3:Programar temperatura, tiempo de trabajo y volteo automático.
+R40: C3:Ejecutar monitoreo nocturno activo (1 persona por cada 4 máquinas).
+R41: C3:Continuar el llenado de la Ficha de registro de Secado || C6:Continuar con el registro de secado se registran temperatura, tiempo y humedad cada 2 horas
+R42: C2:Calidad Post - Secado || C4:Ficha de Registro de Prueba de corte || C5:Se registra: | •	Fecha	, Código de lote, Proveedor/Origen, Tipo de cacao, Estado, Cantidad (QQ), Número de granos analizados, Peso de 100 granos (g), Peso de 100 gramos (No. granos), Responsable del análisis		 | •	Resultados prueba de corte: Bien fermentados	,Violeta,Pizarrosos	, Mohosos, Insectados,Germinados,Planos/ Vanos	 | •	Defectos totales (%), Cumple especificación, Decisión del lote, No conformidad, Acción Tomada, Responsable,Fecha, Observaciones, Firma responsable || C6:Despues del secado se realiza analisis de calidad del grano antes del almacenamiento (  %de humedad, prueba de corte, para decidir a conformación de lote) Proximamente se realizaran analisis de grasas y cadmio en el nuevo laboratoio.
+R43: C2:Empaquetado || C3:Llenar sacos de 69 Kg de forma manual o automática.
+R44: C3:Coser los sacos utilizando cosedoras industriales.
+R45: C3:Ubicar sacos en pallets estibados (30 sacos por unidad).
+R46: C2:Almacenado || C3:Limpiar y desinfectar la bodega previo al ingreso.
+R47: C3:Transportar pallets estibados con montacargas a zona de bodega.
+R48: C3:Garantizar espacio entre pallets y pared para limpieza.
+R49: C3:Mantener temperatura ambiente entre 25∘C y 30∘C.
+R50: C2:Transporte || C3:Verificar limpieza, techado y ausencia de olores en el transporte.
+R51: C3:Revisar identificación de sacos (lote, fecha, variedad, origen, cliente).
+R52: C3:Cargar pallets y estibar sacos longitudinalmente en el contenedor.
+
+====================================================================================================
+HOJA: INDICADORES
+Filas con contenido: 16 | Max col usada: 6
+----------------------------------------------------------------------------------------------------
+R1: C1:Etapa del Proceso || C2:Indicador Clave || C3:Meta || C4:Fórmula / Método || C5:Frecuencia || C6:Detalle/ Justificación
+R2: C1:1. Recepción || C2:Tiempo promedio de descarga || C3:70 minutos || C4:Promedio diario/70 min || C5:Diaria || C6:Optimiza el flujo para absorber un +177% de volumen.
+R3: C2:Humedad de Ingreso || C3:Variable || C4:Humedad Medida/HumedadPermitida || C5:Por Lote || C6:Clasifica el grano (Escurrido/Semiseco) para el flujo correcto.
+R4: C1:2. Calidad (Ingreso) || C2:Índice de Pureza Genética || C3:≥ 90% || C4:(Granos Nacional/100)×100 || C5:Por Lote || C6:Mantiene la uniformidad de los lotes
+R5: C2:Tasa de Inocuidad (Cadmio) || C3:Según destino || C4:Nivel de cadmio/Nivel Permitido || C5:Trimestral || C6:Obligatorio para acceso a mercados europeos y asiáticos.
+R6: C1:3. Fermentación || C2:Volteo Disciplinado || C3:1.0 || C4:Ejecutados/Programados || C5:Diaria || C6:Garantiza precursores de sabor para el segmento Premium.
+R7: C1:4. Secado Final || C2:Rendimiento del cacao || C3:0.5 || C4:Peso cacao escurrido ingresado / Peso cacao seco obtenido. || C5:Diaria || C6:Reduce merma del 57% al 50%; ahorro de $3,091/máquina.
+R8: C2:Eficiencia Térmica || C3:30 horas || C4:Promedio de Horas totales de secado || C5:Semanal || C6:Optimización vs 36h actuales mediante monitoreo nocturno.
+R9: C1:5. Calidad (Post-Secado) || C2:Índice de Fermentación || C3:≥ 90% || C4:(Fermentados/100)×100 || C5:Semanal || C6:Requisito de nicho "Bean-to-Bar" (G1 pide ≥75%).
+R10: C2:Pureza Física (Violetas/Mohos) || C3:Límites G1 || C4:Conteo por muestra || C5:Semanal || C6:Violetas ≤15%, Mohos ≤1% (Norma INEN 176).
+R11: C2:Peso de 100 granos || C3:> 130 g || C4:Peso real/130 g || C5:Semanal || C6:Calidad Premium exigida por clientes asiáticos.
+R12: C1:6. Almacenamiento || C2:Rotación de Inventario || C3:25-30 veces || C4:Ventas/Inventario || C5:Mensual || C6:Crea buffer de 12-15 días para asegurar suministro B2B.
+R13: C2:Inocuidad POES || C3:≥ 95% || C4:Registros Limpios/Total de registros || C5:Semanal || C6:Evita contaminación cruzada con maracuyá o químicos.
+R14: C1:7. Comercial / Expansión || C2:Tasa de Aceptación Muestras || C3:≥ 90% || C4:No. Feedback positivo/No. de envío de muestra || C5:Semestral || C6:Mide eficacia de la Biblioteca de Muestras Pre-Validadas.
+R15: C1:9. Logística / Despacho || C2:Cumplimiento || C3:1.0 || C4:TM Enviadas/TM Contratadas || C5:Trimestral || C6:Base para construir confianza
+R16: C2:Humedad de Tránsito || C3:6.5% - 7.5% || C4:Promedio de Humedad al despacho || C5:Por Embarque || C6:Previene moho en tránsito marítimo prolongado a Asia.
+
+====================================================================================================
+HOJA: Ficha de REGISTRO, VERIFICACIÓN
+Filas con contenido: 22 | Max col usada: 8
+----------------------------------------------------------------------------------------------------
+R2: C1:Fecha: || C4:Proveedor:
+R3: C1:Tipo de entregas: || C4:Rutas || C6:Comerciante || C8:Entrega Individual
+R5: C1:Variedad de Cacao: || C4:Fino de Aroma || C6:CCN 51
+R7: C1:I. REVISIÓN DE CÁLIDAD VISUAL
+R9: C4:CUMPLE || C6:NO CUMPLE
+R10: C1:Limpieza:
+R11: C1:Olor Normal:
+R12: C1:Ausencia de Moho Visible:
+R14: C1:I. REGISTROS
+R16: C1:Peso Bruto: || C3:lb/kg/qq
+R17: C1:Tara de Envase: || C3:lb/kg/qq
+R18: C1:Peso Final: || C3:lb/kg/qq
+R19: C1:Calificación aparente (Humedad): || C4:0,1,2,3,4 luego de randos de 5% hasta el 45%
+R20: C1:Calidad: || C4:Seco (0% igual a 7% de humedad), Semiseco(1%-45% - mayor igual a 8% de humedad), Baba (50%-75%- de calificación, 57% de humedad)
+R21: C1:Presencia de defectos: || C4:0-10% ; Otro () | max. 10%
+R25: C1:Apto: || C4:Apto con descuento: || C7:No Apto:
+R26: C4:Apto con bonificaciones
+R28: C1:Precio base del día: || C4:USD
+R29: C1:Calidad asignada: || C4:Apto, Apto con descuento, No Apto
+R30: C1:Descuentos o bonificaciones: || C4:USD
+R31: C1:Precio con diferenciales:
+R33: C1:Precio a pagar: || C4:precio con diferenciales*peso final
+
+====================================================================================================
+HOJA: CODIFICACIÓN
+Filas con contenido: 9 | Max col usada: 6
+----------------------------------------------------------------------------------------------------
+R1: C1:CODIFICACIÓN
+R3: C1:PROVEDOR/RECEPCIÓN || C2:DÍA || C3:MES || C4:AÑO || C5:ESTADO || C6:FERMENTADO
+R4: C1:XX || C2:DD || C3:MM || C4:AA || C5:XX || C6:X
+R6: C1:LISTA DE PROVEEDOR/ RECEPCIÓN || C3:LISTA DE ESTADO || C5:LISTA FERMENTADO
+R7: C1:MERCADO || C2:M || C3:SECO || C4:SC || C5:FERMENTADO || C6:F
+R8: C1:BODEGA || C2:B || C3:SEMI SECO || C4:SS || C5:SIN FERMETADO || C6:SF
+R9: C1:ESMERALDAS || C2:ES || C3:BABA || C4:BA
+R10: C1:FLOR DE MANABÍ || C2:FM
+R11: C1:VÍA PEDERNALES || C2:VP
+
+====================================================================================================
+HOJA: ETIQUETADO DE REGISTRO
+Filas con contenido: 11 | Max col usada: 3
+----------------------------------------------------------------------------------------------------
+R1: C1:#VALUE!
+R2: C1:Producto:
+R3: C1:Codificación:
+R4: C1:Proveedor o ruta:
+R5: C1:Fecha de entrada:
+R6: C1:Fermentación:
+R7: C1:Secado: || C2:Inicio: || C3:Fin:
+R9: C1:Temperatura:
+R10: C1:Tiempo:
+R11: C1:Responsable:
+R13: C1:Reemplazar por código QR/barras
+
+====================================================================================================
+HOJA: R. FERMENTACIÓN
+Filas con contenido: 26 | Max col usada: 11
+----------------------------------------------------------------------------------------------------
+R2: C3:Código de Lote: || C7:Fecha de inicio:
+R3: C3:Variedad:
+R4: C3:Peso del lote (kg)
+R6: C1:1. Datos iniciales del grano
+R8: C2:Parámetro || C6:Valor
+R9: C2:Humedad Inicial (%)
+R10: C2:Temperatura inicial (C)
+R11: C2:pH pulpa inicial
+R12: C2:Grado de madurez (visual):
+R14: C1:2. Control diario de Fermentación
+R16: C1:Día || C2:Hora || C3:Volteo | (Sí/No) || C4:Temp. Masa (c) || C5:Temp. Ambiente (c) || C6:pH pulpa || C7:pH cotileón || C8:Olor || C9:Color || C10:Observaciones || C11:Responsable
+R17: C1:1.0
+R18: C1:2.0
+R19: C1:3.0
+R20: C1:4.0
+R21: C1:5.0
+R22: C1:6.0
+R24: C1:3. Evaluación Final
+R26: C2:Parámetro || C10:Resultados
+R27: C2:Aroma final
+R28: C2:Color de cotiledón
+R29: C2:Corte de grano (porcentaje violeta, pizarrosos, fermentados, mohosos)
+R30: C2:Humedad final (%)
+R31: C2:Aprobado para secado || C10:Sí/No
+R32: C2:Fecha de salida
+R34: C1:4. Observaciones Generales
+
+====================================================================================================
+HOJA: R. SECADO
+Filas con contenido: 21 | Max col usada: 7
+----------------------------------------------------------------------------------------------------
+R1: C3:Número de Secadora:
+R3: C1:1. Datos Generales
+R5: C1:Fecha || C2:Responsable || C3:Lote || C4:Variedad || C5:Estado || C6:Cantidad total
+R8: C1:2. Revisión inicial (antes de iniciar el secado)
+R10: C1:Ítem || C5:Sí || C6:No || C7:Obs
+R11: C1:Limpieza general del área de secado realizada
+R12: C1:Secadora sin residuos del día anterior
+R13: C1:Verificación energía/combustible
+R14: C1:Bandejas o camas limpias
+R15: C1:Termómetros/higrómetros funcionando
+R16: C1:Registro clima del día
+R18: C1:3. Carga de cacao
+R20: C1:Fecha de carga || C2:Hora de carga || C3:QQ cargados || C4:Humedad inicial (%) || C5:Observaciones
+R23: C1:4. Control de Temperatura y volteos (Casa 2 horas)
+R25: C1:08h00 || C2:10h00 || C3:12h00 || C4:14h00 || C5:16h00 || C6:18h00 || C7:Obs
+R27: C1:20h00 || C2:22h00 || C3:24h00 || C4:02h00 || C5:04h00 || C6:06h00 || C7:Obs
+R30: C1:5. Control de humedad
+R32: C1:Humedad 12h || C3:Humedad final || C5:(6,5-7,5%) || C6:Observaciones
+R35: C1:6. Descarga y enfriado
+R36: C1:Hora de descarga || C2:Temperatura grano || C4:Color/ Olor adecuado || C6:Observaciones
+R39: C1:Firma de responsabilidad:
+
+====================================================================================================
+HOJA: R. PRUEBA DE CORTE
+Filas con contenido: 24 | Max col usada: 7
+----------------------------------------------------------------------------------------------------
+R2: C1:1. Datos del lote
+R4: C1:Fecha || C2:Código de lote || C3:Proveedor/Origen || C4:Tipo de cacao || C5:Estado || C6:Cantidad  (QQ)
+R7: C1:2. Datos de la Muestra
+R8: C1:Fecha de muestreo y prueba de corto:
+R9: C1:Cantidad de muestra tomada: || C4:gr
+R10: C1:Número de granos analizados
+R11: C1:Peso de 100 granos (g)
+R12: C1:Peso de 100 gramos (No. granos)
+R13: C1:Responsable del análisis
+R15: C1:3. Resultado de prueba de corte (Base 100 granos)
+R17: C1:Bien fermentados
+R18: C1:Violeta
+R19: C1:Pizarrosos
+R20: C1:Mohosos
+R21: C1:Insectados
+R22: C1:Germinados
+R23: C1:Planos/ Vanos
+R24: C1:TOTAL || C3:100.0
+R26: C1:4. Evaluación y Decisión
+R28: C1:Defectos totales (%) || C3:Cumple especificación || C5:Decisión del lote
+R31: C1:5. Acción Correctiva (si no cumple)
+R33: C1:No conformidad || C3:Acción Tomada || C5:Responsable || C7:Fecha
+R36: C1:6.Observaciones
+R40: C1:Firma responsable
