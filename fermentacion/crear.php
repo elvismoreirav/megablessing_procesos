@@ -17,6 +17,15 @@ $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
 
 if ($loteId) {
+    $fichaRegistro = $db->fetch("
+        SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+    ", ['lote_id' => $loteId]);
+
+    if (!$fichaRegistro) {
+        setFlash('error', 'Debe completar primero la ficha de registro para este lote.');
+        redirect('/fichas/crear.php?etapa=recepcion&lote_id=' . (int)$loteId);
+    }
+
     $loteInfo = $db->fetch("
         SELECT l.*, p.nombre as proveedor, p.codigo as proveedor_codigo, v.nombre as variedad
         FROM lotes l
@@ -50,6 +59,7 @@ $lotesDisponibles = $db->fetchAll("
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso = 'FERMENTACION'
+    AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
     AND NOT EXISTS (SELECT 1 FROM registros_fermentacion rf WHERE rf.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
 ");
@@ -71,6 +81,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$loteId) $errors[] = 'Debe seleccionar un lote';
     if (!$fechaInicio) $errors[] = 'La fecha de inicio es requerida';
     if ($pesoInicial <= 0) $errors[] = 'El peso inicial debe ser mayor a 0';
+
+    if ($loteId) {
+        $fichaRegistro = $db->fetch("
+            SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+        ", ['lote_id' => $loteId]);
+        if (!$fichaRegistro) {
+            $errors[] = 'Debe completar primero la ficha de registro para este lote.';
+        }
+    }
+
+    if ($loteId && empty($errors)) {
+        $loteValido = $db->fetch("
+            SELECT l.id
+            FROM lotes l
+            WHERE l.id = :id
+              AND l.estado_proceso = 'FERMENTACION'
+              AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
+              AND NOT EXISTS (SELECT 1 FROM registros_fermentacion rf WHERE rf.lote_id = l.id)
+        ", ['id' => $loteId]);
+
+        if (!$loteValido) {
+            $errors[] = 'Lote no válido para iniciar fermentación.';
+        }
+    }
     
     if (empty($errors)) {
         try {

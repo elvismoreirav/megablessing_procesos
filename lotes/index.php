@@ -82,7 +82,20 @@ $lotes = $db->fetchAll("
 
 // Datos para filtros
 $proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1 ORDER BY nombre");
-$estados = ['RECEPCION', 'CALIDAD', 'PRE_SECADO', 'FERMENTACION', 'SECADO', 'CALIDAD_POST', 'EMPAQUETADO', 'ALMACENADO', 'FINALIZADO'];
+$estados = ['RECEPCION', 'CALIDAD', 'PRE_SECADO', 'FERMENTACION', 'SECADO', 'CALIDAD_POST', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO', 'RECHAZADO'];
+$estadoLabels = [
+    'RECEPCION' => 'Recepción',
+    'CALIDAD' => 'Verificación de Lote',
+    'PRE_SECADO' => 'Pre-secado (Legado)',
+    'FERMENTACION' => 'Fermentación',
+    'SECADO' => 'Secado',
+    'CALIDAD_POST' => 'Prueba de Corte',
+    'EMPAQUETADO' => 'Empaquetado',
+    'ALMACENADO' => 'Almacenado',
+    'DESPACHO' => 'Despacho',
+    'FINALIZADO' => 'Finalizado',
+    'RECHAZADO' => 'Rechazado',
+];
 
 $pageTitle = 'Lotes / Recepción';
 $pageSubtitle = 'Gestión de lotes de cacao';
@@ -103,7 +116,7 @@ ob_start();
                     <option value="">Todos los estados</option>
                     <?php foreach ($estados as $estado): ?>
                         <option value="<?= $estado ?>" <?= $filtroEstado === $estado ? 'selected' : '' ?>>
-                            <?= ucfirst(strtolower(str_replace('_', ' ', $estado))) ?>
+                            <?= htmlspecialchars($estadoLabels[$estado] ?? ucfirst(strtolower(str_replace('_', ' ', $estado)))) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>

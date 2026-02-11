@@ -667,17 +667,34 @@ ob_start();
                             <?php
                             $estadoColors = [
                                 'RECEPCION' => 'bg-gray-100 text-gray-700',
+                                'CALIDAD' => 'bg-indigo-100 text-indigo-700',
+                                'PRE_SECADO' => 'bg-yellow-100 text-yellow-700',
                                 'FERMENTACION' => 'bg-orange-100 text-orange-700',
                                 'SECADO' => 'bg-amber-100 text-amber-700',
                                 'CALIDAD_POST' => 'bg-blue-100 text-blue-700',
                                 'EMPAQUETADO' => 'bg-purple-100 text-purple-700',
+                                'ALMACENADO' => 'bg-slate-100 text-slate-700',
+                                'DESPACHO' => 'bg-cyan-100 text-cyan-700',
                                 'FINALIZADO' => 'bg-green-100 text-green-700',
                                 'RECHAZADO' => 'bg-red-100 text-red-700',
+                            ];
+                            $estadoLabels = [
+                                'RECEPCION' => 'Recepción',
+                                'CALIDAD' => 'Verificación de Lote',
+                                'PRE_SECADO' => 'Pre-secado (Legado)',
+                                'FERMENTACION' => 'Fermentación',
+                                'SECADO' => 'Secado',
+                                'CALIDAD_POST' => 'Prueba de Corte',
+                                'EMPAQUETADO' => 'Empaquetado',
+                                'ALMACENADO' => 'Almacenado',
+                                'DESPACHO' => 'Despacho',
+                                'FINALIZADO' => 'Finalizado',
+                                'RECHAZADO' => 'Rechazado',
                             ];
                             $colorClass = $estadoColors[$lote['estado_proceso']] ?? 'bg-gray-100 text-gray-700';
                             ?>
                             <span class="<?= $colorClass ?> px-2 py-1 rounded-full text-xs font-medium">
-                                <?= $lote['estado_proceso'] ?>
+                                <?= htmlspecialchars($estadoLabels[$lote['estado_proceso']] ?? $lote['estado_proceso']) ?>
                             </span>
                         </td>
                         <td class="px-4 py-3 text-center">

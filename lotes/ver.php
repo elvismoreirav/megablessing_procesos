@@ -52,22 +52,52 @@ $historial = $db->fetchAll("
 ", [$id]);
 
 // Obtener registros relacionados
-$fichaRegistro = $db->fetch("SELECT * FROM fichas_registro WHERE lote_id = ?", [$id]);
-$registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ?", [$id]);
-$registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ?", [$id]);
-$registroPruebaCorte = $db->fetch("SELECT * FROM registros_prueba_corte WHERE lote_id = ?", [$id]);
+$fichaRegistro = $db->fetch("SELECT * FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registroPruebaCorte = $db->fetch("SELECT * FROM registros_prueba_corte WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+
+$colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
+$hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
+$camposPagoCompletos = $hasFichaCol('fecha_pago')
+    && $hasFichaCol('factura_compra')
+    && $hasFichaCol('cantidad_comprada')
+    && $hasFichaCol('forma_pago');
+
+$tieneFichaRegistro = (bool)$fichaRegistro;
+$tieneRegistroPago = false;
+if ($tieneFichaRegistro) {
+    if ($camposPagoCompletos) {
+        $tieneRegistroPago = !empty($fichaRegistro['fecha_pago'])
+            && trim((string)($fichaRegistro['factura_compra'] ?? '')) !== ''
+            && isset($fichaRegistro['cantidad_comprada']) && (float)$fichaRegistro['cantidad_comprada'] > 0
+            && trim((string)($fichaRegistro['forma_pago'] ?? '')) !== '';
+    } else {
+        $tieneRegistroPago = isset($fichaRegistro['precio_total_pagar']) && $fichaRegistro['precio_total_pagar'] !== null;
+    }
+}
+$tieneCodificacion = $tieneFichaRegistro && trim((string)($fichaRegistro['codificacion'] ?? '')) !== '';
+$rutaFicha = APP_URL . '/fichas/' . ($tieneFichaRegistro ? 'ver.php?id=' . (int)$fichaRegistro['id'] : 'crear.php?etapa=recepcion&lote_id=' . $id);
+$rutaPago = $tieneFichaRegistro ? (APP_URL . '/fichas/pago.php?id=' . (int)$fichaRegistro['id']) : '#';
+$rutaCodificacion = $tieneFichaRegistro ? (APP_URL . '/fichas/codificacion.php?id=' . (int)$fichaRegistro['id']) : '#';
+$rutaEtiqueta = $tieneFichaRegistro ? (APP_URL . '/fichas/etiqueta.php?id=' . (int)$fichaRegistro['id']) : '#';
+$rutaFermentacion = APP_URL . '/fermentacion/' . ($registroFermentacion ? 'ver.php?id=' . (int)$registroFermentacion['id'] : 'crear.php?lote_id=' . $id);
+$rutaSecado = APP_URL . '/secado/' . ($registroSecado ? 'ver.php?id=' . (int)$registroSecado['id'] : 'crear.php?lote_id=' . $id);
+$rutaPruebaCorte = APP_URL . '/prueba-corte/' . ($registroPruebaCorte ? 'ver.php?id=' . (int)$registroPruebaCorte['id'] : 'crear.php?lote_id=' . $id);
 
 // Estados del proceso para el timeline
 $estadosProceso = [
     'RECEPCION' => ['icon' => 'truck', 'label' => 'Recepción'],
-    'CALIDAD' => ['icon' => 'check-circle', 'label' => 'Control Calidad'],
-    'PRE_SECADO' => ['icon' => 'sun', 'label' => 'Pre-secado'],
+    'CALIDAD' => ['icon' => 'check-circle', 'label' => 'Verificación de Lote'],
+    'PRE_SECADO' => ['icon' => 'sun', 'label' => 'Pre-secado (Legado)'],
     'FERMENTACION' => ['icon' => 'fire', 'label' => 'Fermentación'],
-    'SECADO' => ['icon' => 'sun', 'label' => 'Secado Final'],
-    'CALIDAD_POST' => ['icon' => 'clipboard-check', 'label' => 'Calidad Post'],
+    'SECADO' => ['icon' => 'sun', 'label' => 'Secado'],
+    'CALIDAD_POST' => ['icon' => 'clipboard-check', 'label' => 'Prueba de Corte'],
     'EMPAQUETADO' => ['icon' => 'archive', 'label' => 'Empaquetado'],
     'ALMACENADO' => ['icon' => 'database', 'label' => 'Almacenado'],
-    'FINALIZADO' => ['icon' => 'flag', 'label' => 'Finalizado']
+    'DESPACHO' => ['icon' => 'truck', 'label' => 'Despacho'],
+    'FINALIZADO' => ['icon' => 'flag', 'label' => 'Finalizado'],
+    'RECHAZADO' => ['icon' => 'x-circle', 'label' => 'Rechazado']
 ];
 
 $estadoActualIndex = array_search($lote['estado_proceso'], array_keys($estadosProceso));
@@ -267,90 +297,78 @@ ob_start();
                         <svg class="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                         </svg>
-                        Registros del Proceso
+                        Flujo de Proceso
                     </h3>
                 </div>
-                <div class="card-body">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Ficha de Registro -->
-                        <a href="<?= APP_URL ?>/fichas/<?= $fichaRegistro ? 'ver' : 'crear' ?>.php?lote_id=<?= $lote['id'] ?>" 
-                           class="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed <?= $fichaRegistro ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-primary hover:bg-olive/5' ?> transition-colors">
-                            <div class="w-12 h-12 rounded-xl <?= $fichaRegistro ? 'bg-green-500' : 'bg-gray-200' ?> flex items-center justify-center">
-                                <svg class="w-6 h-6 <?= $fichaRegistro ? 'text-white' : 'text-warmgray' ?>" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                                </svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="font-medium">Ficha de Registro</p>
-                                <p class="text-sm text-warmgray"><?= $fichaRegistro ? 'Completado' : 'Pendiente' ?></p>
-                            </div>
-                            <?php if ($fichaRegistro): ?>
-                                <svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            <?php else: ?>
-                                <svg class="w-6 h-6 text-warmgray" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                </svg>
-                            <?php endif; ?>
-                        </a>
+                <div class="card-body space-y-6">
+                    <div>
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">1. Procesos Centro de Acopio</h4>
+                        <div class="space-y-3">
+                            <a href="<?= $rutaFicha ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
+                                <span class="font-medium text-gray-800">a. Recepción (Ficha de Recepción)</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $tieneFichaRegistro ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $tieneFichaRegistro ? 'Completado' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                            <a href="<?= $rutaPago ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
+                                <span class="font-medium text-gray-800">b. Registro de Pagos (Ficha de pagos)</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $tieneRegistroPago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $tieneRegistroPago ? 'Registrado' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                            <a href="<?= $rutaCodificacion ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
+                                <span class="font-medium text-gray-800">c. Codificación de Lote</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $tieneCodificacion ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $tieneCodificacion ? 'Codificado' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                            <a href="<?= $rutaEtiqueta ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
+                                <span class="font-medium text-gray-800">i. Imprimir Etiqueta (Etiquetado de registro)</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $tieneFichaRegistro ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $tieneFichaRegistro ? 'Disponible' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                        </div>
+                        <?php if (!$tieneFichaRegistro): ?>
+                        <p class="text-xs text-amber-700 mt-3">Primero debe completar la ficha de recepción para habilitar pago, codificación y etiqueta.</p>
+                        <?php endif; ?>
+                    </div>
 
-                        <!-- Registro Fermentación -->
-                        <a href="<?= APP_URL ?>/fermentacion/<?= $registroFermentacion ? 'ver' : 'crear' ?>.php?lote_id=<?= $lote['id'] ?>" 
-                           class="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed <?= $registroFermentacion ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-primary hover:bg-olive/5' ?> transition-colors">
-                            <div class="w-12 h-12 rounded-xl <?= $registroFermentacion ? 'bg-green-500' : 'bg-gray-200' ?> flex items-center justify-center">
-                                <svg class="w-6 h-6 <?= $registroFermentacion ? 'text-white' : 'text-warmgray' ?>" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
-                                </svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="font-medium">Fermentación</p>
-                                <p class="text-sm text-warmgray"><?= $registroFermentacion ? 'Registrado' : 'Pendiente' ?></p>
-                            </div>
-                            <?php if ($registroFermentacion): ?>
-                                <svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            <?php endif; ?>
-                        </a>
-
-                        <!-- Registro Secado -->
-                        <a href="<?= APP_URL ?>/secado/<?= $registroSecado ? 'ver' : 'crear' ?>.php?lote_id=<?= $lote['id'] ?>" 
-                           class="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed <?= $registroSecado ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-primary hover:bg-olive/5' ?> transition-colors">
-                            <div class="w-12 h-12 rounded-xl <?= $registroSecado ? 'bg-green-500' : 'bg-gray-200' ?> flex items-center justify-center">
-                                <svg class="w-6 h-6 <?= $registroSecado ? 'text-white' : 'text-warmgray' ?>" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-                                </svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="font-medium">Secado</p>
-                                <p class="text-sm text-warmgray"><?= $registroSecado ? 'Registrado' : 'Pendiente' ?></p>
-                            </div>
-                            <?php if ($registroSecado): ?>
-                                <svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            <?php endif; ?>
-                        </a>
-
-                        <!-- Prueba de Corte -->
-                        <a href="<?= APP_URL ?>/prueba-corte/<?= $registroPruebaCorte ? 'ver' : 'crear' ?>.php?lote_id=<?= $lote['id'] ?>" 
-                           class="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed <?= $registroPruebaCorte ? 'border-green-300 bg-green-50' : 'border-gray-200 hover:border-primary hover:bg-olive/5' ?> transition-colors">
-                            <div class="w-12 h-12 rounded-xl <?= $registroPruebaCorte ? 'bg-green-500' : 'bg-gray-200' ?> flex items-center justify-center">
-                                <svg class="w-6 h-6 <?= $registroPruebaCorte ? 'text-white' : 'text-warmgray' ?>" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                                </svg>
-                            </div>
-                            <div class="flex-1">
-                                <p class="font-medium">Prueba de Corte</p>
-                                <p class="text-sm text-warmgray"><?= $registroPruebaCorte ? 'Completado' : 'Pendiente' ?></p>
-                            </div>
-                            <?php if ($registroPruebaCorte): ?>
-                                <svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            <?php endif; ?>
-                        </a>
+                    <div>
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">2. Procesos Planta</h4>
+                        <div class="space-y-3">
+                            <a href="<?= APP_URL ?>/lotes/editar.php?id=<?= $lote['id'] ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
+                                <span class="font-medium text-gray-800">a. Verificación de Lote</span>
+                                <span class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">Formulario</span>
+                            </a>
+                            <a href="<?= $tieneFichaRegistro ? $rutaFermentacion : '#' ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed' ?>">
+                                <span class="font-medium text-gray-800">b. Fermentación (Ficha de fermentación)</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $registroFermentacion ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $registroFermentacion ? 'Registrado' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                            <a href="<?= $tieneFichaRegistro ? $rutaSecado : '#' ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed' ?>">
+                                <span class="font-medium text-gray-800">c. Secado (Ficha de secado)</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $registroSecado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $registroSecado ? 'Registrado' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                            <a href="<?= $tieneFichaRegistro ? $rutaPruebaCorte : '#' ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed' ?>">
+                                <span class="font-medium text-gray-800">d. Prueba de Corte (Ficha de Prueba de Corte)</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $registroPruebaCorte ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $registroPruebaCorte ? 'Completado' : 'Pendiente' ?>
+                                </span>
+                            </a>
+                        </div>
+                        <?php if (!$tieneFichaRegistro): ?>
+                        <p class="text-xs text-amber-700 mt-3">Primero debe completar la ficha de registro para habilitar procesos de planta.</p>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -397,51 +415,78 @@ ob_start();
             <!-- Acciones rápidas -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Acciones</h3>
+                    <h3 class="card-title">Menú del Proceso Detallado</h3>
                 </div>
-                <div class="card-body space-y-3">
-                    <?php if ($lote['estado_proceso'] === 'RECEPCION'): ?>
-                        <a href="<?= APP_URL ?>/lotes/avanzar.php?id=<?= $lote['id'] ?>&estado=CALIDAD" 
-                           class="btn btn-primary w-full justify-start">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                            </svg>
-                            Pasar a Control de Calidad
-                        </a>
-                    <?php elseif ($lote['estado_proceso'] === 'CALIDAD'): ?>
-                        <a href="<?= APP_URL ?>/lotes/avanzar.php?id=<?= $lote['id'] ?>&estado=PRE_SECADO" 
-                           class="btn btn-primary w-full justify-start">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                            </svg>
-                            Pasar a Pre-secado
-                        </a>
-                    <?php elseif ($lote['estado_proceso'] === 'PRE_SECADO'): ?>
-                        <a href="<?= APP_URL ?>/fermentacion/crear.php?lote_id=<?= $lote['id'] ?>" 
-                           class="btn btn-primary w-full justify-start">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
-                            </svg>
-                            Iniciar Fermentación
-                        </a>
-                    <?php elseif ($lote['estado_proceso'] === 'FERMENTACION'): ?>
-                        <a href="<?= APP_URL ?>/secado/crear.php?lote_id=<?= $lote['id'] ?>" 
-                           class="btn btn-primary w-full justify-start">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-                            </svg>
-                            Iniciar Secado
-                        </a>
-                    <?php elseif ($lote['estado_proceso'] === 'SECADO'): ?>
-                        <a href="<?= APP_URL ?>/prueba-corte/crear.php?lote_id=<?= $lote['id'] ?>" 
-                           class="btn btn-primary w-full justify-start">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                            </svg>
-                            Realizar Prueba de Corte
-                        </a>
+                <div class="card-body space-y-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Centro de Acopio</p>
+                        <div class="space-y-2">
+                            <a href="<?= $rutaFicha ?>" class="btn btn-outline w-full justify-start">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
+                                </svg>
+                                1.a Recepción (Ficha de Recepción)
+                            </a>
+                            <a href="<?= $rutaPago ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2"/>
+                                </svg>
+                                1.b Registro de Pagos (Ficha de pagos)
+                            </a>
+                            <a href="<?= $rutaCodificacion ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
+                                </svg>
+                                1.c Codificación de Lote
+                            </a>
+                            <a href="<?= $rutaEtiqueta ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2"/>
+                                </svg>
+                                1.i Imprimir Etiqueta (Etiquetado de registro)
+                            </a>
+                        </div>
+                    </div>
+
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Procesos Planta</p>
+                        <div class="space-y-2">
+                            <a href="<?= APP_URL ?>/lotes/editar.php?id=<?= $lote['id'] ?>" class="btn btn-outline w-full justify-start">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11"/>
+                                </svg>
+                                2.a Verificación de Lote
+                            </a>
+                            <a href="<?= $tieneFichaRegistro ? $rutaFermentacion : '#' ?>"
+                               class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10"/>
+                                </svg>
+                                2.b Fermentación (Ficha de fermentación)
+                            </a>
+                            <a href="<?= $tieneFichaRegistro ? $rutaSecado : '#' ?>"
+                               class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3"/>
+                                </svg>
+                                2.c Secado (Ficha de secado)
+                            </a>
+                            <a href="<?= $tieneFichaRegistro ? $rutaPruebaCorte : '#' ?>"
+                               class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10"/>
+                                </svg>
+                                2.d Prueba de Corte (Ficha de prueba de corte)
+                            </a>
+                        </div>
+                    </div>
+
+                    <?php if (!$tieneFichaRegistro): ?>
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs">
+                        Debe completar primero la ficha de registro para habilitar los procesos de planta.
+                    </div>
                     <?php endif; ?>
-                    
+
                     <a href="<?= APP_URL ?>/reportes/lote.php?id=<?= $lote['id'] ?>" class="btn btn-outline w-full justify-start">
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -478,8 +523,9 @@ ob_start();
                                     <div class="w-2 h-2 mt-2 bg-primary rounded-full flex-shrink-0"></div>
                                     <div class="flex-1 min-w-0">
                                         <p class="text-sm font-medium"><?= htmlspecialchars($h['accion']) ?></p>
-                                        <?php if ($h['detalle']): ?>
-                                            <p class="text-xs text-warmgray truncate"><?= htmlspecialchars($h['detalle']) ?></p>
+                                        <?php $detalleHistorial = trim((string)($h['descripcion'] ?? $h['detalle'] ?? '')); ?>
+                                        <?php if ($detalleHistorial !== ''): ?>
+                                            <p class="text-xs text-warmgray truncate"><?= htmlspecialchars($detalleHistorial) ?></p>
                                         <?php endif; ?>
                                         <p class="text-xs text-warmgray mt-1">
                                             <?= date('d/m/Y H:i', strtotime($h['created_at'])) ?>

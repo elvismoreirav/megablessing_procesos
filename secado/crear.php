@@ -11,14 +11,34 @@ requireAuth();
 $db = Database::getInstance();
 $errors = [];
 
+// Compatibilidad de esquema para datos de fermentación
+$colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
+$hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
+$exprPesoFermentacion = $hasFerCol('peso_final')
+    ? 'rf.peso_final'
+    : ($hasFerCol('peso_lote_kg') ? 'rf.peso_lote_kg' : 'NULL');
+$exprHumedadFermentacion = $hasFerCol('humedad_final')
+    ? 'rf.humedad_final'
+    : ($hasFerCol('humedad_inicial') ? 'rf.humedad_inicial' : 'NULL');
+
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
 
 if ($loteId) {
+    $fichaRegistro = $db->fetch("
+        SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+    ", ['lote_id' => $loteId]);
+
+    if (!$fichaRegistro) {
+        setFlash('error', 'Debe completar primero la ficha de registro para este lote.');
+        redirect('/fichas/crear.php?etapa=recepcion&lote_id=' . (int)$loteId);
+    }
+
     $loteInfo = $db->fetch("
         SELECT l.*, p.nombre as proveedor, p.codigo as proveedor_codigo, v.nombre as variedad,
-               rf.peso_final as peso_fermentacion, rf.humedad_final as humedad_fermentacion
+               {$exprPesoFermentacion} as peso_fermentacion,
+               {$exprHumedadFermentacion} as humedad_fermentacion
         FROM lotes l
         JOIN proveedores p ON l.proveedor_id = p.id
         JOIN variedades v ON l.variedad_id = v.id
@@ -51,6 +71,7 @@ $lotesDisponibles = $db->fetchAll("
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso IN ('PRE_SECADO', 'SECADO')
+    AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
     AND NOT EXISTS (SELECT 1 FROM registros_secado rs WHERE rs.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
 ");
@@ -71,6 +92,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$loteId) $errors[] = 'Debe seleccionar un lote';
     if (!$fechaInicio) $errors[] = 'La fecha de inicio es requerida';
     if ($pesoInicial <= 0) $errors[] = 'El peso inicial debe ser mayor a 0';
+
+    if ($loteId) {
+        $fichaRegistro = $db->fetch("
+            SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+        ", ['lote_id' => $loteId]);
+        if (!$fichaRegistro) {
+            $errors[] = 'Debe completar primero la ficha de registro para este lote.';
+        }
+    }
+
+    if ($loteId && empty($errors)) {
+        $loteValido = $db->fetch("
+            SELECT l.id
+            FROM lotes l
+            WHERE l.id = :id
+              AND l.estado_proceso IN ('PRE_SECADO', 'SECADO')
+              AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
+              AND NOT EXISTS (SELECT 1 FROM registros_secado rs WHERE rs.lote_id = l.id)
+        ", ['id' => $loteId]);
+
+        if (!$loteValido) {
+            $errors[] = 'Lote no válido para iniciar secado.';
+        }
+    }
     
     if (empty($errors)) {
         try {

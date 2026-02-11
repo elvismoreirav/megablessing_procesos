@@ -377,6 +377,53 @@ ob_start();
     </div>
 </div>
 
+<!-- Flujo Operativo -->
+<div class="card mb-8">
+    <div class="card-header">
+        <h3 class="font-semibold text-gray-900">Flujo Operativo Actualizado</h3>
+        <p class="text-sm text-warmgray mt-1">La ficha de registro es el primer paso obligatorio del proceso.</p>
+    </div>
+    <div class="card-body">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
+                <h4 class="font-semibold text-emerald-800 mb-3">1. Procesos Centro de Acopio</h4>
+                <ol class="space-y-2 text-sm text-emerald-900">
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="hover:underline"> Recepción (Ficha de Recepción)</a></li>
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="hover:underline">Registro de Pagos (Ficha de pagos)</a></li>
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="hover:underline">Codificación de Lote</a></li>
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="hover:underline">Imprimir Etiqueta (Etiquetado de registro)</a></li>
+                </ol>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-5">
+                <h4 class="font-semibold text-blue-800 mb-3">2. Procesos Planta</h4>
+                <ol class="space-y-2 text-sm text-blue-900">
+                    <li><a href="<?= APP_URL ?>/lotes/index.php" class="hover:underline">a. Verificación de Lote</a></li>
+                    <li><a href="<?= APP_URL ?>/fermentacion/index.php" class="hover:underline">b. Fermentación (Ficha de fermentación)</a></li>
+                    <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">c. Secado (Ficha de secado)</a></li>
+                    <li><a href="<?= APP_URL ?>/prueba-corte/index.php" class="hover:underline">d. Prueba de Corte (Ficha de prueba de corte)</a></li>
+                </ol>
+            </div>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-3">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="btn btn-primary">
+                a. Recepción (Listado)
+            </a>
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="btn btn-outline">
+                b. Registro de Pagos
+            </a>
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="btn btn-outline">
+                c. Codificación de Lote
+            </a>
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="btn btn-outline">
+                i. Imprimir Etiqueta
+            </a>
+            <a href="<?= APP_URL ?>/lotes/index.php" class="btn btn-outline">
+                2.a Verificación de Lote
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Charts Row -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
     <div class="card">
@@ -431,7 +478,7 @@ ob_start();
 
     <div class="card">
         <div class="card-header">
-            <h3 class="font-semibold text-gray-900">Calidad Post-Secado: Defectos Promedio</h3>
+            <h3 class="font-semibold text-gray-900">Prueba de Corte: Defectos Promedio</h3>
         </div>
         <div class="card-body">
             <canvas id="chartDefectos" height="240"></canvas>
@@ -623,15 +670,16 @@ new Chart(ctxDia, {
 // Gráfico lotes por estado
 const estadoLabels = {
   'RECEPCION': 'Recepción',
-  'CALIDAD': 'Calidad',
-  'PRE_SECADO': 'Pre-Secado',
+  'CALIDAD': 'Verificación de Lote',
+  'PRE_SECADO': 'Pre-Secado (Legado)',
   'FERMENTACION': 'Fermentación',
   'SECADO': 'Secado',
-  'CALIDAD_POST': 'Calidad Post',
+  'CALIDAD_POST': 'Prueba de Corte',
   'EMPAQUETADO': 'Empaquetado',
   'ALMACENADO': 'Almacenado',
   'DESPACHO': 'Despacho',
-  'FINALIZADO': 'Finalizado'
+  'FINALIZADO': 'Finalizado',
+  'RECHAZADO': 'Rechazado'
 };
 
 const estadoColors = [

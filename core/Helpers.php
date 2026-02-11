@@ -158,15 +158,16 @@ public static function generateLoteCode($proveedorCodigo, $fecha, $estadoProduct
     public static function getEstadoProcesoBadge($estado) {
         $badges = [
             'RECEPCION' => ['color' => 'bg-blue-100 text-blue-800', 'label' => 'Recepción'],
-            'CALIDAD' => ['color' => 'bg-purple-100 text-purple-800', 'label' => 'Calidad'],
-            'PRE_SECADO' => ['color' => 'bg-yellow-100 text-yellow-800', 'label' => 'Pre-Secado'],
+            'CALIDAD' => ['color' => 'bg-indigo-100 text-indigo-800', 'label' => 'Verificación de Lote'],
+            'PRE_SECADO' => ['color' => 'bg-yellow-100 text-yellow-800', 'label' => 'Pre-Secado (Legado)'],
             'FERMENTACION' => ['color' => 'bg-orange-100 text-orange-800', 'label' => 'Fermentación'],
             'SECADO' => ['color' => 'bg-red-100 text-red-800', 'label' => 'Secado'],
-            'CALIDAD_POST' => ['color' => 'bg-indigo-100 text-indigo-800', 'label' => 'Calidad Post'],
+            'CALIDAD_POST' => ['color' => 'bg-green-100 text-green-800', 'label' => 'Prueba de Corte'],
             'EMPAQUETADO' => ['color' => 'bg-pink-100 text-pink-800', 'label' => 'Empaquetado'],
             'ALMACENADO' => ['color' => 'bg-gray-100 text-gray-800', 'label' => 'Almacenado'],
             'DESPACHO' => ['color' => 'bg-teal-100 text-teal-800', 'label' => 'Despacho'],
             'FINALIZADO' => ['color' => 'bg-green-100 text-green-800', 'label' => 'Finalizado'],
+            'RECHAZADO' => ['color' => 'bg-red-100 text-red-800', 'label' => 'Rechazado'],
         ];
         
         $badge = $badges[$estado] ?? ['color' => 'bg-gray-100 text-gray-800', 'label' => $estado];

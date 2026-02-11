@@ -56,11 +56,16 @@ CREATE TABLE IF NOT EXISTS `usuarios` (
 -- Proveedores/Rutas
 CREATE TABLE IF NOT EXISTS `proveedores` (
     `id` INT PRIMARY KEY AUTO_INCREMENT,
-    `codigo` VARCHAR(10) NOT NULL UNIQUE,
+    `codigo` VARCHAR(20) NOT NULL UNIQUE,
+    `codigo_identificacion` VARCHAR(20),
     `nombre` VARCHAR(100) NOT NULL,
+    `cedula_ruc` VARCHAR(20),
     `tipo` ENUM('MERCADO','BODEGA','RUTA','PRODUCTOR') NOT NULL,
+    `categoria` VARCHAR(100),
+    `es_categoria` TINYINT(1) NOT NULL DEFAULT 0,
     `direccion` TEXT,
     `telefono` VARCHAR(50),
+    `email` VARCHAR(120),
     `contacto` VARCHAR(100),
     `activo` TINYINT(1) DEFAULT 1,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -207,6 +212,10 @@ CREATE TABLE IF NOT EXISTS `fichas_registro` (
     `diferencial_usd` DECIMAL(10,4),
     `precio_unitario_final` DECIMAL(10,4),
     `precio_total_pagar` DECIMAL(12,2),
+    `fecha_pago` DATE,
+    `factura_compra` VARCHAR(80),
+    `cantidad_comprada` DECIMAL(10,2),
+    `forma_pago` ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS'),
     `fermentacion_estado` VARCHAR(50),
     `secado_inicio` DATETIME,
     `secado_fin` DATETIME,
@@ -425,13 +434,13 @@ INSERT INTO `roles` (`nombre`, `descripcion`, `permisos`) VALUES
 INSERT INTO `usuarios` (`nombre`, `email`, `password`, `rol_id`) VALUES
 ('Administrador', 'admin@megablessing.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1);
 
--- Proveedores por defecto
-INSERT INTO `proveedores` (`codigo`, `nombre`, `tipo`) VALUES
-('M', 'Mercado', 'MERCADO'),
-('B', 'Bodega', 'BODEGA'),
-('ES', 'Esmeraldas', 'RUTA'),
-('FM', 'Flor de Manabí', 'RUTA'),
-('VP', 'Vía Pedernales', 'RUTA');
+-- Categorías base de proveedores
+INSERT INTO `proveedores` (`codigo`, `codigo_identificacion`, `nombre`, `tipo`, `categoria`, `es_categoria`) VALUES
+('M', NULL, 'Mercado', 'MERCADO', 'MERCADO', 1),
+('B', NULL, 'Bodega', 'BODEGA', 'BODEGA', 1),
+('ES', NULL, 'Esmeraldas', 'RUTA', 'ESMERALDAS', 1),
+('FM', NULL, 'Flor de Manabí', 'RUTA', 'FLOR DE MANABI', 1),
+('VP', NULL, 'Vía Pedernales', 'RUTA', 'VIA PEDERNALES', 1);
 
 -- Variedades de cacao
 INSERT INTO `variedades` (`codigo`, `nombre`, `descripcion`) VALUES

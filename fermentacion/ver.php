@@ -17,23 +17,76 @@ if (!$id) {
     redirect('/fermentacion/index.php');
 }
 
+// Compatibilidad de esquema (columnas/tablas varían según instalación)
+$colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
+$hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
+
+$fechaFinExpr = $hasFerCol('fecha_fin')
+    ? 'rf.fecha_fin'
+    : ($hasFerCol('fecha_salida') ? 'rf.fecha_salida' : 'NULL');
+$pesoInicialExpr = $hasFerCol('peso_inicial')
+    ? 'rf.peso_inicial'
+    : ($hasFerCol('peso_lote_kg') ? 'rf.peso_lote_kg' : 'NULL');
+$pesoFinalExpr = $hasFerCol('peso_final') ? 'rf.peso_final' : 'NULL';
+$phInicialExpr = $hasFerCol('ph_inicial')
+    ? 'rf.ph_inicial'
+    : ($hasFerCol('ph_pulpa_inicial') ? 'rf.ph_pulpa_inicial' : 'NULL');
+$observacionesExpr = $hasFerCol('observaciones')
+    ? 'rf.observaciones'
+    : ($hasFerCol('observaciones_generales') ? 'rf.observaciones_generales' : 'NULL');
+$usuarioFerCol = $hasFerCol('operador_id')
+    ? 'operador_id'
+    : ($hasFerCol('responsable_id') ? 'responsable_id' : null);
+$operadorExpr = $usuarioFerCol ? 'u.nombre' : 'NULL';
+$joinUsuario = $usuarioFerCol ? "LEFT JOIN usuarios u ON rf.{$usuarioFerCol} = u.id" : '';
+
+$tablaCajones = $db->fetch("SHOW TABLES LIKE 'cajones_fermentacion'")
+    ? 'cajones_fermentacion'
+    : ($db->fetch("SHOW TABLES LIKE 'cajones'") ? 'cajones' : null);
+$joinCajon = '';
+$cajonCodigoExpr = 'NULL';
+$cajonCapacidadExpr = 'NULL';
+if ($tablaCajones) {
+    $colsCajones = array_column($db->fetchAll("SHOW COLUMNS FROM {$tablaCajones}"), 'Field');
+    $hasCajCol = static fn(string $name): bool => in_array($name, $colsCajones, true);
+
+    if ($hasCajCol('codigo')) {
+        $cajonCodigoExpr = 'c.codigo';
+    } elseif ($hasCajCol('nombre')) {
+        $cajonCodigoExpr = 'c.nombre';
+    } elseif ($hasCajCol('numero')) {
+        $cajonCodigoExpr = 'c.numero';
+    }
+
+    if ($hasCajCol('capacidad_kg')) {
+        $cajonCapacidadExpr = 'c.capacidad_kg';
+    }
+
+    $joinCajon = "LEFT JOIN {$tablaCajones} c ON rf.cajon_id = c.id";
+}
+
 // Obtener datos de fermentación
 $fermentacion = $db->fetch("
-    SELECT rf.*, 
+    SELECT rf.*,
+           {$fechaFinExpr} as fecha_fin,
+           {$pesoInicialExpr} as peso_inicial,
+           {$pesoFinalExpr} as peso_final,
+           {$phInicialExpr} as ph_inicial,
+           {$observacionesExpr} as observaciones,
+           {$operadorExpr} as operador,
+           {$cajonCodigoExpr} as cajon_codigo,
+           {$cajonCapacidadExpr} as cajon_capacidad,
            l.codigo as lote_codigo,
-           p.nombre as proveedor, 
+           p.nombre as proveedor,
            p.codigo as proveedor_codigo,
            v.nombre as variedad,
-           u.nombre as operador,
-           c.codigo as cajon_codigo,
-           c.capacidad_kg as cajon_capacidad,
            ef.nombre as estado_fermentacion
     FROM registros_fermentacion rf
     JOIN lotes l ON rf.lote_id = l.id
     JOIN proveedores p ON l.proveedor_id = p.id
     JOIN variedades v ON l.variedad_id = v.id
-    JOIN usuarios u ON rf.operador_id = u.id
-    LEFT JOIN cajones c ON rf.cajon_id = c.id
+    {$joinUsuario}
+    {$joinCajon}
     LEFT JOIN estados_fermentacion ef ON l.estado_fermentacion_id = ef.id
     WHERE rf.id = :id
 ", ['id' => $id]);
@@ -43,10 +96,35 @@ if (!$fermentacion) {
     redirect('/fermentacion/index.php');
 }
 
-// Obtener control diario
+// Obtener control diario (compatibilidad de columnas)
+$colsControl = array_column($db->fetchAll("SHOW COLUMNS FROM fermentacion_control_diario"), 'Field');
+$hasCtrlCol = static fn(string $name): bool => in_array($name, $colsControl, true);
+
+$fkControlCol = $hasCtrlCol('fermentacion_id') ? 'fermentacion_id' : 'registro_fermentacion_id';
+$fechaCtrlExpr = $hasCtrlCol('fecha') ? 'fecha' : 'NULL';
+$tempAmExpr = $hasCtrlCol('temperatura_am')
+    ? 'temperatura_am'
+    : ($hasCtrlCol('temp_am') ? 'temp_am' : ($hasCtrlCol('temp_masa') ? 'temp_masa' : 'NULL'));
+$tempPmExpr = $hasCtrlCol('temperatura_pm')
+    ? 'temperatura_pm'
+    : ($hasCtrlCol('temp_pm') ? 'temp_pm' : ($hasCtrlCol('temp_ambiente') ? 'temp_ambiente' : 'NULL'));
+$phAmExpr = $hasCtrlCol('ph_am') ? 'ph_am' : ($hasCtrlCol('ph_pulpa') ? 'ph_pulpa' : 'NULL');
+$phPmExpr = $hasCtrlCol('ph_pm') ? 'ph_pm' : ($hasCtrlCol('ph_cotiledon') ? 'ph_cotiledon' : 'NULL');
+$horaCtrlExpr = $hasCtrlCol('hora_volteo') ? 'hora_volteo' : ($hasCtrlCol('hora') ? 'hora' : 'NULL');
+$obsCtrlExpr = $hasCtrlCol('observaciones') ? 'observaciones' : 'NULL';
+
 $controlDiario = $db->fetchAll("
-    SELECT * FROM fermentacion_control_diario 
-    WHERE fermentacion_id = :id 
+    SELECT dia,
+           {$fechaCtrlExpr} as fecha,
+           {$tempAmExpr} as temp_am,
+           {$tempPmExpr} as temp_pm,
+           {$phAmExpr} as ph_am,
+           {$phPmExpr} as ph_pm,
+           volteo,
+           {$horaCtrlExpr} as hora_volteo,
+           {$obsCtrlExpr} as observaciones
+    FROM fermentacion_control_diario
+    WHERE {$fkControlCol} = :id
     ORDER BY dia ASC
 ", ['id' => $id]);
 

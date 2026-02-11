@@ -14,10 +14,103 @@ $db = Database::getInstance();
 $filtroLote = $_GET['lote'] ?? '';
 $filtroFecha = $_GET['fecha'] ?? '';
 $filtroBusqueda = $_GET['buscar'] ?? '';
+$vistaActual = strtolower(trim((string)($_GET['vista'] ?? 'recepcion')));
+$vistasPermitidas = ['recepcion', 'pagos', 'codificacion', 'etiqueta'];
+if (!in_array($vistaActual, $vistasPermitidas, true)) {
+    $vistaActual = 'recepcion';
+}
+$mostrarColumnaLote = $vistaActual !== 'recepcion';
+$mostrarFiltroLote = $vistaActual !== 'recepcion';
+if (!$mostrarFiltroLote) {
+    $filtroLote = '';
+}
+
+$vistaConfig = [
+    'recepcion' => [
+        'titulo' => 'a. Recepción (Ficha de Recepción)',
+        'descripcion' => 'Registro y verificación visual inicial del lote.'
+    ],
+    'pagos' => [
+        'titulo' => 'b. Registro de Pagos (Ficha de pagos)',
+        'descripcion' => 'Registro y consulta de pagos relacionados a cada ficha de recepción.'
+    ],
+    'codificacion' => [
+        'titulo' => 'c. Codificación de Lote',
+        'descripcion' => 'Fichas pendientes por codificación para trazabilidad.'
+    ],
+    'etiqueta' => [
+        'titulo' => 'i. Imprimir Etiqueta (Etiquetado de registro)',
+        'descripcion' => 'Fichas con codificación disponibles para impresión de etiqueta.'
+    ],
+];
+
+$accionPrincipalHref = APP_URL . '/fichas/crear.php?etapa=recepcion';
+$accionPrincipalLabel = 'Nueva Ficha de Recepción';
+$accionPrincipalIcon = 'fa-plus';
+$emptyStateTitulo = 'No hay fichas registradas';
+$emptyStateDescripcion = 'Comienza creando una nueva ficha de recepción';
+$emptyStateBoton = 'Nueva Ficha de Recepción';
+
+if ($vistaActual === 'pagos') {
+    $accionPrincipalHref = APP_URL . '/fichas/crear.php?etapa=recepcion';
+    $accionPrincipalLabel = 'Nueva Ficha de Recepción';
+    $accionPrincipalIcon = 'fa-plus';
+    $emptyStateTitulo = 'No hay fichas de recepción registradas';
+    $emptyStateDescripcion = 'Primero registre una ficha de recepción para habilitar la gestión de pagos.';
+    $emptyStateBoton = 'Nueva Ficha de Recepción';
+} elseif ($vistaActual === 'codificacion') {
+    $accionPrincipalHref = APP_URL . '/fichas/index.php?vista=recepcion';
+    $accionPrincipalLabel = 'Ir a Recepción';
+    $accionPrincipalIcon = 'fa-arrow-right';
+    $emptyStateTitulo = 'No hay fichas pendientes de codificación';
+    $emptyStateDescripcion = 'Complete la recepción y luego registre la codificación del lote.';
+    $emptyStateBoton = 'Ir a Recepción';
+} elseif ($vistaActual === 'etiqueta') {
+    $accionPrincipalHref = APP_URL . '/fichas/index.php?vista=codificacion';
+    $accionPrincipalLabel = 'Ir a Codificación';
+    $accionPrincipalIcon = 'fa-arrow-right';
+    $emptyStateTitulo = 'No hay fichas disponibles para etiqueta';
+    $emptyStateDescripcion = 'Debe existir una codificación registrada para imprimir la etiqueta.';
+    $emptyStateBoton = 'Ir a Codificación';
+}
+
+// Compatibilidad de esquema para columnas de lotes
+$colsLotes = array_column($db->fetchAll("SHOW COLUMNS FROM lotes"), 'Field');
+$hasLoteCol = static fn(string $name): bool => in_array($name, $colsLotes, true);
+$pesoRecibidoExpr = $hasLoteCol('peso_recibido_kg')
+    ? 'l.peso_recibido_kg'
+    : ($hasLoteCol('peso_inicial_kg') ? 'l.peso_inicial_kg' : 'NULL');
+
+// Compatibilidad de esquema para columnas de fichas (registro de pago)
+$colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
+$hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
+$camposPagoDisponibles = $hasFichaCol('fecha_pago')
+    && $hasFichaCol('factura_compra')
+    && $hasFichaCol('cantidad_comprada')
+    && $hasFichaCol('forma_pago');
+$pagoRegistradoExpr = $camposPagoDisponibles
+    ? "(CASE WHEN f.fecha_pago IS NOT NULL
+                AND TRIM(COALESCE(f.factura_compra, '')) <> ''
+                AND f.cantidad_comprada IS NOT NULL
+                AND f.cantidad_comprada > 0
+                AND TRIM(COALESCE(f.forma_pago, '')) <> ''
+             THEN 1 ELSE 0 END)"
+    : "(CASE WHEN f.precio_total_pagar IS NOT NULL THEN 1 ELSE 0 END)";
+$orderByClause = $vistaActual === 'pagos'
+    ? 'pago_registrado ASC, f.created_at DESC'
+    : 'f.created_at DESC';
 
 // Construir query con filtros
 $where = ["1=1"];
 $params = [];
+
+if ($vistaActual === 'codificacion') {
+    $where[] = "(f.codificacion IS NULL OR TRIM(f.codificacion) = '')";
+}
+
+if ($vistaActual === 'etiqueta') {
+    $where[] = "(f.codificacion IS NOT NULL AND TRIM(f.codificacion) <> '')";
+}
 
 if ($filtroLote) {
     $where[] = "f.lote_id = ?";
@@ -30,8 +123,9 @@ if ($filtroFecha) {
 }
 
 if ($filtroBusqueda) {
-    $where[] = "(f.codificacion LIKE ? OR f.producto LIKE ? OR l.codigo LIKE ?)";
+    $where[] = "(f.codificacion LIKE ? OR f.producto LIKE ? OR l.codigo LIKE ? OR f.proveedor_ruta LIKE ?)";
     $busqueda = "%{$filtroBusqueda}%";
+    $params[] = $busqueda;
     $params[] = $busqueda;
     $params[] = $busqueda;
     $params[] = $busqueda;
@@ -43,17 +137,18 @@ $whereClause = implode(" AND ", $where);
 $fichas = $db->fetchAll("
     SELECT f.*,
            l.codigo as lote_codigo,
-           l.peso_recibido_kg,
+           {$pesoRecibidoExpr} as peso_recibido_kg,
            p.nombre as proveedor_nombre,
            v.nombre as variedad_nombre,
-           u.nombre as responsable_nombre
+           u.nombre as responsable_nombre,
+           {$pagoRegistradoExpr} as pago_registrado
     FROM fichas_registro f
-    INNER JOIN lotes l ON f.lote_id = l.id
+    LEFT JOIN lotes l ON f.lote_id = l.id
     LEFT JOIN proveedores p ON l.proveedor_id = p.id
     LEFT JOIN variedades v ON l.variedad_id = v.id
     LEFT JOIN usuarios u ON f.responsable_id = u.id
     WHERE {$whereClause}
-    ORDER BY f.created_at DESC
+    ORDER BY {$orderByClause}
 ", $params);
 
 // Obtener lotes para filtro
@@ -72,13 +167,34 @@ ob_start();
     <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Fichas de Registro</h1>
-            <p class="text-gray-600">Control de formularios de registro por lote</p>
+            <h1 class="text-2xl font-bold text-gray-900"><?= htmlspecialchars($vistaConfig[$vistaActual]['titulo']) ?></h1>
+            <p class="text-gray-600"><?= htmlspecialchars($vistaConfig[$vistaActual]['descripcion']) ?></p>
         </div>
-        <a href="/fichas/crear.php" 
+        <a href="<?= $accionPrincipalHref ?>" 
            class="inline-flex items-center justify-center px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition-colors">
-            <i class="fas fa-plus mr-2"></i>Nueva Ficha
+            <i class="fas <?= htmlspecialchars($accionPrincipalIcon) ?> mr-2"></i><?= htmlspecialchars($accionPrincipalLabel) ?>
         </a>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+        <div class="flex flex-wrap gap-2">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion"
+               class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'recepcion' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
+                a. Recepción
+            </a>
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos"
+               class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'pagos' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
+                b. Registro de Pagos
+            </a>
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion"
+               class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'codificacion' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
+                c. Codificación
+            </a>
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta"
+               class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'etiqueta' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
+                i. Imprimir Etiqueta
+            </a>
+        </div>
     </div>
 
     <!-- Estadísticas -->
@@ -123,6 +239,7 @@ ob_start();
     <!-- Filtros -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <form method="GET" class="flex flex-wrap gap-4">
+            <input type="hidden" name="vista" value="<?= htmlspecialchars($vistaActual) ?>">
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-gray-500 mb-1">Buscar</label>
                 <input type="text" name="buscar" value="<?= htmlspecialchars($filtroBusqueda) ?>"
@@ -130,6 +247,7 @@ ob_start();
                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
             </div>
             
+            <?php if ($mostrarFiltroLote): ?>
             <div class="w-48">
                 <label class="block text-xs text-gray-500 mb-1">Lote</label>
                 <select name="lote" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
@@ -141,6 +259,7 @@ ob_start();
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
             
             <div class="w-40">
                 <label class="block text-xs text-gray-500 mb-1">Fecha Entrada</label>
@@ -152,7 +271,7 @@ ob_start();
                 <button type="submit" class="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">
                     <i class="fas fa-search mr-1"></i>Filtrar
                 </button>
-                <a href="/fichas/" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
+                <a href="<?= APP_URL ?>/fichas/index.php?vista=<?= urlencode($vistaActual) ?>" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm">
                     <i class="fas fa-times mr-1"></i>Limpiar
                 </a>
             </div>
@@ -166,10 +285,10 @@ ob_start();
             <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i class="fas fa-file-alt text-gray-400 text-2xl"></i>
             </div>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">No hay fichas registradas</h3>
-            <p class="text-gray-500 mb-4">Comienza creando una nueva ficha de registro</p>
-            <a href="/fichas/crear.php" class="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700">
-                <i class="fas fa-plus mr-2"></i>Nueva Ficha
+            <h3 class="text-lg font-medium text-gray-900 mb-2"><?= htmlspecialchars($emptyStateTitulo) ?></h3>
+            <p class="text-gray-500 mb-4"><?= htmlspecialchars($emptyStateDescripcion) ?></p>
+            <a href="<?= $accionPrincipalHref ?>" class="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700">
+                <i class="fas <?= htmlspecialchars($accionPrincipalIcon) ?> mr-2"></i><?= htmlspecialchars($emptyStateBoton) ?>
             </a>
         </div>
         <?php else: ?>
@@ -178,31 +297,55 @@ ob_start();
                 <thead class="bg-gray-50 border-b border-gray-100">
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <?php if ($mostrarColumnaLote): ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lote</th>
+                        <?php endif; ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Codificación</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proveedor/Ruta</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha Entrada</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio Final</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado Ferm.</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase"><?= $vistaActual === 'pagos' ? 'Estado Pago' : 'Estado Ferm.' ?></th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Responsable</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase sticky right-0 bg-gray-50 z-10">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <?php foreach ($fichas as $ficha): ?>
                     <tr class="hover:bg-amber-50/50 transition-colors">
+                        <?php
+                        $rutaEdicion = APP_URL . '/fichas/editar.php?id=' . (int)$ficha['id'] . '&etapa=recepcion';
+                        if ($vistaActual === 'pagos') {
+                            $rutaEdicion = APP_URL . '/fichas/pago.php?id=' . (int)$ficha['id'];
+                        } elseif ($vistaActual === 'codificacion') {
+                            $rutaEdicion = APP_URL . '/fichas/codificacion.php?id=' . (int)$ficha['id'];
+                        } elseif ($vistaActual === 'etiqueta') {
+                            $rutaEdicion = APP_URL . '/fichas/etiqueta.php?id=' . (int)$ficha['id'];
+                        }
+                        ?>
                         <td class="px-4 py-3">
                             <span class="font-mono text-sm text-gray-600">#<?= $ficha['id'] ?></span>
                         </td>
+                        <?php if ($mostrarColumnaLote): ?>
                         <td class="px-4 py-3">
-                            <a href="/lotes/ver.php?id=<?= $ficha['lote_id'] ?>" class="text-amber-600 hover:text-amber-700 font-medium">
-                                <?= htmlspecialchars($ficha['lote_codigo']) ?>
+                            <?php
+                            $loteIdFila = (int)($ficha['lote_id'] ?? 0);
+                            $loteCodigoFila = trim((string)($ficha['lote_codigo'] ?? ''));
+                            ?>
+                            <?php if ($loteIdFila > 0 && $loteCodigoFila !== ''): ?>
+                            <a href="<?= APP_URL ?>/lotes/ver.php?id=<?= $loteIdFila ?>" class="text-amber-600 hover:text-amber-700 font-medium">
+                                <?= htmlspecialchars($loteCodigoFila) ?>
                             </a>
+                            <?php elseif ($loteIdFila > 0): ?>
+                            <span class="text-gray-700 font-medium">Lote #<?= $loteIdFila ?></span>
+                            <?php else: ?>
+                            <span class="text-gray-400">Sin lote</span>
+                            <?php endif; ?>
                             <?php if ($ficha['variedad_nombre']): ?>
                             <div class="text-xs text-gray-500"><?= htmlspecialchars($ficha['variedad_nombre']) ?></div>
                             <?php endif; ?>
                         </td>
+                        <?php endif; ?>
                         <td class="px-4 py-3">
                             <?php if ($ficha['codificacion']): ?>
                             <span class="font-mono text-sm"><?= htmlspecialchars($ficha['codificacion']) ?></span>
@@ -237,7 +380,17 @@ ob_start();
                             <?php endif; ?>
                         </td>
                         <td class="px-4 py-3">
-                            <?php if ($ficha['fermentacion_estado']): ?>
+                            <?php if ($vistaActual === 'pagos'): ?>
+                            <?php
+                            $pagoRegistrado = ((int)($ficha['pago_registrado'] ?? 0)) === 1;
+                            ?>
+                            <span class="inline-flex px-2 py-1 text-xs rounded-full <?= $pagoRegistrado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                <?= $pagoRegistrado ? 'Registrado' : 'Pendiente' ?>
+                            </span>
+                            <?php if ($pagoRegistrado && !empty($ficha['fecha_pago'])): ?>
+                            <div class="text-xs text-gray-500 mt-1"><?= date('d/m/Y', strtotime((string)$ficha['fecha_pago'])) ?></div>
+                            <?php endif; ?>
+                            <?php elseif ($ficha['fermentacion_estado']): ?>
                             <?php
                             $estadoColor = match(strtolower($ficha['fermentacion_estado'])) {
                                 'completa', 'terminada', 'finalizada' => 'bg-green-100 text-green-700',
@@ -256,23 +409,43 @@ ob_start();
                         <td class="px-4 py-3 text-sm text-gray-700">
                             <?= htmlspecialchars($ficha['responsable_nombre'] ?? '—') ?>
                         </td>
-                        <td class="px-4 py-3">
-                            <div class="flex items-center justify-center gap-2">
-                                <a href="/fichas/ver.php?id=<?= $ficha['id'] ?>" 
-                                   class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        <td class="px-4 py-3 sticky right-0 bg-white">
+                            <div class="flex items-center justify-center gap-2 flex-wrap">
+                                <?php if ($vistaActual === 'pagos'): ?>
+                                <a href="<?= $rutaEdicion ?>" 
+                                   class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition-colors"
+                                   title="Registrar pago">
+                                    Registrar Pago
+                                </a>
+                                <a href="<?= APP_URL ?>/fichas/ver.php?id=<?= (int)$ficha['id'] ?>" 
+                                   class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                                    title="Ver detalle">
-                                    <i class="fas fa-eye"></i>
+                                    Ver
                                 </a>
-                                <a href="/fichas/editar.php?id=<?= $ficha['id'] ?>" 
-                                   class="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                                   title="Editar">
-                                    <i class="fas fa-edit"></i>
+                                <?php else: ?>
+                                <a href="<?= APP_URL ?>/fichas/ver.php?id=<?= (int)$ficha['id'] ?>" 
+                                   class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                                   title="Ver detalle">
+                                    Ver
                                 </a>
+                                <a href="<?= $rutaEdicion ?>" 
+                                   class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-md transition-colors"
+                                   title="<?= $vistaActual === 'pagos' ? 'Registrar pago' : ($vistaActual === 'codificacion' ? 'Codificar lote' : ($vistaActual === 'etiqueta' ? 'Imprimir etiqueta' : 'Editar')) ?>">
+                                    <?= $vistaActual === 'codificacion' ? 'Codificar' : ($vistaActual === 'etiqueta' ? 'Imprimir' : 'Editar') ?>
+                                </a>
+                                <?php if ($vistaActual !== 'etiqueta'): ?>
+                                <a href="<?= APP_URL ?>/fichas/etiqueta.php?id=<?= (int)$ficha['id'] ?>" 
+                                   class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors"
+                                   title="Imprimir etiqueta">
+                                    Etiqueta
+                                </a>
+                                <?php endif; ?>
+                                <?php endif; ?>
                                 <?php if (Auth::isAdmin()): ?>
-                                <button onclick="confirmarEliminar(<?= $ficha['id'] ?>, '<?= htmlspecialchars($ficha['lote_codigo']) ?>')" 
-                                        class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                <button onclick="confirmarEliminar(<?= $ficha['id'] ?>, '<?= htmlspecialchars((string)($ficha['lote_codigo'] ?: ('Ficha #' . (int)$ficha['id']))) ?>')" 
+                                        class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
                                         title="Eliminar">
-                                    <i class="fas fa-trash"></i>
+                                    Eliminar
                                 </button>
                                 <?php endif; ?>
                             </div>
@@ -299,7 +472,7 @@ ob_start();
                 <button onclick="cerrarModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
                     Cancelar
                 </button>
-                <form id="formEliminar" method="POST" action="/fichas/eliminar.php" class="inline">
+                <form id="formEliminar" method="POST" action="<?= APP_URL ?>/fichas/eliminar.php" class="inline">
                     <input type="hidden" name="id" id="idEliminar">
                     <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
                         Eliminar

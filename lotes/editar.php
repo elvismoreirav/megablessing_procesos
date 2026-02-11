@@ -24,7 +24,11 @@ if (!$lote) {
 }
 
 // Datos para el formulario
-$proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1 ORDER BY nombre");
+$colsProveedores = array_column($db->fetchAll("SHOW COLUMNS FROM proveedores"), 'Field');
+$filtroProveedorReal = in_array('es_categoria', $colsProveedores, true)
+    ? ' AND (es_categoria = 0 OR es_categoria IS NULL)'
+    : '';
+$proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1{$filtroProveedorReal} ORDER BY nombre");
 $variedades = $db->fetchAll("SELECT id, nombre FROM variedades WHERE activo = 1 ORDER BY nombre");
 $estadosProducto = $db->fetchAll("SELECT id, nombre FROM estados_producto WHERE activo = 1 ORDER BY id");
 $estadosFermentacion = $db->fetchAll("SELECT id, nombre FROM estados_fermentacion WHERE activo = 1 ORDER BY id");
@@ -34,14 +38,16 @@ $secadoras = $db->fetchAll("SELECT id, nombre FROM secadoras WHERE activo = 1 OR
 // Estados del proceso
 $estadosProceso = [
     'RECEPCION' => 'Recepción',
-    'CALIDAD' => 'Control Calidad',
-    'PRE_SECADO' => 'Pre-secado',
+    'CALIDAD' => 'Verificación de Lote',
+    'PRE_SECADO' => 'Pre-secado (Legado)',
     'FERMENTACION' => 'Fermentación',
-    'SECADO' => 'Secado Final',
-    'CALIDAD_POST' => 'Calidad Post',
+    'SECADO' => 'Secado',
+    'CALIDAD_POST' => 'Prueba de Corte',
     'EMPAQUETADO' => 'Empaquetado',
     'ALMACENADO' => 'Almacenado',
-    'FINALIZADO' => 'Finalizado'
+    'DESPACHO' => 'Despacho',
+    'FINALIZADO' => 'Finalizado',
+    'RECHAZADO' => 'Rechazado'
 ];
 
 // Procesar formulario
@@ -100,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'cajon_fermentacion_id' => $cajonFermentacionId,
                 'secadora_id' => $secadoraId,
                 'observaciones' => $observaciones
-            ], 'id = ?', [$id]);
+            ], 'id = :where_id', ['where_id' => $id]);
             
             // Registrar en historial
             if (!empty($cambios)) {

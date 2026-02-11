@@ -107,6 +107,7 @@ $lotesParaPrueba = $db->fetchAll("
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso = 'CALIDAD_POST'
+    AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
     AND NOT EXISTS (SELECT 1 FROM registros_prueba_corte rpc WHERE rpc.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
 ");

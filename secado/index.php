@@ -80,6 +80,7 @@ $lotesParaSecado = $db->fetchAll("
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso IN ('PRE_SECADO', 'SECADO')
+    AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
     AND NOT EXISTS (SELECT 1 FROM registros_secado rs WHERE rs.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
 ");

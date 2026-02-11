@@ -73,6 +73,7 @@ $lotesEnFermentacion = $db->fetchAll("
     SELECT l.id, l.codigo 
     FROM lotes l
     WHERE l.estado_proceso = 'FERMENTACION'
+    AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
     AND NOT EXISTS (SELECT 1 FROM registros_fermentacion rf WHERE rf.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
 ");

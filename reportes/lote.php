@@ -108,7 +108,8 @@ $diasProceso = $fechaInicio->diff($fechaFin)->days;
 // Estados del proceso para el timeline
 $estadosProceso = [
     'RECEPCION' => ['icon' => '📥', 'label' => 'Recepción', 'color' => 'blue'],
-    'CALIDAD' => ['icon' => '🔍', 'label' => 'Control Calidad', 'color' => 'indigo'],
+    'CALIDAD' => ['icon' => '🔍', 'label' => 'Verificación de Lote', 'color' => 'indigo'],
+    'PRE_SECADO' => ['icon' => '🌤️', 'label' => 'Pre-secado (Legado)', 'color' => 'yellow'],
     'FERMENTACION' => ['icon' => '🔥', 'label' => 'Fermentación', 'color' => 'orange'],
     'SECADO' => ['icon' => '☀️', 'label' => 'Secado', 'color' => 'yellow'],
     'CALIDAD_POST' => ['icon' => '✂️', 'label' => 'Prueba Corte', 'color' => 'green'],

@@ -45,21 +45,22 @@ $flujoEstados = [
         'icon' => 'truck',
         'color' => 'blue',
         'siguiente' => 'CALIDAD',
-        'accion' => 'Enviar a Control de Calidad'
+        'accion' => 'Enviar a Verificación de Lote'
     ],
     'CALIDAD' => [
-        'label' => 'Control de Calidad',
+        'label' => 'Verificación de Lote',
         'icon' => 'clipboard-check',
         'color' => 'indigo',
         'siguiente' => 'FERMENTACION',
-        'accion' => 'Clasificar lote (Pre-secado/Fermentación)'
+        'accion' => 'Iniciar Fermentación',
+        'crear_registro' => 'fermentacion'
     ],
     'PRE_SECADO' => [
-        'label' => 'Pre-secado',
+        'label' => 'Pre-secado (Legado)',
         'icon' => 'sun',
         'color' => 'yellow',
         'siguiente' => 'FERMENTACION',
-        'accion' => 'Iniciar Fermentación',
+        'accion' => 'Iniciar Fermentación (Legado)',
         'crear_registro' => 'fermentacion'
     ],
     'FERMENTACION' => [
@@ -81,7 +82,7 @@ $flujoEstados = [
         'requiere_finalizar' => 'secado'
     ],
     'CALIDAD_POST' => [
-        'label' => 'Calidad Post-Secado',
+        'label' => 'Prueba de Corte',
         'icon' => 'check-double',
         'color' => 'green',
         'siguiente' => 'EMPAQUETADO',
@@ -115,39 +116,48 @@ $flujoEstados = [
         'color' => 'green',
         'siguiente' => null,
         'accion' => null
+    ],
+    'RECHAZADO' => [
+        'label' => 'Rechazado',
+        'icon' => 'times-circle',
+        'color' => 'red',
+        'siguiente' => null,
+        'accion' => null
     ]
 ];
 
 $estadoActual = $lote['estado_proceso'];
 $infoEstadoActual = $flujoEstados[$estadoActual] ?? null;
-
-if ($estadoActual === 'CALIDAD' && $infoEstadoActual) {
-    $estadoProductoCodigo = strtoupper((string)($lote['estado_producto_codigo'] ?? ''));
-
-    if (in_array($estadoProductoCodigo, ['ES', 'BA'], true)) {
-        $infoEstadoActual['siguiente'] = 'PRE_SECADO';
-        $infoEstadoActual['accion'] = 'Enviar a Pre-secado';
-    } else {
-        $infoEstadoActual['siguiente'] = 'FERMENTACION';
-        $infoEstadoActual['accion'] = 'Iniciar Fermentación';
-        $infoEstadoActual['crear_registro'] = 'fermentacion';
-    }
+if (!$infoEstadoActual) {
+    setFlash('error', 'El lote tiene un estado de proceso no soportado: ' . $estadoActual);
+    redirect('/lotes/ver.php?id=' . $id);
 }
 
 // Verificar si hay registros existentes
-$registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ?", [$id]);
-$registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ?", [$id]);
-$registroPruebaCorte = $db->fetch("SELECT * FROM registros_prueba_corte WHERE lote_id = ? AND tipo_prueba = 'POST_SECADO'", [$id]);
+$fichaRegistro = $db->fetch("SELECT id FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registroPruebaCorte = $db->fetch("SELECT * FROM registros_prueba_corte WHERE lote_id = ? AND tipo_prueba = 'POST_SECADO' ORDER BY id DESC LIMIT 1", [$id]);
+$registroFermentacionId = (int)($registroFermentacion['id'] ?? 0);
+$registroSecadoId = (int)($registroSecado['id'] ?? 0);
 
 // Verificar si el proceso actual está finalizado (para mostrar advertencia)
 $procesoActualFinalizado = true;
 $mensajeBloqueo = '';
+
+if (!$fichaRegistro && !in_array($estadoActual, ['FINALIZADO', 'RECHAZADO'], true)) {
+    $procesoActualFinalizado = false;
+    $mensajeBloqueo = 'Debe crear primero la ficha de registro antes de avanzar el lote.';
+}
 
 if ($estadoActual === 'FERMENTACION' && $registroFermentacion) {
     if (empty($registroFermentacion['aprobado_secado'])) {
         $procesoActualFinalizado = false;
         $mensajeBloqueo = 'Debe finalizar y aprobar el proceso de fermentación antes de avanzar.';
     }
+} elseif ($estadoActual === 'FERMENTACION') {
+    $procesoActualFinalizado = false;
+    $mensajeBloqueo = 'Debe registrar primero la fermentación antes de avanzar.';
 }
 
 if ($estadoActual === 'PRE_SECADO' && !$registroSecado) {
@@ -160,6 +170,9 @@ if ($estadoActual === 'SECADO' && $registroSecado) {
         $procesoActualFinalizado = false;
         $mensajeBloqueo = 'Debe completar el secado (humedad final ≤ 8%) antes de avanzar.';
     }
+} elseif ($estadoActual === 'SECADO') {
+    $procesoActualFinalizado = false;
+    $mensajeBloqueo = 'Debe registrar primero el secado antes de avanzar.';
 }
 
 if ($estadoActual === 'CALIDAD_POST' && $registroPruebaCorte) {
@@ -167,6 +180,9 @@ if ($estadoActual === 'CALIDAD_POST' && $registroPruebaCorte) {
         $procesoActualFinalizado = false;
         $mensajeBloqueo = 'Debe completar la prueba de corte y registrar la decisión antes de avanzar.';
     }
+} elseif ($estadoActual === 'CALIDAD_POST') {
+    $procesoActualFinalizado = false;
+    $mensajeBloqueo = 'Debe completar la prueba de corte antes de avanzar.';
 }
 
 // Procesar avance
@@ -178,8 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
         $error = 'Token de seguridad inválido';
     } elseif (!$procesoActualFinalizado) {
         $error = $mensajeBloqueo;
-    } elseif ($estadoActual === 'FINALIZADO') {
-        $error = 'El lote ya está finalizado';
+    } elseif (in_array($estadoActual, ['FINALIZADO', 'RECHAZADO'], true)) {
+        $error = 'El lote ya está cerrado y no puede avanzar';
     } else {
         $siguienteEstado = $infoEstadoActual['siguiente'];
         $observaciones = trim($_POST['observaciones'] ?? '');
@@ -193,26 +209,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
                     case 'fermentacion':
                         // Verificar si ya existe
                         if (!$registroFermentacion) {
-                            $db->insert('registros_fermentacion', [
+                            $registroFermentacionId = (int)$db->insert('registros_fermentacion', [
                                 'lote_id' => $id,
                                 'fecha_inicio' => date('Y-m-d'),
                                 'peso_lote_kg' => $lote['peso_inicial_kg'],
                                 'humedad_inicial' => $lote['humedad_inicial'],
                                 'responsable_id' => Auth::user()['id']
                             ]);
+                        } else {
+                            $registroFermentacionId = (int)$registroFermentacion['id'];
                         }
                         break;
                         
                     case 'secado':
                         // Verificar si ya existe
                         if (!$registroSecado) {
-                            $db->insert('registros_secado', [
+                            $registroSecadoId = (int)$db->insert('registros_secado', [
                                 'lote_id' => $id,
                                 'fecha' => date('Y-m-d'),
                                 'responsable_id' => Auth::user()['id'],
                                 'variedad' => $lote['variedad_nombre'],
                                 'humedad_inicial' => $registroFermentacion['humedad_final'] ?? $lote['humedad_inicial']
                             ]);
+                        } else {
+                            $registroSecadoId = (int)$registroSecado['id'];
                         }
                         break;
                         
@@ -260,10 +280,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
                     redirect('/secado/crear.php?lote_id=' . $id);
                     break;
                 case 'FERMENTACION':
-                    redirect('/fermentacion/control.php?lote_id=' . $id);
+                    if ($registroFermentacionId > 0) {
+                        redirect('/fermentacion/control.php?id=' . $registroFermentacionId);
+                    }
+                    redirect('/fermentacion/crear.php?lote_id=' . $id);
                     break;
                 case 'SECADO':
-                    redirect('/secado/control.php?lote_id=' . $id);
+                    if ($registroSecadoId > 0) {
+                        redirect('/secado/control.php?id=' . $registroSecadoId);
+                    }
+                    redirect('/secado/crear.php?lote_id=' . $id);
                     break;
                 case 'CALIDAD_POST':
                     redirect('/prueba-corte/crear.php?lote_id=' . $id . '&tipo=POST_SECADO');
@@ -327,7 +353,7 @@ foreach (array_reverse(array_keys($flujoEstados)) as $estado) {
         $encontrado = true;
         continue;
     }
-    if ($encontrado && $estado !== 'FINALIZADO') {
+    if ($encontrado && !in_array($estado, ['FINALIZADO', 'RECHAZADO'], true)) {
         $estadosAnteriores[$estado] = $flujoEstados[$estado]['label'];
     }
 }
@@ -427,14 +453,21 @@ ob_start();
                     <div class="bg-yellow-100 border border-yellow-300 rounded-lg p-3 mt-4">
                         <div class="flex items-start gap-2">
                             <i class="fas fa-exclamation-triangle text-yellow-600 mt-0.5"></i>
-                            <p class="text-sm text-yellow-800"><?= htmlspecialchars($mensajeBloqueo) ?></p>
+                            <div class="text-sm text-yellow-800">
+                                <p><?= htmlspecialchars($mensajeBloqueo) ?></p>
+                                <?php if (!$fichaRegistro): ?>
+                                <a href="/fichas/crear.php?etapa=recepcion&lote_id=<?= $id ?>" class="inline-flex items-center mt-2 text-yellow-900 font-semibold hover:underline">
+                                    <i class="fas fa-file-alt mr-1"></i>Crear ficha de registro
+                                </a>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                     <?php endif; ?>
                     
                     <!-- Links a módulos actuales -->
                     <?php if ($estadoActual === 'FERMENTACION' && $registroFermentacion): ?>
-                    <a href="/fermentacion/control.php?lote_id=<?= $id ?>" class="mt-4 inline-flex items-center text-orange-600 hover:text-orange-700">
+                    <a href="/fermentacion/control.php?id=<?= (int)$registroFermentacion['id'] ?>" class="mt-4 inline-flex items-center text-orange-600 hover:text-orange-700">
                         <i class="fas fa-external-link-alt mr-2"></i>Ir a Control de Fermentación
                     </a>
                     <?php elseif ($estadoActual === 'PRE_SECADO'): ?>
@@ -442,7 +475,7 @@ ob_start();
                         <i class="fas fa-external-link-alt mr-2"></i>Registrar Pre-secado
                     </a>
                     <?php elseif ($estadoActual === 'SECADO' && $registroSecado): ?>
-                    <a href="/secado/control.php?lote_id=<?= $id ?>" class="mt-4 inline-flex items-center text-yellow-600 hover:text-yellow-700">
+                    <a href="/secado/control.php?id=<?= (int)$registroSecado['id'] ?>" class="mt-4 inline-flex items-center text-yellow-600 hover:text-yellow-700">
                         <i class="fas fa-external-link-alt mr-2"></i>Ir a Control de Secado
                     </a>
                     <?php elseif ($estadoActual === 'CALIDAD_POST'): ?>

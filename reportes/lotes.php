@@ -163,10 +163,14 @@ ob_start();
                 <select name="estado" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-shalom-primary focus:border-shalom-primary">
                     <option value="">Todos</option>
                     <option value="RECEPCION" <?= $estado === 'RECEPCION' ? 'selected' : '' ?>>Recepción</option>
+                    <option value="CALIDAD" <?= $estado === 'CALIDAD' ? 'selected' : '' ?>>Verificación de Lote</option>
+                    <option value="PRE_SECADO" <?= $estado === 'PRE_SECADO' ? 'selected' : '' ?>>Pre-secado (Legado)</option>
                     <option value="FERMENTACION" <?= $estado === 'FERMENTACION' ? 'selected' : '' ?>>Fermentación</option>
                     <option value="SECADO" <?= $estado === 'SECADO' ? 'selected' : '' ?>>Secado</option>
-                    <option value="CALIDAD_POST" <?= $estado === 'CALIDAD_POST' ? 'selected' : '' ?>>Prueba Calidad</option>
+                    <option value="CALIDAD_POST" <?= $estado === 'CALIDAD_POST' ? 'selected' : '' ?>>Prueba de Corte</option>
                     <option value="EMPAQUETADO" <?= $estado === 'EMPAQUETADO' ? 'selected' : '' ?>>Empaquetado</option>
+                    <option value="ALMACENADO" <?= $estado === 'ALMACENADO' ? 'selected' : '' ?>>Almacenado</option>
+                    <option value="DESPACHO" <?= $estado === 'DESPACHO' ? 'selected' : '' ?>>Despacho</option>
                     <option value="FINALIZADO" <?= $estado === 'FINALIZADO' ? 'selected' : '' ?>>Finalizado</option>
                     <option value="RECHAZADO" <?= $estado === 'RECHAZADO' ? 'selected' : '' ?>>Rechazado</option>
                 </select>
@@ -231,18 +235,35 @@ ob_start();
             <?php
             $estadoColors = [
                 'RECEPCION' => 'bg-gray-100 text-gray-800',
+                'CALIDAD' => 'bg-indigo-100 text-indigo-800',
+                'PRE_SECADO' => 'bg-yellow-100 text-yellow-700',
                 'FERMENTACION' => 'bg-orange-100 text-orange-800',
                 'SECADO' => 'bg-yellow-100 text-yellow-800',
                 'CALIDAD_POST' => 'bg-purple-100 text-purple-800',
                 'EMPAQUETADO' => 'bg-blue-100 text-blue-800',
+                'ALMACENADO' => 'bg-slate-100 text-slate-800',
+                'DESPACHO' => 'bg-cyan-100 text-cyan-800',
                 'FINALIZADO' => 'bg-green-100 text-green-800',
                 'RECHAZADO' => 'bg-red-100 text-red-800'
+            ];
+            $estadoLabels = [
+                'RECEPCION' => 'Recepción',
+                'CALIDAD' => 'Verificación de Lote',
+                'PRE_SECADO' => 'Pre-secado (Legado)',
+                'FERMENTACION' => 'Fermentación',
+                'SECADO' => 'Secado',
+                'CALIDAD_POST' => 'Prueba de Corte',
+                'EMPAQUETADO' => 'Empaquetado',
+                'ALMACENADO' => 'Almacenado',
+                'DESPACHO' => 'Despacho',
+                'FINALIZADO' => 'Finalizado',
+                'RECHAZADO' => 'Rechazado',
             ];
             foreach ($estadosCount as $est => $count):
             $color = $estadoColors[$est] ?? 'bg-gray-100 text-gray-800';
             ?>
             <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium <?= $color ?>">
-                <?= $est ?>: <?= $count ?>
+                <?= htmlspecialchars($estadoLabels[$est] ?? $est) ?>: <?= $count ?>
             </span>
             <?php endforeach; ?>
         </div>

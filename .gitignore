@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Runtime / temp
+tmp/
+temp/
+cache/
+
+# Dependencies
+vendor/
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local config variants
+config.local.php
+config/*.local.php
+
+# Keep main config versioned
+!config.php

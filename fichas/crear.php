@@ -14,10 +14,36 @@ $success = '';
 
 // Obtener lote pre-seleccionado si viene de otro módulo
 $lotePreseleccionado = $_GET['lote_id'] ?? '';
+$etapaFormulario = strtolower(trim((string)($_GET['etapa'] ?? 'recepcion')));
+if (!in_array($etapaFormulario, ['recepcion', 'completo'], true)) {
+    $etapaFormulario = 'recepcion';
+}
+$esFormularioRecepcion = $etapaFormulario === 'recepcion';
+
+// Compatibilidad de esquema para columnas de lotes
+$colsLotes = array_column($db->fetchAll("SHOW COLUMNS FROM lotes"), 'Field');
+$hasLoteCol = static fn(string $name): bool => in_array($name, $colsLotes, true);
+$pesoRecibidoExpr = $hasLoteCol('peso_recibido_kg')
+    ? 'l.peso_recibido_kg'
+    : ($hasLoteCol('peso_inicial_kg') ? 'l.peso_inicial_kg' : 'NULL');
+$fechaRecepcionExpr = $hasLoteCol('fecha_recepcion')
+    ? 'l.fecha_recepcion'
+    : ($hasLoteCol('fecha_entrada') ? 'l.fecha_entrada' : 'NULL');
+
+// Compatibilidad de esquema para columnas de fichas (registro de pago)
+$colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
+$hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
+$columnasPagoFicha = ['fecha_pago', 'factura_compra', 'cantidad_comprada', 'forma_pago'];
+$faltanColumnasPago = array_values(array_filter(
+    $columnasPagoFicha,
+    static fn(string $col): bool => !$hasFichaCol($col)
+));
 
 // Obtener lotes disponibles
 $lotes = $db->fetchAll("
-    SELECT l.id, l.codigo, l.peso_recibido_kg, l.fecha_recepcion,
+    SELECT l.id, l.codigo,
+           {$pesoRecibidoExpr} as peso_recibido_kg,
+           {$fechaRecepcionExpr} as fecha_recepcion,
            p.nombre as proveedor_nombre,
            v.nombre as variedad_nombre
     FROM lotes l
@@ -26,17 +52,93 @@ $lotes = $db->fetchAll("
     ORDER BY l.codigo DESC
 ");
 
+// Obtener proveedores activos para selección en recepción
+$colsProveedores = array_column($db->fetchAll("SHOW COLUMNS FROM proveedores"), 'Field');
+$filtroProveedorReal = in_array('es_categoria', $colsProveedores, true)
+    ? ' AND (es_categoria = 0 OR es_categoria IS NULL)'
+    : '';
+$proveedores = $db->fetchAll("
+    SELECT id, codigo, nombre
+    FROM proveedores
+    WHERE activo = 1{$filtroProveedorReal}
+    ORDER BY nombre
+");
+$proveedoresPorId = [];
+$proveedoresPorNombre = [];
+$proveedoresPorCodigo = [];
+$proveedoresPorEtiqueta = [];
+foreach ($proveedores as $proveedorItem) {
+    $idProveedor = (int)($proveedorItem['id'] ?? 0);
+    if ($idProveedor <= 0) {
+        continue;
+    }
+    $nombreProveedor = trim((string)($proveedorItem['nombre'] ?? ''));
+    $codigoProveedor = trim((string)($proveedorItem['codigo'] ?? ''));
+    $proveedorInfo = [
+        'id' => $idProveedor,
+        'nombre' => $nombreProveedor,
+        'codigo' => $codigoProveedor,
+    ];
+    $proveedoresPorId[$idProveedor] = $proveedorInfo;
+    if ($nombreProveedor !== '') {
+        $proveedoresPorNombre[strtolower($nombreProveedor)] = $proveedorInfo;
+    }
+    if ($codigoProveedor !== '') {
+        $proveedoresPorCodigo[strtolower($codigoProveedor)] = $proveedorInfo;
+    }
+    if ($codigoProveedor !== '' && $nombreProveedor !== '') {
+        $proveedoresPorEtiqueta[strtolower($codigoProveedor . ' - ' . $nombreProveedor)] = $proveedorInfo;
+    }
+}
+
+$loteSeleccionadoId = (int)($_POST['lote_id'] ?? $lotePreseleccionado ?? 0);
+$loteSeleccionado = null;
+foreach ($lotes as $loteTemp) {
+    if ((int)($loteTemp['id'] ?? 0) === $loteSeleccionadoId) {
+        $loteSeleccionado = $loteTemp;
+        break;
+    }
+}
+
 // Obtener usuarios para responsable
 $usuarios = $db->fetchAll("SELECT id, nombre FROM usuarios WHERE activo = 1 ORDER BY nombre");
 
 // Obtener estados de fermentación
 $estadosFermentacion = $db->fetchAll("SELECT * FROM estados_fermentacion ORDER BY orden");
 
+// Escala de calificación aparente: 0-4 individual, luego rangos de 5% hasta 45%.
+$opcionesCalificacionHumedad = [
+    0 => '0%',
+    1 => '1%',
+    2 => '2%',
+    3 => '3%',
+    4 => '4%',
+    10 => '5-10%',
+    15 => '11-15%',
+    20 => '16-20%',
+    25 => '21-25%',
+    30 => '26-30%',
+    35 => '31-35%',
+    40 => '36-40%',
+    45 => '41-45%',
+];
+
 // Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if ($esFormularioRecepcion) {
+        $etapaFormulario = 'recepcion';
+    } else {
+        $etapaFormulario = strtolower(trim((string)($_POST['etapa'] ?? $etapaFormulario)));
+        if (!in_array($etapaFormulario, ['recepcion', 'completo'], true)) {
+            $etapaFormulario = 'recepcion';
+        }
+    }
+    $esFormularioRecepcion = $etapaFormulario === 'recepcion';
+
     $lote_id = intval($_POST['lote_id'] ?? 0);
     $producto = trim($_POST['producto'] ?? '');
-    $codificacion = trim($_POST['codificacion'] ?? '');
+    $codificacion = $esFormularioRecepcion ? '' : trim($_POST['codificacion'] ?? '');
+    $proveedor_id = intval($_POST['proveedor_id'] ?? 0);
     $proveedor_ruta = trim($_POST['proveedor_ruta'] ?? '');
     $tipo_entrega = trim($_POST['tipo_entrega'] ?? '');
     $fecha_entrada = $_POST['fecha_entrada'] ?? null;
@@ -56,6 +158,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $diferencial_usd = is_numeric($_POST['diferencial_usd'] ?? null) ? (float)$_POST['diferencial_usd'] : null;
     $precio_unitario_final = is_numeric($_POST['precio_unitario_final'] ?? null) ? (float)$_POST['precio_unitario_final'] : null;
     $precio_total_pagar = is_numeric($_POST['precio_total_pagar'] ?? null) ? (float)$_POST['precio_total_pagar'] : null;
+    $fecha_pago = trim((string)($_POST['fecha_pago'] ?? ''));
+    $factura_compra = trim((string)($_POST['factura_compra'] ?? ''));
+    $cantidad_comprada = is_numeric($_POST['cantidad_comprada'] ?? null) ? (float)$_POST['cantidad_comprada'] : null;
+    $forma_pago = strtoupper(trim((string)($_POST['forma_pago'] ?? '')));
     $fermentacion_estado = trim($_POST['fermentacion_estado'] ?? '');
     $secado_inicio = $_POST['secado_inicio'] ?? null;
     $secado_fin = $_POST['secado_fin'] ?? null;
@@ -65,9 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $observaciones = trim($_POST['observaciones'] ?? '');
 
     // Validaciones
-    if ($lote_id <= 0) {
+    if (!$esFormularioRecepcion && $lote_id <= 0) {
         $error = 'Debe seleccionar un lote';
-    } else {
+    }
+
+    if (!$error && $lote_id > 0) {
         // Verificar que el lote existe
         $lote = $db->fetchOne("SELECT id, codigo FROM lotes WHERE id = ?", [$lote_id]);
         if (!$lote) {
@@ -111,8 +219,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'La unidad de peso no es válida';
     }
 
-    if (!$error && ($calificacion_humedad === null || $calificacion_humedad < 0 || $calificacion_humedad > 4)) {
-        $error = 'La calificación de humedad debe estar entre 0 y 4';
+    if (!$error && ($calificacion_humedad === null || !array_key_exists($calificacion_humedad, $opcionesCalificacionHumedad))) {
+        $error = 'La calificación aparente debe ser 0-4 o en rangos de 5% hasta 45%';
     }
 
     if (!$error && !in_array($calidad_registro, ['SECO', 'SEMISECO', 'BABA'], true)) {
@@ -135,6 +243,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Debe seleccionar la calidad asignada';
     }
 
+    if (!$error && $forma_pago !== '' && !in_array($forma_pago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)) {
+        $error = 'La forma de pago no es válida';
+    }
+
+    if (!$error && $fecha_pago !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_pago)) {
+        $error = 'La fecha de pago no es válida';
+    }
+
+    if (!$error && $cantidad_comprada !== null && $cantidad_comprada <= 0) {
+        $error = 'La cantidad comprada debe ser mayor a 0';
+    }
+
     if (!$error && $precio_unitario_final === null && $precio_base_dia !== null) {
         $precio_unitario_final = $precio_base_dia + ($diferencial_usd ?? 0.0);
     }
@@ -148,7 +268,191 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($pesoFinalKg <= 0) {
             $error = 'El peso final convertido a kg debe ser mayor a 0';
         } else {
-            $precio_total_pagar = $precio_unitario_final * $pesoFinalKg;
+            $cantidadParaCalculo = ($cantidad_comprada !== null && $cantidad_comprada > 0) ? $cantidad_comprada : $pesoFinalKg;
+            $precio_total_pagar = $precio_unitario_final * $cantidadParaCalculo;
+        }
+    }
+
+    $hayDatosPago = !$esFormularioRecepcion && (
+        $fecha_pago !== ''
+        || $factura_compra !== ''
+        || $cantidad_comprada !== null
+        || $forma_pago !== ''
+    );
+
+    if (!$error && $hayDatosPago) {
+        if (!empty($faltanColumnasPago)) {
+            $error = 'Faltan columnas en fichas_registro para guardar el registro de pago. Ejecute el patch_registro_pagos_fichas.sql';
+        } elseif ($fecha_pago === '') {
+            $error = 'Debe registrar la fecha de pago';
+        } elseif ($factura_compra === '') {
+            $error = 'Debe registrar la factura asignada a la compra';
+        } elseif ($cantidad_comprada === null || $cantidad_comprada <= 0) {
+            $error = 'Debe registrar la cantidad comprada';
+        } elseif (!in_array($forma_pago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)) {
+            $error = 'Debe seleccionar la forma de pago';
+        }
+    }
+
+    if (!$error && $esFormularioRecepcion && $lote_id <= 0) {
+        $proveedorSeleccionado = null;
+        if ($proveedor_id > 0 && isset($proveedoresPorId[$proveedor_id])) {
+            $proveedorSeleccionado = $proveedoresPorId[$proveedor_id];
+        }
+
+        if ($proveedorSeleccionado === null && $proveedor_ruta !== '') {
+            $claveProveedor = strtolower($proveedor_ruta);
+            if (isset($proveedoresPorNombre[$claveProveedor])) {
+                $proveedorSeleccionado = $proveedoresPorNombre[$claveProveedor];
+            } elseif (isset($proveedoresPorCodigo[$claveProveedor])) {
+                $proveedorSeleccionado = $proveedoresPorCodigo[$claveProveedor];
+            } elseif (isset($proveedoresPorEtiqueta[$claveProveedor])) {
+                $proveedorSeleccionado = $proveedoresPorEtiqueta[$claveProveedor];
+            } elseif (strpos($proveedor_ruta, ' - ') !== false) {
+                [$codigoPart, $nombrePart] = array_map('trim', explode(' - ', $proveedor_ruta, 2));
+                if ($codigoPart !== '' && isset($proveedoresPorCodigo[strtolower($codigoPart)])) {
+                    $proveedorSeleccionado = $proveedoresPorCodigo[strtolower($codigoPart)];
+                } elseif ($nombrePart !== '' && isset($proveedoresPorNombre[strtolower($nombrePart)])) {
+                    $proveedorSeleccionado = $proveedoresPorNombre[strtolower($nombrePart)];
+                }
+            }
+        }
+
+        if ($proveedorSeleccionado === null) {
+            $error = 'Debe seleccionar un proveedor válido para registrar la recepción';
+        } else {
+            $proveedor_id = (int)($proveedorSeleccionado['id'] ?? 0);
+            $proveedorCodigo = trim((string)($proveedorSeleccionado['codigo'] ?? ''));
+            $proveedorNombre = trim((string)($proveedorSeleccionado['nombre'] ?? ''));
+            if ($proveedor_ruta === '' && $proveedorNombre !== '') {
+                $proveedor_ruta = $proveedorNombre;
+            }
+
+            $variedadDefaultId = 0;
+            if ($hasLoteCol('variedad_id')) {
+                $variedadDefault = $db->fetchOne("SELECT id FROM variedades WHERE activo = 1 ORDER BY id ASC LIMIT 1");
+                $variedadDefaultId = (int)($variedadDefault['id'] ?? 0);
+                if ($variedadDefaultId <= 0) {
+                    $error = 'No existen variedades activas para crear el lote de recepción';
+                }
+            }
+
+            $estadoProductoDefaultId = 0;
+            if (!$error && $hasLoteCol('estado_producto_id')) {
+                $estadoProductoDefault = $db->fetchOne("SELECT id FROM estados_producto WHERE activo = 1 ORDER BY id ASC LIMIT 1");
+                $estadoProductoDefaultId = (int)($estadoProductoDefault['id'] ?? 0);
+                if ($estadoProductoDefaultId <= 0) {
+                    $error = 'No existen estados de producto activos para crear el lote de recepción';
+                }
+            }
+
+            if (!$error) {
+                $fechaEntradaLote = (is_string($fecha_entrada) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_entrada))
+                    ? $fecha_entrada
+                    : date('Y-m-d');
+
+                $pesoReferencia = $peso_final_registro ?? 0;
+                if (($pesoReferencia <= 0) && $peso_bruto !== null && $tara_envase !== null) {
+                    $pesoReferencia = $peso_bruto - $tara_envase;
+                }
+                if (($pesoReferencia <= 0) && $peso_bruto !== null && $peso_bruto > 0) {
+                    $pesoReferencia = $peso_bruto;
+                }
+
+                $pesoInicialKgLote = Helpers::pesoToKg((float)$pesoReferencia, $unidad_peso);
+                if ($pesoInicialKgLote <= 0) {
+                    $pesoInicialKgLote = 1.0;
+                }
+                $pesoInicialQqLote = Helpers::kgToQQ($pesoInicialKgLote);
+
+                $codigoBase = Helpers::generateLoteCode(
+                    $proveedorCodigo !== '' ? $proveedorCodigo : 'XX',
+                    $fechaEntradaLote,
+                    $estadoProductoDefaultId > 0 ? $estadoProductoDefaultId : 'EC',
+                    null
+                );
+                $codigoLote = $codigoBase;
+                $secuenciaCodigo = 2;
+                while ($db->fetchOne("SELECT id FROM lotes WHERE codigo = ?", [$codigoLote])) {
+                    $codigoLote = $codigoBase . '-' . $secuenciaCodigo;
+                    $secuenciaCodigo++;
+                    if ($secuenciaCodigo > 999) {
+                        break;
+                    }
+                }
+
+                $dataLote = [];
+                if ($hasLoteCol('codigo')) {
+                    $dataLote['codigo'] = $codigoLote;
+                }
+                if ($hasLoteCol('proveedor_id')) {
+                    $dataLote['proveedor_id'] = $proveedor_id;
+                }
+                if ($hasLoteCol('variedad_id')) {
+                    $dataLote['variedad_id'] = $variedadDefaultId;
+                }
+                if ($hasLoteCol('estado_producto_id')) {
+                    $dataLote['estado_producto_id'] = $estadoProductoDefaultId;
+                }
+                if ($hasLoteCol('estado_fermentacion_id')) {
+                    $dataLote['estado_fermentacion_id'] = null;
+                }
+                if ($hasLoteCol('fecha_entrada')) {
+                    $dataLote['fecha_entrada'] = $fechaEntradaLote;
+                }
+                if ($hasLoteCol('fecha_recepcion')) {
+                    $dataLote['fecha_recepcion'] = $fechaEntradaLote;
+                }
+                if ($hasLoteCol('peso_inicial_kg')) {
+                    $dataLote['peso_inicial_kg'] = $pesoInicialKgLote;
+                }
+                if ($hasLoteCol('peso_inicial_qq')) {
+                    $dataLote['peso_inicial_qq'] = $pesoInicialQqLote;
+                }
+                if ($hasLoteCol('peso_actual_kg')) {
+                    $dataLote['peso_actual_kg'] = $pesoInicialKgLote;
+                }
+                if ($hasLoteCol('peso_actual_qq')) {
+                    $dataLote['peso_actual_qq'] = $pesoInicialQqLote;
+                }
+                if ($hasLoteCol('peso_qq')) {
+                    $dataLote['peso_qq'] = $pesoInicialQqLote;
+                }
+                if ($hasLoteCol('peso_recibido_kg')) {
+                    $dataLote['peso_recibido_kg'] = $pesoInicialKgLote;
+                }
+                if ($hasLoteCol('humedad_inicial') && $calificacion_humedad !== null) {
+                    $dataLote['humedad_inicial'] = (float)$calificacion_humedad;
+                }
+                if ($hasLoteCol('precio_kg')) {
+                    $dataLote['precio_kg'] = $precio_unitario_final ?? $precio_base_dia ?? null;
+                }
+                if ($hasLoteCol('observaciones')) {
+                    $observacionLote = $observaciones;
+                    if ($observacionLote === '') {
+                        $observacionLote = 'Lote generado automaticamente desde ficha de recepcion.';
+                    }
+                    $dataLote['observaciones'] = $observacionLote;
+                }
+                if ($hasLoteCol('estado_proceso')) {
+                    $dataLote['estado_proceso'] = 'RECEPCION';
+                }
+                if ($hasLoteCol('usuario_id')) {
+                    $dataLote['usuario_id'] = Auth::id() ?: ($_SESSION['user_id'] ?? null);
+                }
+
+                try {
+                    $lote_id = (int)$db->insert('lotes', $dataLote);
+                    $loteSeleccionadoId = $lote_id;
+                    Helpers::registrarHistorial(
+                        $lote_id,
+                        'RECEPCION',
+                        'Lote creado automaticamente desde ficha de recepcion'
+                    );
+                } catch (Exception $e) {
+                    $error = 'No se pudo crear el lote de recepción automáticamente: ' . $e->getMessage();
+                }
+            }
         }
     }
 
@@ -162,57 +466,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$error) {
         try {
-            $db->query("
-                INSERT INTO fichas_registro (
-                    lote_id, producto, codificacion, proveedor_ruta,
-                    tipo_entrega, revision_limpieza, revision_olor_normal, revision_ausencia_moho,
-                    peso_bruto, tara_envase, peso_final_registro, unidad_peso,
-                    calificacion_humedad, calidad_registro, presencia_defectos,
-                    clasificacion_compra, precio_base_dia, calidad_asignada, diferencial_usd,
-                    precio_unitario_final, precio_total_pagar,
-                    fecha_entrada, fermentacion_estado,
-                    secado_inicio, secado_fin, temperatura, tiempo_horas,
-                    responsable_id, observaciones
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ", [
-                $lote_id,
-                $producto ?: null,
-                $codificacion ?: null,
-                $proveedor_ruta ?: null,
-                $tipo_entrega,
-                $revision_limpieza,
-                $revision_olor_normal,
-                $revision_ausencia_moho,
-                $peso_bruto,
-                $tara_envase,
-                $peso_final_registro,
-                $unidad_peso,
-                $calificacion_humedad,
-                $calidad_registro,
-                $presencia_defectos,
-                $clasificacion_compra,
-                $precio_base_dia,
-                $calidad_asignada,
-                $diferencial_usd,
-                $precio_unitario_final,
-                $precio_total_pagar,
-                $fecha_entrada ?: null,
-                $fermentacion_estado ?: null,
-                $secado_inicio ?: null,
-                $secado_fin ?: null,
-                $temperatura > 0 ? $temperatura : null,
-                $tiempo_horas > 0 ? $tiempo_horas : null,
-                $responsable_id,
-                $observaciones ?: null
-            ]);
+            $dataFicha = [
+                'lote_id' => $lote_id,
+                'producto' => $producto ?: null,
+                'codificacion' => $codificacion ?: null,
+                'proveedor_ruta' => $proveedor_ruta ?: null,
+                'tipo_entrega' => $tipo_entrega,
+                'revision_limpieza' => $revision_limpieza,
+                'revision_olor_normal' => $revision_olor_normal,
+                'revision_ausencia_moho' => $revision_ausencia_moho,
+                'peso_bruto' => $peso_bruto,
+                'tara_envase' => $tara_envase,
+                'peso_final_registro' => $peso_final_registro,
+                'unidad_peso' => $unidad_peso,
+                'calificacion_humedad' => $calificacion_humedad,
+                'calidad_registro' => $calidad_registro,
+                'presencia_defectos' => $presencia_defectos,
+                'clasificacion_compra' => $clasificacion_compra,
+                'precio_base_dia' => $precio_base_dia,
+                'calidad_asignada' => $calidad_asignada,
+                'diferencial_usd' => $diferencial_usd,
+                'precio_unitario_final' => $precio_unitario_final,
+                'precio_total_pagar' => $precio_total_pagar,
+                'fecha_entrada' => $fecha_entrada ?: null,
+                'fermentacion_estado' => $fermentacion_estado ?: null,
+                'secado_inicio' => $secado_inicio ?: null,
+                'secado_fin' => $secado_fin ?: null,
+                'temperatura' => $temperatura > 0 ? $temperatura : null,
+                'tiempo_horas' => $tiempo_horas > 0 ? $tiempo_horas : null,
+                'responsable_id' => $responsable_id,
+                'observaciones' => $observaciones ?: null
+            ];
 
-            $fichaId = $db->lastInsertId();
+            if ($hasFichaCol('fecha_pago')) {
+                $dataFicha['fecha_pago'] = $fecha_pago !== '' ? $fecha_pago : null;
+            }
+            if ($hasFichaCol('factura_compra')) {
+                $dataFicha['factura_compra'] = $factura_compra !== '' ? $factura_compra : null;
+            }
+            if ($hasFichaCol('cantidad_comprada')) {
+                $dataFicha['cantidad_comprada'] = $cantidad_comprada;
+            }
+            if ($hasFichaCol('forma_pago')) {
+                $dataFicha['forma_pago'] = $forma_pago !== '' ? $forma_pago : null;
+            }
+
+            $fichaId = $db->insert('fichas_registro', $dataFicha);
 
             // Registrar en historial
             Helpers::registrarHistorial($lote_id, 'ficha_creada', "Ficha de registro #{$fichaId} creada");
 
-            header("Location: /fichas/ver.php?id={$fichaId}&created=1");
-            exit;
+            redirect('/fichas/ver.php?id=' . urlencode((string)$fichaId) . '&created=1');
 
         } catch (Exception $e) {
             $error = 'Error al crear la ficha: ' . $e->getMessage();
@@ -220,7 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Nueva Ficha de Registro';
+$pageTitle = $esFormularioRecepcion ? 'Nueva Ficha de Recepción' : 'Nueva Ficha de Registro';
 ob_start();
 ?>
 
@@ -228,10 +532,12 @@ ob_start();
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Nueva Ficha de Registro</h1>
-            <p class="text-gray-600">Complete los datos de la ficha</p>
+            <h1 class="text-2xl font-bold text-gray-900"><?= $esFormularioRecepcion ? 'Nueva Ficha de Recepción' : 'Nueva Ficha de Registro' ?></h1>
+            <p class="text-gray-600">
+                <?= $esFormularioRecepcion ? 'Complete los datos de recepción y verificación inicial del proveedor' : 'Complete los datos de la ficha' ?>
+            </p>
         </div>
-        <a href="/fichas/" class="text-amber-600 hover:text-amber-700">
+        <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="text-amber-600 hover:text-amber-700">
             <i class="fas fa-arrow-left mr-2"></i>Volver al listado
         </a>
     </div>
@@ -245,16 +551,29 @@ ob_start();
     </div>
     <?php endif; ?>
 
+    <?php if ($esFormularioRecepcion): ?>
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-info-circle text-blue-600"></i>
+            <span class="text-blue-800">Este formulario corresponde solo a la ficha de recepción. El registro de pagos, la codificación y la impresión de etiqueta se realizan en formularios separados.</span>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Formulario -->
     <form method="POST" class="space-y-6">
+        <input type="hidden" name="etapa" value="<?= htmlspecialchars($etapaFormulario) ?>">
         <!-- Información del Lote -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    <i class="fas fa-box text-amber-600 mr-2"></i>Información del Lote
+                    <i class="fas fa-box text-amber-600 mr-2"></i><?= $esFormularioRecepcion ? 'Datos Generales de Recepción' : 'Información del Lote' ?>
                 </h2>
             </div>
             <div class="p-6 space-y-4">
+                <?php if ($esFormularioRecepcion): ?>
+                <input type="hidden" name="lote_id" value="<?= $loteSeleccionadoId > 0 ? (int)$loteSeleccionadoId : '' ?>">
+                <?php else: ?>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -268,7 +587,7 @@ ob_start();
         data-proveedor="<?= htmlspecialchars($lote['proveedor_nombre'] ?? '') ?>"
         data-variedad="<?= htmlspecialchars($lote['variedad_nombre'] ?? '') ?>"
         data-peso="<?= htmlspecialchars((string)$peso) ?>"
-        <?= ($lotePreseleccionado == $lote['id']) ? 'selected' : '' ?>>
+        <?= ($loteSeleccionadoId == (int)$lote['id']) ? 'selected' : '' ?>>
     <?= htmlspecialchars($lote['codigo'] ?? '') ?>
     <?php if (!empty($lote['proveedor_nombre'])): ?>
         - <?= htmlspecialchars($lote['proveedor_nombre']) ?>
@@ -289,6 +608,7 @@ ob_start();
                         <p class="text-xs text-gray-500 mt-1">Código único opcional para identificar esta ficha</p>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -301,10 +621,49 @@ ob_start();
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor / Ruta</label>
-                        <input type="text" name="proveedor_ruta" id="proveedor_ruta"
-                               value="<?= htmlspecialchars($_POST['proveedor_ruta'] ?? '') ?>"
-                               placeholder="Nombre o ruta del proveedor"
-                               class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                        <?php
+                        $proveedorRutaActual = trim((string)($_POST['proveedor_ruta'] ?? ($loteSeleccionado['proveedor_nombre'] ?? '')));
+                        $proveedorSeleccionadoId = (int)($_POST['proveedor_id'] ?? 0);
+                        if ($proveedorSeleccionadoId <= 0 && $proveedorRutaActual !== '') {
+                            $claveProveedorActual = strtolower($proveedorRutaActual);
+                            if (isset($proveedoresPorNombre[$claveProveedorActual])) {
+                                $proveedorSeleccionadoId = (int)$proveedoresPorNombre[$claveProveedorActual]['id'];
+                            } elseif (isset($proveedoresPorEtiqueta[$claveProveedorActual])) {
+                                $proveedorSeleccionadoId = (int)$proveedoresPorEtiqueta[$claveProveedorActual]['id'];
+                            }
+                        }
+                        $nombresProveedores = [];
+                        foreach ($proveedores as $provItem) {
+                            $nombreProv = trim((string)($provItem['nombre'] ?? ''));
+                            if ($nombreProv !== '') {
+                                $nombresProveedores[$nombreProv] = true;
+                            }
+                        }
+                        $proveedorFueraCatalogo = $proveedorRutaActual !== '' && !isset($nombresProveedores[$proveedorRutaActual]);
+                        ?>
+                        <input type="hidden" name="proveedor_id" id="proveedor_id" value="<?= $proveedorSeleccionadoId > 0 ? $proveedorSeleccionadoId : '' ?>">
+                        <select name="proveedor_ruta" id="proveedor_ruta"
+                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                            <option value="">Seleccione un proveedor</option>
+                            <?php foreach ($proveedores as $provItem): ?>
+                                <?php
+                                $nombreProv = trim((string)($provItem['nombre'] ?? ''));
+                                if ($nombreProv === '') {
+                                    continue;
+                                }
+                                $codigoProv = trim((string)($provItem['codigo'] ?? ''));
+                                $labelProv = ($codigoProv !== '' ? $codigoProv . ' - ' : '') . $nombreProv;
+                                ?>
+                                <option value="<?= htmlspecialchars($nombreProv) ?>" data-id="<?= (int)$provItem['id'] ?>" <?= $proveedorRutaActual === $nombreProv ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($labelProv) ?>
+                                </option>
+                            <?php endforeach; ?>
+                            <?php if ($proveedorFueraCatalogo): ?>
+                                <option value="<?= htmlspecialchars($proveedorRutaActual) ?>" selected>
+                                    <?= htmlspecialchars($proveedorRutaActual) ?> (actual)
+                                </option>
+                            <?php endif; ?>
+                        </select>
                     </div>
                 </div>
 
@@ -321,9 +680,11 @@ ob_start();
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-teal-50">
                 <h2 class="text-lg font-semibold text-gray-900">
-                    <i class="fas fa-industry text-emerald-600 mr-2"></i>Proceso Planta
+                    <i class="fas fa-industry text-emerald-600 mr-2"></i><?= $esFormularioRecepcion ? 'Recepción y Verificación Visual' : 'Proceso Planta' ?>
                 </h2>
-                <p class="text-sm text-gray-500 mt-1">Registro de revisión visual, pesaje y determinación de precio</p>
+                <p class="text-sm text-gray-500 mt-1">
+                    <?= $esFormularioRecepcion ? 'Registro de revisión visual, pesaje y determinación de precio' : 'Registro de revisión visual, pesaje y determinación de precio' ?>
+                </p>
             </div>
             <div class="p-6 space-y-6">
                 <div>
@@ -419,10 +780,18 @@ ob_start();
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Calificación aparente (humedad 0-4)</label>
-                            <input type="number" name="calificacion_humedad" min="0" max="4" step="1"
-                                   value="<?= htmlspecialchars($_POST['calificacion_humedad'] ?? '') ?>"
-                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Calificación aparente (%)</label>
+                            <?php $calificacionActual = $_POST['calificacion_humedad'] ?? ''; ?>
+                            <select name="calificacion_humedad"
+                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                <option value="">Seleccione</option>
+                                <?php foreach ($opcionesCalificacionHumedad as $valor => $etiqueta): ?>
+                                    <option value="<?= $valor ?>" <?= (string)$calificacionActual === (string)$valor ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($etiqueta) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">0-4 individual; luego rangos de 5% hasta 45%.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Calidad</label>
@@ -502,14 +871,70 @@ ob_start();
                             <input type="number" name="precio_total_pagar" id="precio_total_pagar" step="0.01" min="0"
                                    value="<?= htmlspecialchars($_POST['precio_total_pagar'] ?? '') ?>"
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                            <p class="text-xs text-gray-500 mt-1">Cálculo: precio unitario final (USD/KG) x peso final convertido a kg.</p>
+                            <p class="text-xs text-gray-500 mt-1">Cálculo: precio unitario final (USD/KG) x cantidad comprada. Si no se ingresa cantidad, se usa el peso final equivalente en kg.</p>
                             <p id="peso_equiv_kg" class="text-xs text-emerald-700 mt-1"></p>
+                            <p id="cantidad_calculo" class="text-xs text-emerald-700"></p>
                         </div>
                     </div>
                 </div>
+
+                <?php if (!$esFormularioRecepcion): ?>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">IV. Registro de pago</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Fecha de pago</label>
+                            <input type="date" name="fecha_pago"
+                                   value="<?= htmlspecialchars($_POST['fecha_pago'] ?? '') ?>"
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
+                            <input type="text" id="proveedor_pago"
+                                   value=""
+                                   readonly
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Factura asignada a la compra</label>
+                            <input type="text" name="factura_compra"
+                                   value="<?= htmlspecialchars($_POST['factura_compra'] ?? '') ?>"
+                                   placeholder="Nro. de factura o comprobante"
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad comprada (kg)</label>
+                            <input type="number" name="cantidad_comprada" id="cantidad_comprada" step="0.01" min="0"
+                                   value="<?= htmlspecialchars($_POST['cantidad_comprada'] ?? '') ?>"
+                                   placeholder="Ejemplo: 100.00"
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Variedad de cacao</label>
+                            <input type="text" id="variedad_pago"
+                                   value=""
+                                   readonly
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-700">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Forma de pago</label>
+                            <?php $formaPagoActual = strtoupper($_POST['forma_pago'] ?? ''); ?>
+                            <select name="forma_pago"
+                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                <option value="">Seleccione</option>
+                                <option value="EFECTIVO" <?= $formaPagoActual === 'EFECTIVO' ? 'selected' : '' ?>>Efectivo</option>
+                                <option value="TRANSFERENCIA" <?= $formaPagoActual === 'TRANSFERENCIA' ? 'selected' : '' ?>>Transferencia</option>
+                                <option value="CHEQUE" <?= $formaPagoActual === 'CHEQUE' ? 'selected' : '' ?>>Cheque</option>
+                                <option value="OTROS" <?= $formaPagoActual === 'OTROS' ? 'selected' : '' ?>>Otros</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 
+        <?php if (!$esFormularioRecepcion): ?>
         <!-- Estado de Fermentación -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50">
@@ -580,6 +1005,7 @@ ob_start();
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- Responsable y Observaciones -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -614,33 +1040,50 @@ ob_start();
 
         <!-- Botones -->
         <div class="flex items-center justify-end gap-4">
-            <a href="/fichas/" class="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors">
                 Cancelar
             </a>
-            <button type="submit" class="px-6 py-2.5 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition-colors">
-                <i class="fas fa-save mr-2"></i>Guardar Ficha
+            <button type="submit"
+                    class="px-6 py-2.5 bg-amber-600 text-white rounded-xl transition-colors hover:bg-amber-700">
+                <i class="fas fa-save mr-2"></i><?= $esFormularioRecepcion ? 'Guardar Ficha de Recepción' : 'Guardar Ficha' ?>
             </button>
         </div>
     </form>
 </div>
 
 <script>
-// Auto-rellenar proveedor cuando se selecciona un lote
-document.getElementById('lote_id').addEventListener('change', function() {
-    const option = this.options[this.selectedIndex];
-    const proveedor = option.dataset.proveedor;
-    const proveedorInput = document.getElementById('proveedor_ruta');
-    
-    if (proveedor && !proveedorInput.value) {
-        proveedorInput.value = proveedor;
+function actualizarProveedorSeleccionado(proveedorSelect = null) {
+    const proveedorInput = proveedorSelect || document.getElementById('proveedor_ruta');
+    const proveedorIdInput = document.getElementById('proveedor_id');
+    if (!proveedorIdInput || !proveedorInput || proveedorInput.tagName !== 'SELECT') {
+        return;
     }
-});
+
+    const option = proveedorInput.options[proveedorInput.selectedIndex];
+    const proveedorId = option?.dataset?.id || '';
+    proveedorIdInput.value = proveedorId;
+}
+
+// Auto-rellenar proveedor cuando se selecciona un lote
+const loteControl = document.getElementById('lote_id');
+if (loteControl && loteControl.tagName === 'SELECT') {
+    loteControl.addEventListener('change', function() {
+        sincronizarDatosLote(this);
+    });
+}
 
 // Trigger on load if preselected
 document.addEventListener('DOMContentLoaded', function() {
     const loteSelect = document.getElementById('lote_id');
-    if (loteSelect.value) {
-        loteSelect.dispatchEvent(new Event('change'));
+    const proveedorSelect = document.getElementById('proveedor_ruta');
+    if (loteSelect && loteSelect.tagName === 'SELECT' && loteSelect.value) {
+        sincronizarDatosLote(loteSelect);
+    }
+    if (proveedorSelect && proveedorSelect.tagName === 'SELECT') {
+        proveedorSelect.addEventListener('change', function() {
+            actualizarProveedorSeleccionado(this);
+        });
+        actualizarProveedorSeleccionado(proveedorSelect);
     }
 
     const pesoBrutoInput = document.getElementById('peso_bruto');
@@ -651,7 +1094,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const precioUnitarioInput = document.getElementById('precio_unitario_final');
     const precioTotalInput = document.getElementById('precio_total_pagar');
     const unidadPesoSelect = document.querySelector('select[name="unidad_peso"]');
+    const cantidadCompradaInput = document.getElementById('cantidad_comprada');
     const pesoEquivKg = document.getElementById('peso_equiv_kg');
+    const cantidadCalculo = document.getElementById('cantidad_calculo');
     const clasificacionRadios = document.querySelectorAll('input[name=\"clasificacion_compra\"]');
     const calidadAsignada = document.getElementById('calidad_asignada');
 
@@ -694,10 +1139,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const peso = toNumber(pesoFinalInput);
         const unidad = unidadPesoSelect?.value || 'KG';
         const pesoKg = pesoToKg(peso, unidad);
-        const total = unitario * pesoKg;
+        const cantidadIngresada = parseFloat(cantidadCompradaInput?.value || '');
+        const cantidad = (!Number.isNaN(cantidadIngresada) && cantidadIngresada > 0) ? cantidadIngresada : pesoKg;
+        const total = unitario * cantidad;
         precioTotalInput.value = total.toFixed(2);
         if (pesoEquivKg) {
             pesoEquivKg.textContent = `Peso equivalente: ${pesoKg.toFixed(2)} kg`;
+        }
+        if (cantidadCalculo) {
+            cantidadCalculo.textContent = `Cantidad aplicada: ${cantidad.toFixed(2)} kg`;
         }
     }
 
@@ -720,12 +1170,47 @@ document.addEventListener('DOMContentLoaded', function() {
     diferencialInput?.addEventListener('input', calcularPrecioUnitarioFinal);
     precioUnitarioInput?.addEventListener('input', calcularTotalPagar);
     unidadPesoSelect?.addEventListener('change', calcularTotalPagar);
+    cantidadCompradaInput?.addEventListener('input', calcularTotalPagar);
     clasificacionRadios.forEach(r => r.addEventListener('change', sincronizarCalidad));
 
     calcularPesoFinal();
     calcularPrecioUnitarioFinal();
     sincronizarCalidad();
 });
+
+function sincronizarDatosLote(select) {
+    if (!select || select.tagName !== 'SELECT') {
+        return;
+    }
+    const option = select.options[select.selectedIndex];
+    const proveedor = option?.dataset?.proveedor || '';
+    const variedad = option?.dataset?.variedad || '';
+    const proveedorInput = document.getElementById('proveedor_ruta');
+    const proveedorPagoInput = document.getElementById('proveedor_pago');
+    const variedadPagoInput = document.getElementById('variedad_pago');
+
+    if (proveedor && proveedorInput) {
+        if (proveedorInput.tagName === 'SELECT') {
+            const existeProveedor = Array.from(proveedorInput.options).some((opt) => opt.value === proveedor);
+            if (!existeProveedor) {
+                proveedorInput.add(new Option(`${proveedor} (actual)`, proveedor));
+            }
+            if (!proveedorInput.value) {
+                proveedorInput.value = proveedor;
+            }
+            actualizarProveedorSeleccionado(proveedorInput);
+        } else if (!proveedorInput.value) {
+            proveedorInput.value = proveedor;
+        }
+    }
+
+    if (proveedorPagoInput) {
+        proveedorPagoInput.value = proveedor || proveedorInput?.value || '';
+    }
+    if (variedadPagoInput) {
+        variedadPagoInput.value = variedad || 'No especificada';
+    }
+}
 </script>
 
 <?php

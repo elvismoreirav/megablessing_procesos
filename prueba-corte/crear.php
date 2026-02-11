@@ -16,6 +16,15 @@ $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
 
 if ($loteId) {
+    $fichaRegistro = $db->fetch("
+        SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+    ", ['lote_id' => $loteId]);
+
+    if (!$fichaRegistro) {
+        setFlash('error', 'Debe completar primero la ficha de registro para este lote.');
+        redirect('/fichas/crear.php?etapa=recepcion&lote_id=' . (int)$loteId);
+    }
+
     $loteInfo = $db->fetch("
         SELECT l.*, p.nombre as proveedor, p.codigo as proveedor_codigo, v.nombre as variedad,
                rs.humedad_final as humedad_secado
@@ -55,6 +64,7 @@ $lotesDisponibles = $db->fetchAll("
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso = 'CALIDAD_POST'
+    AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
     AND NOT EXISTS (SELECT 1 FROM registros_prueba_corte rpc WHERE rpc.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
 ");
@@ -85,6 +95,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$fechaPrueba) $errors[] = 'La fecha de prueba es requerida';
     if ($totalGranos < 100) $errors[] = 'El total de granos debe ser al menos 100';
     if (!$calidad) $errors[] = 'Debe seleccionar una calidad resultado';
+
+    if ($loteId) {
+        $fichaRegistro = $db->fetch("
+            SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+        ", ['lote_id' => $loteId]);
+        if (!$fichaRegistro) {
+            $errors[] = 'Debe completar primero la ficha de registro para este lote.';
+        }
+    }
+
+    if ($loteId && empty($errors)) {
+        $loteValido = $db->fetch("
+            SELECT l.id
+            FROM lotes l
+            WHERE l.id = :id
+              AND l.estado_proceso = 'CALIDAD_POST'
+              AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
+              AND NOT EXISTS (SELECT 1 FROM registros_prueba_corte rpc WHERE rpc.lote_id = l.id)
+        ", ['id' => $loteId]);
+
+        if (!$loteValido) {
+            $errors[] = 'Lote no válido para registrar prueba de corte.';
+        }
+    }
     
     // Calcular porcentaje de fermentación
     $porcentajeFermentacion = $totalGranos > 0 ? (($granosFermentados + ($granosParciales * 0.5)) / $totalGranos) * 100 : 0;

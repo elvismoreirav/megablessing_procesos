@@ -11,7 +11,11 @@ requireAuth();
 $db = Database::getInstance();
 
 // Datos para el formulario
-$proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1 ORDER BY nombre");
+$colsProveedores = array_column($db->fetchAll("SHOW COLUMNS FROM proveedores"), 'Field');
+$filtroProveedorReal = in_array('es_categoria', $colsProveedores, true)
+    ? ' AND (es_categoria = 0 OR es_categoria IS NULL)'
+    : '';
+$proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1{$filtroProveedorReal} ORDER BY nombre");
 $variedades = $db->fetchAll("SELECT id, nombre FROM variedades WHERE activo = 1 ORDER BY nombre");
 $estadosProducto = $db->fetchAll("SELECT id, nombre, codigo FROM estados_producto WHERE activo = 1 ORDER BY id");
 $estadosFermentacion = $db->fetchAll("SELECT id, nombre, codigo FROM estados_fermentacion WHERE activo = 1 ORDER BY id");
@@ -86,8 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'observaciones' => $observaciones,
             ]);
 
-            setFlash('success', 'Lote creado exitosamente con código: ' . $codigo);
-            redirect('/lotes/ver.php?id=' . $loteId);
+            setFlash('success', 'Lote creado exitosamente con código: ' . $codigo . '. Complete primero la ficha de registro.');
+            redirect('/fichas/crear.php?etapa=recepcion&lote_id=' . $loteId);
 
         } catch (Exception $e) {
             $errors[] = 'Error al crear el lote: ' . $e->getMessage();
