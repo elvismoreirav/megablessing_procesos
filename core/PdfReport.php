@@ -11,6 +11,7 @@ class PdfReport {
     private $tableData = [];
     private $stats = [];
     private $empresa;
+    private $logoUrl;
     private $fechaGeneracion;
     
     // Configuración de página
@@ -33,10 +34,16 @@ class PdfReport {
         
         // Obtener nombre de empresa de parámetros si está disponible
         $this->empresa = 'MEGABLESSING';
+        $this->logoUrl = '';
     }
     
     public function setEmpresa($empresa) {
         $this->empresa = $empresa;
+        return $this;
+    }
+
+    public function setLogoUrl($logoUrl) {
+        $this->logoUrl = trim((string)$logoUrl);
         return $this;
     }
     
@@ -107,6 +114,18 @@ class PdfReport {
             font-weight: 700;
             color: ' . $this->colorPrimary . ';
             letter-spacing: 2px;
+        }
+        .logo-image-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .logo-image {
+            max-height: 64px;
+            max-width: 280px;
+            width: auto;
+            object-fit: contain;
         }
         .logo span {
             color: ' . $this->colorSecondary . ';
@@ -268,7 +287,9 @@ class PdfReport {
 </head>
 <body>
     <div class="header">
-        <div class="logo">MEGA<span>BLESSING</span></div>
+        ' . ($this->logoUrl !== ''
+            ? '<div class="logo-image-wrap"><img src="' . htmlspecialchars($this->logoUrl) . '" alt="Logo" class="logo-image"></div>'
+            : '<div class="logo">MEGA<span>BLESSING</span></div>') . '
         <div class="report-title">' . htmlspecialchars($this->title) . '</div>';
         
         if ($this->subtitle) {

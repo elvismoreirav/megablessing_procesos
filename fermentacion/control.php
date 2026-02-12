@@ -72,6 +72,19 @@ if (!$fermentacion) {
     redirect('/fermentacion/index.php');
 }
 
+$registroSecado = $db->fetch(
+    "SELECT id FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+    [$fermentacion['lote_id']]
+);
+$fermentacionFinalizada = !empty($fermentacion['fecha_fin']);
+$rutaSiguienteSecado = $registroSecado
+    ? (APP_URL . '/secado/control.php?id=' . (int)$registroSecado['id'])
+    : (APP_URL . '/secado/crear.php?lote_id=' . (int)$fermentacion['lote_id']);
+$labelSiguienteSecado = $registroSecado ? 'Ver estado de secado' : 'Iniciar Secado';
+$descripcionSiguienteSecado = $fermentacionFinalizada
+    ? 'La fermentación está finalizada. Continúe con el proceso de secado.'
+    : 'Al finalizar la fermentación se habilitará automáticamente el formulario de secado.';
+
 // Obtener controles diarios existentes
 $controlesDiarios = $db->fetchAll("
     SELECT dia,
@@ -312,6 +325,23 @@ ob_start();
 </div>
 <?php endif; ?>
 
+<!-- Siguiente paso -->
+<div class="card mb-6 border border-emerald-200 bg-emerald-50/60">
+    <div class="card-body">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siguiente paso</p>
+                <h4 class="text-lg font-semibold text-emerald-900">Proceso de Secado</h4>
+                <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($descripcionSiguienteSecado) ?></p>
+            </div>
+            <a href="<?= $fermentacionFinalizada ? $rutaSiguienteSecado : '#' ?>"
+               class="btn <?= $fermentacionFinalizada ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                <?= htmlspecialchars($labelSiguienteSecado) ?>
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Observaciones Generales -->
 <div class="card mb-6">
     <div class="card-header">
@@ -437,7 +467,7 @@ async function guardarControl() {
     }));
     
     try {
-        const response = await App.post('<?= APP_URL ?>/api/fermentacion/guardar-control.php', {
+        const response = await App.post('/api/fermentacion/guardar-control.php', {
             fermentacion_id: fermentacionId,
             controles: controles
         });
@@ -471,7 +501,7 @@ async function finalizarFermentacion() {
     await guardarControl();
     
     try {
-        const response = await App.post('<?= APP_URL ?>/api/fermentacion/finalizar.php', {
+        const response = await App.post('/api/fermentacion/finalizar.php', {
             fermentacion_id: fermentacionId,
             fecha_fin: fechaFin,
             peso_final: pesoFinal || null,
@@ -479,8 +509,11 @@ async function finalizarFermentacion() {
         });
         
         if (response.success) {
-            App.toast('Fermentación finalizada', 'success');
-            setTimeout(() => window.location.reload(), 1000);
+            const redirectUrl = response.redirect || '<?= APP_URL ?>/secado/crear.php?lote_id=<?= (int)$fermentacion['lote_id'] ?>';
+            const toastType = response.requires_recepcion ? 'warning' : 'success';
+            const toastMessage = response.message || 'Fermentación finalizada. Redirigiendo a secado...';
+            App.toast(toastMessage, toastType);
+            setTimeout(() => window.location.href = redirectUrl, 900);
         } else {
             App.toast(response.error || 'Error al finalizar', 'error');
         }
@@ -494,7 +527,7 @@ async function guardarObservaciones() {
     const obs = document.getElementById('observaciones_generales').value;
     
     try {
-        const response = await App.post('<?= APP_URL ?>/api/fermentacion/actualizar.php', {
+        const response = await App.post('/api/fermentacion/actualizar.php', {
             fermentacion_id: fermentacionId,
             observaciones: obs
         });

@@ -81,17 +81,37 @@ try {
     ], 'id = :id', ['id' => $fermentacion['lote_id']]);
     
     // Registrar historial
-    Helpers::logHistory($fermentacion['lote_id'], 'SECADO', 'Fermentación finalizada, pasa a secado', getCurrentUserId());
+    Helpers::logHistory($fermentacion['lote_id'], 'SECADO', 'Fermentación finalizada, pasa a secado');
     
     $db->commit();
+
+    $fichaRegistro = $db->fetch(
+        "SELECT id FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+        [$fermentacion['lote_id']]
+    );
+    $requiereRecepcion = !$fichaRegistro;
+
+    $secadoExistente = $db->fetch(
+        "SELECT id FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+        [$fermentacion['lote_id']]
+    );
+    $redirectUrl = $secadoExistente
+        ? (APP_URL . '/secado/control.php?id=' . (int)$secadoExistente['id'])
+        : (APP_URL . '/secado/crear.php?lote_id=' . (int)$fermentacion['lote_id']);
+    $message = $requiereRecepcion
+        ? 'Fermentación finalizada. Para continuar con secado, complete primero la ficha de recepción.'
+        : 'Fermentación finalizada correctamente. Redirigiendo a secado.';
     
     Helpers::jsonResponse([
         'success' => true, 
-        'message' => 'Fermentación finalizada correctamente',
-        'redirect' => APP_URL . '/secado/index.php'
+        'message' => $message,
+        'requires_recepcion' => $requiereRecepcion,
+        'redirect' => $redirectUrl
     ]);
     
-} catch (Exception $e) {
-    $db->rollBack();
+} catch (Throwable $e) {
+    if ($db->getConnection()->inTransaction()) {
+        $db->rollBack();
+    }
     Helpers::jsonResponse(['success' => false, 'error' => 'Error al finalizar: ' . $e->getMessage()]);
 }

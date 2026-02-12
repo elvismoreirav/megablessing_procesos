@@ -255,6 +255,43 @@ $generarCodigoIdentificacionDisponible = static function (PDO $pdo) use ($genera
     throw new Exception('No fue posible generar un código de identificación único');
 };
 
+$generarCodigoProveedor = static function (PDO $pdo): string {
+    $stmt = $pdo->query("SELECT codigo FROM proveedores WHERE codigo LIKE 'PROV%'");
+    $max = 0;
+
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $valor = strtoupper(trim((string)($row['codigo'] ?? '')));
+        if (preg_match('/^PROV(\d{4,})$/', $valor, $m)) {
+            $max = max($max, (int)$m[1]);
+        }
+    }
+
+    return 'PROV' . str_pad((string)($max + 1), 4, '0', STR_PAD_LEFT);
+};
+
+$generarCodigoProveedorDisponible = static function (PDO $pdo) use ($generarCodigoProveedor): string {
+    $codigo = $generarCodigoProveedor($pdo);
+    $intentos = 0;
+
+    while ($intentos < 50) {
+        $stmt = $pdo->prepare("SELECT id FROM proveedores WHERE codigo = ? LIMIT 1");
+        $stmt->execute([$codigo]);
+        if (!$stmt->fetch()) {
+            return $codigo;
+        }
+
+        if (preg_match('/^PROV(\d{4,})$/', $codigo, $m)) {
+            $siguiente = (int)$m[1] + 1;
+            $codigo = 'PROV' . str_pad((string)$siguiente, 4, '0', STR_PAD_LEFT);
+        } else {
+            $codigo = $generarCodigoProveedor($pdo);
+        }
+        $intentos++;
+    }
+
+    throw new Exception('No fue posible generar un código de proveedor único');
+};
+
 // Procesar acciones POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -420,7 +457,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             case 'create':
-                $codigo = strtoupper(trim($_POST['codigo'] ?? ''));
+                $codigo = '';
                 $nombre = trim($_POST['nombre'] ?? '');
                 $tipo = strtoupper(trim($_POST['tipo'] ?? 'MERCADO'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
@@ -431,8 +468,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email = trim($_POST['email'] ?? '');
                 $contacto = trim($_POST['contacto'] ?? '');
 
-                if ($codigo === '' || $nombre === '') {
-                    throw new Exception('Código y nombre son obligatorios');
+                if ($nombre === '') {
+                    throw new Exception('El nombre es obligatorio');
                 }
 
                 if ($hasProvCol('categoria')) {
@@ -463,6 +500,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (!preg_match('/^PRO-\d{5}$/', $codigoIdentificacion)) {
                         throw new Exception('El código de identificación debe tener formato PRO-00001');
                     }
+                }
+
+                // En creación el código interno del proveedor también se genera automáticamente.
+                $codigo = $generarCodigoProveedorDisponible($db);
+                if (!preg_match('/^PROV\d{4,}$/', $codigo)) {
+                    throw new Exception('No fue posible generar un código de proveedor válido');
                 }
 
                 $stmt = $db->prepare("SELECT id FROM proveedores WHERE codigo = ?");
@@ -524,7 +567,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             case 'update':
                 $id = (int)($_POST['id'] ?? 0);
-                $codigo = strtoupper(trim($_POST['codigo'] ?? ''));
+                $codigo = '';
                 $nombre = trim($_POST['nombre'] ?? '');
                 $tipo = strtoupper(trim($_POST['tipo'] ?? 'MERCADO'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
@@ -535,7 +578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $email = trim($_POST['email'] ?? '');
                 $contacto = trim($_POST['contacto'] ?? '');
 
-                if (!$id || $codigo === '' || $nombre === '') {
+                if (!$id || $nombre === '') {
                     throw new Exception('Datos incompletos');
                 }
 
@@ -547,6 +590,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ($hasProvCol('es_categoria') && (int)($actual['es_categoria'] ?? 0) === 1) {
                     throw new Exception('Use la edición de categoría para este registro');
+                }
+
+                // El código del proveedor es automático y no editable desde el formulario.
+                $codigo = strtoupper(trim((string)($actual['codigo'] ?? '')));
+                if ($codigo === '') {
+                    throw new Exception('El proveedor no tiene código interno asignado');
                 }
 
                 if ($hasProvCol('categoria')) {
@@ -1162,23 +1211,15 @@ ob_start();
             <input type="hidden" name="_csrf" value="<?= e($csrfToken) ?>">
             
             <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Código *</label>
-                        <input type="text" id="codigo" name="codigo" required maxlength="20"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary uppercase"
-                               placeholder="Ej: PROV001">
-                    </div>
-                    <?php if ($hasProvCol('codigo_identificacion')): ?>
-                    <div>
+                <?php if ($hasProvCol('codigo_identificacion')): ?>
+                <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Código de identificación (automático)</label>
                         <input type="text" id="codigo_identificacion" name="codigo_identificacion" maxlength="20" readonly
                                class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 uppercase"
                                placeholder="Se genera automáticamente al crear">
                         <p class="text-xs text-gray-500 mt-1">Este código se asigna de forma automática en la creación.</p>
-                    </div>
-                    <?php endif; ?>
                 </div>
+                <?php endif; ?>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -1438,7 +1479,6 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
                     return;
                 }
                 document.getElementById('proveedorId').value = p.id;
-                document.getElementById('codigo').value = p.codigo;
                 document.getElementById('nombre').value = p.nombre;
                 document.getElementById('tipo').value = p.tipo;
                 document.getElementById('contacto').value = p.contacto || '';
@@ -1683,12 +1723,6 @@ document.addEventListener('DOMContentLoaded', function() {
         actualizarCategorias();
     }
 
-    const codigoInput = document.getElementById('codigo');
-    if (codigoInput) {
-        codigoInput.addEventListener('input', function() {
-            this.value = this.value.toUpperCase();
-        });
-    }
     const codigoIdentInput = document.getElementById('codigo_identificacion');
     if (codigoIdentInput) {
         codigoIdentInput.addEventListener('input', function() {

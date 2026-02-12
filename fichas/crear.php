@@ -19,6 +19,10 @@ if (!in_array($etapaFormulario, ['recepcion', 'completo'], true)) {
     $etapaFormulario = 'recepcion';
 }
 $esFormularioRecepcion = $etapaFormulario === 'recepcion';
+$siguienteFlujo = strtolower(trim((string)($_GET['next'] ?? ($_POST['next'] ?? ''))));
+if (!in_array($siguienteFlujo, ['fermentacion', 'secado', 'prueba-corte'], true)) {
+    $siguienteFlujo = '';
+}
 
 // Compatibilidad de esquema para columnas de lotes
 $colsLotes = array_column($db->fetchAll("SHOW COLUMNS FROM lotes"), 'Field');
@@ -366,7 +370,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pesoInicialQqLote = Helpers::kgToQQ($pesoInicialKgLote);
 
                 $codigoBase = Helpers::generateLoteCode(
-                    $proveedorCodigo !== '' ? $proveedorCodigo : 'XX',
+                    $proveedor_id > 0 ? $proveedor_id : ($proveedorCodigo !== '' ? $proveedorCodigo : 'XX'),
                     $fechaEntradaLote,
                     $estadoProductoDefaultId > 0 ? $estadoProductoDefaultId : 'EC',
                     null
@@ -516,6 +520,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Registrar en historial
             Helpers::registrarHistorial($lote_id, 'ficha_creada', "Ficha de registro #{$fichaId} creada");
 
+            if ($siguienteFlujo !== '') {
+                $redirectPorFlujo = [
+                    'fermentacion' => '/fermentacion/crear.php?lote_id=' . urlencode((string)$lote_id) . '&from=recepcion',
+                    'secado' => '/secado/crear.php?lote_id=' . urlencode((string)$lote_id) . '&from=recepcion',
+                    'prueba-corte' => '/prueba-corte/crear.php?lote_id=' . urlencode((string)$lote_id) . '&from=recepcion',
+                ];
+                $mensajePorFlujo = [
+                    'fermentacion' => 'Ficha de recepción guardada. Continúe con fermentación.',
+                    'secado' => 'Ficha de recepción guardada. Continúe con secado.',
+                    'prueba-corte' => 'Ficha de recepción guardada. Continúe con prueba de corte.',
+                ];
+                if (isset($redirectPorFlujo[$siguienteFlujo])) {
+                    setFlash('success', $mensajePorFlujo[$siguienteFlujo]);
+                    redirect($redirectPorFlujo[$siguienteFlujo]);
+                }
+            }
+
             redirect('/fichas/ver.php?id=' . urlencode((string)$fichaId) . '&created=1');
 
         } catch (Exception $e) {
@@ -563,6 +584,9 @@ ob_start();
     <!-- Formulario -->
     <form method="POST" class="space-y-6">
         <input type="hidden" name="etapa" value="<?= htmlspecialchars($etapaFormulario) ?>">
+        <?php if ($siguienteFlujo !== ''): ?>
+        <input type="hidden" name="next" value="<?= htmlspecialchars($siguienteFlujo) ?>">
+        <?php endif; ?>
         <!-- Información del Lote -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50">

@@ -23,8 +23,21 @@ if (!$secadoId) {
 
 $db = Database::getInstance();
 
+// Compatibilidad de esquema
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+$colFechaFin = $hasSecCol('fecha_fin') ? 'fecha_fin' : null;
+$colObservaciones = $hasSecCol('observaciones')
+    ? 'observaciones'
+    : ($hasSecCol('carga_observaciones')
+        ? 'carga_observaciones'
+        : ($hasSecCol('revision_observaciones')
+            ? 'revision_observaciones'
+            : ($hasSecCol('descarga_observaciones') ? 'descarga_observaciones' : null)));
+$selectFechaFin = $colFechaFin ? $colFechaFin : 'NULL';
+
 // Verificar que existe
-$secado = $db->fetch("SELECT id, fecha_fin FROM registros_secado WHERE id = :id", ['id' => $secadoId]);
+$secado = $db->fetch("SELECT id, {$selectFechaFin} as fecha_fin FROM registros_secado WHERE id = :id", ['id' => $secadoId]);
 
 if (!$secado) {
     Helpers::jsonResponse(['success' => false, 'error' => 'Secado no encontrado']);
@@ -35,8 +48,12 @@ if ($secado['fecha_fin']) {
 }
 
 try {
+    if (!$colObservaciones) {
+        Helpers::jsonResponse(['success' => true, 'message' => 'Sin cambios disponibles en este esquema']);
+    }
+
     $db->update('registros_secado', [
-        'observaciones' => $observaciones
+        $colObservaciones => $observaciones !== '' ? $observaciones : null
     ], 'id = :id', ['id' => $secadoId]);
     
     Helpers::jsonResponse(['success' => true, 'message' => 'Observaciones actualizadas']);

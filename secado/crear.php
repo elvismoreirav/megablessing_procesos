@@ -21,19 +21,53 @@ $exprHumedadFermentacion = $hasFerCol('humedad_final')
     ? 'rf.humedad_final'
     : ($hasFerCol('humedad_inicial') ? 'rf.humedad_inicial' : 'NULL');
 
+// Compatibilidad de esquema para secadoras
+$colsSecadoras = array_column($db->fetchAll("SHOW COLUMNS FROM secadoras"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecadoras, true);
+$exprSecadoraNombre = $hasSecCol('nombre')
+    ? "NULLIF(TRIM(nombre), '')"
+    : ($hasSecCol('numero') ? "NULLIF(TRIM(numero), '')" : "NULL");
+if ($hasSecCol('capacidad_kg')) {
+    $exprSecadoraCapacidadKg = 'capacidad_kg';
+} elseif ($hasSecCol('capacidad_qq')) {
+    // 1 QQ = 45.3592 kg
+    $exprSecadoraCapacidadKg = '(capacidad_qq * 45.3592)';
+} else {
+    $exprSecadoraCapacidadKg = 'NULL';
+}
+$whereSecadoraActiva = $hasSecCol('activo') ? 'activo = 1' : '1 = 1';
+
+// Compatibilidad de esquema para registros de secado
+$colsRegistroSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasRegSecCol = static fn(string $name): bool => in_array($name, $colsRegistroSecado, true);
+$colFechaInicioSecado = $hasRegSecCol('fecha_inicio')
+    ? 'fecha_inicio'
+    : ($hasRegSecCol('fecha') ? 'fecha' : null);
+$colTipoSecadoSecado = $hasRegSecCol('tipo_secado')
+    ? 'tipo_secado'
+    : ($hasRegSecCol('estado') ? 'estado' : null);
+$colPesoInicialSecado = $hasRegSecCol('peso_inicial')
+    ? 'peso_inicial'
+    : ($hasRegSecCol('qq_cargados')
+        ? 'qq_cargados'
+        : ($hasRegSecCol('cantidad_total_qq') ? 'cantidad_total_qq' : null));
+$colObservacionesSecado = $hasRegSecCol('observaciones')
+    ? 'observaciones'
+    : ($hasRegSecCol('carga_observaciones')
+        ? 'carga_observaciones'
+        : ($hasRegSecCol('revision_observaciones') ? 'revision_observaciones' : null));
+
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
+$loteSinFichaRecepcion = false;
+$registroFermentacion = null;
 
 if ($loteId) {
     $fichaRegistro = $db->fetch("
         SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
     ", ['lote_id' => $loteId]);
-
-    if (!$fichaRegistro) {
-        setFlash('error', 'Debe completar primero la ficha de registro para este lote.');
-        redirect('/fichas/crear.php?etapa=recepcion&lote_id=' . (int)$loteId);
-    }
+    $loteSinFichaRecepcion = !$fichaRegistro;
 
     $loteInfo = $db->fetch("
         SELECT l.*, p.nombre as proveedor, p.codigo as proveedor_codigo, v.nombre as variedad,
@@ -50,6 +84,12 @@ if ($loteId) {
         setFlash('error', 'Lote no válido para secado');
         redirect('/secado/index.php');
     }
+
+    if ($loteSinFichaRecepcion) {
+        $registroFermentacion = $db->fetch("
+            SELECT id FROM registros_fermentacion WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
+        ", ['lote_id' => $loteId]);
+    }
     
     // Verificar que no tenga secado activo
     $secadoExistente = $db->fetch("
@@ -63,7 +103,15 @@ if ($loteId) {
 }
 
 // Obtener secadoras disponibles
-$secadoras = $db->fetchAll("SELECT id, nombre, tipo, capacidad_kg FROM secadoras WHERE activo = 1 ORDER BY nombre");
+$secadoras = $db->fetchAll("
+    SELECT id,
+           COALESCE({$exprSecadoraNombre}, CONCAT('Secadora #', id)) as nombre,
+           " . ($hasSecCol('tipo') ? 'tipo' : 'NULL') . " as tipo,
+           {$exprSecadoraCapacidadKg} as capacidad_kg
+    FROM secadoras
+    WHERE {$whereSecadoraActiva}
+    ORDER BY nombre
+");
 
 // Obtener lotes disponibles para secado
 $lotesDisponibles = $db->fetchAll("
@@ -122,16 +170,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->beginTransaction();
             
             // Crear registro de secado
-            $secadoId = $db->insert('registros_secado', [
-                'lote_id' => $loteId,
-                'secadora_id' => $secadoraId ?: null,
-                'tipo_secado' => $tipoSecado,
-                'fecha_inicio' => $fechaInicio,
-                'peso_inicial' => $pesoInicial,
-                'humedad_inicial' => $humedadInicial ?: null,
-                'observaciones' => $observaciones,
-                'responsable_id' => getCurrentUserId()
-            ]);
+            $dataSecado = [
+                'lote_id' => $loteId
+            ];
+            if ($hasRegSecCol('secadora_id')) {
+                $dataSecado['secadora_id'] = $secadoraId ?: null;
+            }
+            if ($colTipoSecadoSecado) {
+                $dataSecado[$colTipoSecadoSecado] = $tipoSecado;
+            }
+            if ($colFechaInicioSecado) {
+                $dataSecado[$colFechaInicioSecado] = $fechaInicio;
+            }
+            if ($hasRegSecCol('fecha') && $colFechaInicioSecado !== 'fecha') {
+                $dataSecado['fecha'] = $fechaInicio;
+            }
+            if ($colPesoInicialSecado === 'peso_inicial') {
+                $dataSecado['peso_inicial'] = $pesoInicial;
+            } elseif ($colPesoInicialSecado === 'qq_cargados') {
+                $dataSecado['qq_cargados'] = Helpers::kgToQQ($pesoInicial);
+            } elseif ($colPesoInicialSecado === 'cantidad_total_qq') {
+                $dataSecado['cantidad_total_qq'] = Helpers::kgToQQ($pesoInicial);
+            }
+            if ($hasRegSecCol('humedad_inicial')) {
+                $dataSecado['humedad_inicial'] = $humedadInicial ?: null;
+            }
+            if ($colObservacionesSecado) {
+                $dataSecado[$colObservacionesSecado] = $observaciones !== '' ? $observaciones : null;
+            }
+            if ($hasRegSecCol('variedad') && is_array($loteInfo) && !empty($loteInfo['variedad'])) {
+                $dataSecado['variedad'] = $loteInfo['variedad'];
+            }
+            if ($hasRegSecCol('responsable_id')) {
+                $dataSecado['responsable_id'] = getCurrentUserId();
+            }
+
+            $secadoId = $db->insert('registros_secado', $dataSecado);
             
             // Registrar historial
             Helpers::logHistory($loteId, 'SECADO', 'Inicio de secado (' . $tipoSecado . ')', getCurrentUserId());
@@ -167,6 +241,68 @@ ob_start();
     </div>
 <?php endif; ?>
 
+<?php if ($loteSinFichaRecepcion && $loteInfo): ?>
+    <div class="max-w-4xl space-y-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Información del Lote</h3>
+            </div>
+            <div class="card-body">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label class="form-label">Código de Lote</label>
+                        <div class="form-control bg-olive/10 font-medium text-primary">
+                            <?= htmlspecialchars($loteInfo['codigo']) ?>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">Proveedor</label>
+                        <div class="form-control bg-olive/10">
+                            <span class="font-bold text-primary"><?= htmlspecialchars($loteInfo['proveedor_codigo']) ?></span>
+                            - <?= htmlspecialchars($loteInfo['proveedor']) ?>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">Variedad</label>
+                        <div class="form-control bg-olive/10"><?= htmlspecialchars($loteInfo['variedad']) ?></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border border-amber-200 bg-amber-50/70">
+            <div class="card-body">
+                <div class="flex items-start gap-4">
+                    <div class="p-3 bg-amber-100 rounded-lg">
+                        <svg class="w-6 h-6 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="text-lg font-semibold text-amber-900">Requisito pendiente: ficha de recepción</h3>
+                        <p class="text-sm text-amber-800 mt-2">
+                            Para iniciar secado, este lote debe tener una ficha de recepción asociada.
+                            Complete esa ficha y luego continúe con el secado.
+                        </p>
+                        <div class="mt-4 flex flex-wrap items-center gap-3">
+                            <a href="<?= APP_URL ?>/fichas/crear.php?etapa=recepcion&lote_id=<?= (int)$loteInfo['id'] ?>&next=secado"
+                               class="btn btn-primary">
+                                Completar ficha de recepción
+                            </a>
+                            <?php if ($registroFermentacion): ?>
+                                <a href="<?= APP_URL ?>/fermentacion/control.php?id=<?= (int)$registroFermentacion['id'] ?>"
+                                   class="btn btn-outline">
+                                    Volver a fermentación
+                                </a>
+                            <?php endif; ?>
+                            <a href="<?= APP_URL ?>/secado/index.php" class="btn btn-outline">Volver al listado</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php else: ?>
 <form method="POST" class="max-w-4xl">
     <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
     
@@ -253,9 +389,15 @@ ob_start();
                     <select name="secadora_id" class="form-control form-select">
                         <option value="">-- Sin asignar --</option>
                         <?php foreach ($secadoras as $sec): ?>
+                            <?php
+                                $tipoSecadora = trim((string)($sec['tipo'] ?? ''));
+                                $capacidadTexto = is_numeric($sec['capacidad_kg'] ?? null)
+                                    ? number_format((float)$sec['capacidad_kg'], 0) . ' Kg'
+                                    : 'Capacidad N/D';
+                            ?>
                             <option value="<?= $sec['id'] ?>" <?= (isset($_POST['secadora_id']) && $_POST['secadora_id'] == $sec['id']) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($sec['nombre']) ?> 
-                                (<?= htmlspecialchars($sec['tipo']) ?> - <?= number_format($sec['capacidad_kg'], 0) ?> Kg)
+                                (<?= $tipoSecadora !== '' ? htmlspecialchars($tipoSecadora) : 'Tipo N/D' ?> - <?= htmlspecialchars($capacidadTexto) ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -318,6 +460,7 @@ ob_start();
         <a href="<?= APP_URL ?>/secado/index.php" class="btn btn-outline">Cancelar</a>
     </div>
 </form>
+<?php endif; ?>
 
 <?php
 $content = ob_get_clean();

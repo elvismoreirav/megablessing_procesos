@@ -86,6 +86,12 @@ El sistema sigue el flujo natural del procesamiento de cacao:
     └──────┬───────┘
            │
            ▼
+    ┌────────────────┐
+    │ CALIDAD SALIDA │  ← Validación comercial de salida
+    │                │    Grado (solo CCN51) y certificaciones del lote
+    └──────┬─────────┘
+           │
+           ▼
     ┌──────────────┐
     │ EMPAQUETADO  │  ← Ensacado (sacos de 69 kg estándar)
     │              │    Registro de lotes empaquetados
@@ -109,6 +115,7 @@ El sistema sigue el flujo natural del procesamiento de cacao:
 | `FERMENTACION` | En proceso de fermentación activa |
 | `SECADO` | En proceso de secado |
 | `CALIDAD_POST` | Evaluación de calidad post-secado |
+| `CALIDAD_SALIDA` | Validación final de salida y certificaciones |
 | `EMPAQUETADO` | En proceso de empaquetado |
 | `ALMACENADO` | En almacén, listo para despacho |
 | `DESPACHO` | En proceso de envío |

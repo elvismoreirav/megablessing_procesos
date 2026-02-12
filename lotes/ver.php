@@ -56,6 +56,10 @@ $fichaRegistro = $db->fetch("SELECT * FROM fichas_registro WHERE lote_id = ? ORD
 $registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
 $registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
 $registroPruebaCorte = $db->fetch("SELECT * FROM registros_prueba_corte WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$tablaCalidadSalidaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+$registroCalidadSalida = $tablaCalidadSalidaExiste
+    ? $db->fetch("SELECT * FROM registros_calidad_salida WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id])
+    : null;
 
 $colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
 $hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
@@ -84,6 +88,52 @@ $rutaEtiqueta = $tieneFichaRegistro ? (APP_URL . '/fichas/etiqueta.php?id=' . (i
 $rutaFermentacion = APP_URL . '/fermentacion/' . ($registroFermentacion ? 'ver.php?id=' . (int)$registroFermentacion['id'] : 'crear.php?lote_id=' . $id);
 $rutaSecado = APP_URL . '/secado/' . ($registroSecado ? 'ver.php?id=' . (int)$registroSecado['id'] : 'crear.php?lote_id=' . $id);
 $rutaPruebaCorte = APP_URL . '/prueba-corte/' . ($registroPruebaCorte ? 'ver.php?id=' . (int)$registroPruebaCorte['id'] : 'crear.php?lote_id=' . $id);
+$rutaCalidadSalida = APP_URL . '/calidad-salida/' . ($registroCalidadSalida ? 'ver.php?id=' . (int)$registroCalidadSalida['id'] : 'crear.php?lote_id=' . $id);
+$mostrarSiguienteFermentacion = (($_GET['next'] ?? '') === 'fermentacion');
+$estadoProcesoActual = strtoupper((string)($lote['estado_proceso'] ?? ''));
+$accionSiguiente = [
+    'titulo' => 'Siguiente paso sugerido',
+    'descripcion' => 'Revise la información del lote y continúe con el proceso correspondiente.',
+    'url' => APP_URL . '/lotes/editar.php?id=' . $id,
+    'label' => 'Volver a verificación',
+    'estilo' => 'btn-outline',
+];
+
+if ($mostrarSiguienteFermentacion) {
+    if (!$tieneFichaRegistro) {
+        $accionSiguiente = [
+            'titulo' => 'Complete primero la ficha de recepción',
+            'descripcion' => 'Para iniciar fermentación, primero registre la ficha de recepción de este lote.',
+            'url' => APP_URL . '/fichas/crear.php?etapa=recepcion&lote_id=' . $id,
+            'label' => 'Ir a Recepción',
+            'estilo' => 'btn-outline',
+        ];
+    } elseif ($estadoProcesoActual !== 'FERMENTACION') {
+        $accionSiguiente = [
+            'titulo' => 'Actualice el estado a Fermentación',
+            'descripcion' => 'El lote aún no está en estado Fermentación. Ajuste el estado para habilitar el siguiente formulario.',
+            'url' => APP_URL . '/lotes/editar.php?id=' . $id,
+            'label' => 'Editar estado del lote',
+            'estilo' => 'btn-outline',
+        ];
+    } elseif ($registroFermentacion) {
+        $accionSiguiente = [
+            'titulo' => 'Fermentación ya registrada',
+            'descripcion' => 'Este lote ya tiene un proceso de fermentación. Puede continuar el control diario.',
+            'url' => APP_URL . '/fermentacion/control.php?id=' . (int)$registroFermentacion['id'],
+            'label' => 'Abrir control de fermentación',
+            'estilo' => 'btn-primary',
+        ];
+    } else {
+        $accionSiguiente = [
+            'titulo' => 'Lote listo para Fermentación',
+            'descripcion' => 'Los datos del lote ya se guardaron. Continúe con la ficha de fermentación para iniciar el proceso.',
+            'url' => APP_URL . '/fermentacion/crear.php?lote_id=' . $id . '&from=verificacion',
+            'label' => 'Iniciar Fermentación',
+            'estilo' => 'btn-primary',
+        ];
+    }
+}
 
 // Estados del proceso para el timeline
 $estadosProceso = [
@@ -93,6 +143,7 @@ $estadosProceso = [
     'FERMENTACION' => ['icon' => 'fire', 'label' => 'Fermentación'],
     'SECADO' => ['icon' => 'sun', 'label' => 'Secado'],
     'CALIDAD_POST' => ['icon' => 'clipboard-check', 'label' => 'Prueba de Corte'],
+    'CALIDAD_SALIDA' => ['icon' => 'badge-check', 'label' => 'Calidad de salida'],
     'EMPAQUETADO' => ['icon' => 'archive', 'label' => 'Empaquetado'],
     'ALMACENADO' => ['icon' => 'database', 'label' => 'Almacenado'],
     'DESPACHO' => ['icon' => 'truck', 'label' => 'Despacho'],
@@ -145,6 +196,26 @@ ob_start();
             </div>
         </div>
     </div>
+
+    <?php if ($mostrarSiguienteFermentacion): ?>
+    <div class="card mb-6 border border-emerald-200 bg-emerald-50/60">
+        <div class="card-body">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Flujo guiado</p>
+                    <h3 class="text-lg font-semibold text-emerald-900"><?= htmlspecialchars($accionSiguiente['titulo']) ?></h3>
+                    <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($accionSiguiente['descripcion']) ?></p>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <a href="<?= htmlspecialchars($accionSiguiente['url']) ?>" class="btn <?= htmlspecialchars($accionSiguiente['estilo']) ?>">
+                        <?= htmlspecialchars($accionSiguiente['label']) ?>
+                    </a>
+                    <a href="<?= APP_URL ?>/lotes/ver.php?id=<?= $id ?>" class="btn btn-outline">Quedarme en este resumen</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Timeline del Proceso -->
     <div class="card mb-6">
@@ -365,9 +436,18 @@ ob_start();
                                     <?= $registroPruebaCorte ? 'Completado' : 'Pendiente' ?>
                                 </span>
                             </a>
+                            <a href="<?= ($tieneFichaRegistro && $tablaCalidadSalidaExiste) ? $rutaCalidadSalida : '#' ?>"
+                               class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= ($tieneFichaRegistro && $tablaCalidadSalidaExiste) ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed' ?>">
+                                <span class="font-medium text-gray-800">e. Calidad de salida</span>
+                                <span class="text-xs px-2 py-1 rounded-full <?= $registroCalidadSalida ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                    <?= $registroCalidadSalida ? 'Completado' : 'Pendiente' ?>
+                                </span>
+                            </a>
                         </div>
                         <?php if (!$tieneFichaRegistro): ?>
                         <p class="text-xs text-amber-700 mt-3">Primero debe completar la ficha de registro para habilitar procesos de planta.</p>
+                        <?php elseif (!$tablaCalidadSalidaExiste): ?>
+                        <p class="text-xs text-amber-700 mt-3">Falta ejecutar el patch de base de datos para habilitar la ficha de calidad de salida.</p>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -478,12 +558,23 @@ ob_start();
                                 </svg>
                                 2.d Prueba de Corte (Ficha de prueba de corte)
                             </a>
+                            <a href="<?= ($tieneFichaRegistro && $tablaCalidadSalidaExiste) ? $rutaCalidadSalida : '#' ?>"
+                               class="btn w-full justify-start <?= ($tieneFichaRegistro && $tablaCalidadSalidaExiste) ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m4 2a8 8 0 11-16 0 8 8 0 0116 0z"/>
+                                </svg>
+                                2.e Calidad de salida
+                            </a>
                         </div>
                     </div>
 
                     <?php if (!$tieneFichaRegistro): ?>
                     <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs">
                         Debe completar primero la ficha de registro para habilitar los procesos de planta.
+                    </div>
+                    <?php elseif (!$tablaCalidadSalidaExiste): ?>
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs">
+                        Falta ejecutar el patch de base de datos para habilitar la ficha de calidad de salida.
                     </div>
                     <?php endif; ?>
 

@@ -6,60 +6,186 @@
  */
 
 class Helpers {
+
+    /**
+     * Resolver prefijo de proveedor para código de lote.
+     * Prioridad:
+     * 1) Código de la categoría semilla (M, B, ES, FM, VP)
+     * 2) Mapeo por categoría textual
+     * 3) Mapeo por tipo (MERCADO, BODEGA, RUTA, PRODUCTOR)
+     */
+    public static function resolveProveedorLotePrefix($proveedorRef) {
+        $db = Database::getInstance();
+
+        $normalize = static function ($value): string {
+            $value = strtoupper(trim((string)$value));
+            $value = strtr($value, [
+                'Á' => 'A',
+                'É' => 'E',
+                'Í' => 'I',
+                'Ó' => 'O',
+                'Ú' => 'U',
+            ]);
+            return preg_replace('/\s+/', ' ', $value);
+        };
+
+        $sanitizeCode = static function ($value): string {
+            $code = strtoupper(trim((string)$value));
+            return preg_replace('/[^A-Z0-9]/', '', $code);
+        };
+
+        $codigosCategoriaValidos = ['M', 'B', 'ES', 'FM', 'VP'];
+        $categoriaMap = [
+            'MERCADO' => 'M',
+            'BODEGA' => 'B',
+            'ESMERALDAS' => 'ES',
+            'FLOR DE MANABI' => 'FM',
+            'VIA PEDERNALES' => 'VP',
+        ];
+        $tipoMap = [
+            'MERCADO' => 'M',
+            'BODEGA' => 'B',
+            'RUTA' => 'RT',
+            'PRODUCTOR' => 'PR',
+        ];
+
+        $row = null;
+        if (is_numeric($proveedorRef)) {
+            try {
+                $row = $db->fetch(
+                    "SELECT id, codigo, tipo, categoria, es_categoria
+                     FROM proveedores
+                     WHERE id = ? LIMIT 1",
+                    [(int)$proveedorRef]
+                );
+            } catch (Throwable $e) {
+                $row = $db->fetch(
+                    "SELECT id, codigo
+                     FROM proveedores
+                     WHERE id = ? LIMIT 1",
+                    [(int)$proveedorRef]
+                );
+            }
+        } else {
+            $raw = trim((string)$proveedorRef);
+            $rawCode = $sanitizeCode($raw);
+            $rawNorm = $normalize($raw);
+
+            if (in_array($rawCode, $codigosCategoriaValidos, true)) {
+                return $rawCode;
+            }
+            if (isset($categoriaMap[$rawNorm])) {
+                return $categoriaMap[$rawNorm];
+            }
+            if (isset($tipoMap[$rawNorm])) {
+                return $tipoMap[$rawNorm];
+            }
+            if ($rawCode !== '') {
+                try {
+                    $row = $db->fetch(
+                        "SELECT id, codigo, tipo, categoria, es_categoria
+                         FROM proveedores
+                         WHERE UPPER(codigo) = ? LIMIT 1",
+                        [$rawCode]
+                    );
+                } catch (Throwable $e) {
+                    $row = $db->fetch(
+                        "SELECT id, codigo
+                         FROM proveedores
+                         WHERE UPPER(codigo) = ? LIMIT 1",
+                        [$rawCode]
+                    );
+                }
+            }
+        }
+
+        if (is_array($row) && !empty($row)) {
+            $categoria = trim((string)($row['categoria'] ?? ''));
+            if ($categoria !== '') {
+                try {
+                    $catRow = $db->fetch(
+                        "SELECT codigo
+                         FROM proveedores
+                         WHERE es_categoria = 1
+                           AND categoria = ?
+                         LIMIT 1",
+                        [$categoria]
+                    );
+                } catch (Throwable $e) {
+                    $catRow = null;
+                }
+                $catCode = $sanitizeCode((string)($catRow['codigo'] ?? ''));
+                if (in_array($catCode, $codigosCategoriaValidos, true)) {
+                    return $catCode;
+                }
+            }
+
+            $categoriaNorm = $normalize((string)($row['categoria'] ?? ''));
+            if (isset($categoriaMap[$categoriaNorm])) {
+                return $categoriaMap[$categoriaNorm];
+            }
+
+            $tipoNorm = $normalize((string)($row['tipo'] ?? ''));
+            if (isset($tipoMap[$tipoNorm])) {
+                return $tipoMap[$tipoNorm];
+            }
+
+            $code = $sanitizeCode((string)($row['codigo'] ?? ''));
+            if (in_array($code, $codigosCategoriaValidos, true)) {
+                return $code;
+            }
+        }
+
+        return 'XX';
+    }
     
     /**
      * Generar código de lote
-     * Formato: XX-DD-MM-AA-EE-F
+     * Formato: CAT-DD-MM-YY-ESTADO-FER
+     * - ESTADO sale de estados_producto.codigo (si llega ID lo resuelve)
+     * - FER: NF si no hay fermentación previa, o código de estados_fermentacion.codigo (si llega ID lo resuelve)
      */
-    /**
- * Generar código de lote
- * Formato: PROV-DD-MM-YY-ESTADO-FER
- * - ESTADO sale de estados_producto.codigo (si llega ID lo resuelve)
- * - FER: NF si no hay fermentación previa, o código de estados_fermentacion.codigo (si llega ID lo resuelve)
- */
-public static function generateLoteCode($proveedorCodigo, $fecha, $estadoProducto, $estadoFermentacion = null) {
-    $db = Database::getInstance();
+    public static function generateLoteCode($proveedorCodigo, $fecha, $estadoProducto, $estadoFermentacion = null) {
+        $db = Database::getInstance();
 
-    // Fecha segura
-    $ts = strtotime($fecha);
-    if (!$ts) $ts = time();
+        // Fecha segura
+        $ts = strtotime($fecha);
+        if (!$ts) $ts = time();
 
-    $dia  = date('d', $ts);
-    $mes  = date('m', $ts);
-    $anio = date('y', $ts);
+        $dia  = date('d', $ts);
+        $mes  = date('m', $ts);
+        $anio = date('y', $ts);
 
-    // PROV
-    $prov = strtoupper(trim((string)$proveedorCodigo));
-    $prov = preg_replace('/[^A-Z0-9]/', '', $prov);
-    if ($prov === '') $prov = 'XX';
+        // PROV/RECEPCION (categoría/tipo de proveedor)
+        $prov = self::resolveProveedorLotePrefix($proveedorCodigo);
 
-    // ESTADO: si llega ID -> buscar codigo en estados_producto
-    $estadoCode = $estadoProducto;
-    if (is_numeric($estadoProducto)) {
-        $row = $db->fetch("SELECT codigo FROM estados_producto WHERE id = ?", [(int)$estadoProducto]);
-        $estadoCode = $row['codigo'] ?? '';
-    }
-    $estadoCode = strtoupper(trim((string)$estadoCode));
-    $estadoCode = preg_replace('/[^A-Z0-9]/', '', $estadoCode);
-    if ($estadoCode === '') $estadoCode = 'EC'; // fallback
-
-    // FER: si no hay fermentación previa -> NF
-    if (empty($estadoFermentacion)) {
-        $ferCode = 'NF';
-    } else {
-        // si llega ID -> buscar codigo en estados_fermentacion
-        $ferCode = $estadoFermentacion;
-        if (is_numeric($estadoFermentacion)) {
-            $row = $db->fetch("SELECT codigo FROM estados_fermentacion WHERE id = ?", [(int)$estadoFermentacion]);
-            $ferCode = $row['codigo'] ?? 'F';
+        // ESTADO: si llega ID -> buscar codigo en estados_producto
+        $estadoCode = $estadoProducto;
+        if (is_numeric($estadoProducto)) {
+            $row = $db->fetch("SELECT codigo FROM estados_producto WHERE id = ?", [(int)$estadoProducto]);
+            $estadoCode = $row['codigo'] ?? '';
         }
-        $ferCode = strtoupper(trim((string)$ferCode));
-        $ferCode = preg_replace('/[^A-Z0-9]/', '', $ferCode);
-        if ($ferCode === '') $ferCode = 'F';
-    }
+        $estadoCode = strtoupper(trim((string)$estadoCode));
+        $estadoCode = preg_replace('/[^A-Z0-9]/', '', $estadoCode);
+        if ($estadoCode === '') $estadoCode = 'EC'; // fallback
 
-    return "{$prov}-{$dia}-{$mes}-{$anio}-{$estadoCode}-{$ferCode}";
-}
+        // FER: si no hay fermentación previa -> NF
+        if (empty($estadoFermentacion)) {
+            $ferCode = 'NF';
+        } else {
+            // si llega ID -> buscar codigo en estados_fermentacion
+            $ferCode = $estadoFermentacion;
+            if (is_numeric($estadoFermentacion)) {
+                $row = $db->fetch("SELECT codigo FROM estados_fermentacion WHERE id = ?", [(int)$estadoFermentacion]);
+                $ferCode = $row['codigo'] ?? 'F';
+            }
+            $ferCode = strtoupper(trim((string)$ferCode));
+            $ferCode = preg_replace('/[^A-Z0-9]/', '', $ferCode);
+            if ($ferCode === '') $ferCode = 'F';
+        }
+
+        return "{$prov}-{$dia}-{$mes}-{$anio}-{$estadoCode}-{$ferCode}";
+    }
 
     
     /**
@@ -163,6 +289,7 @@ public static function generateLoteCode($proveedorCodigo, $fecha, $estadoProduct
             'FERMENTACION' => ['color' => 'bg-orange-100 text-orange-800', 'label' => 'Fermentación'],
             'SECADO' => ['color' => 'bg-red-100 text-red-800', 'label' => 'Secado'],
             'CALIDAD_POST' => ['color' => 'bg-green-100 text-green-800', 'label' => 'Prueba de Corte'],
+            'CALIDAD_SALIDA' => ['color' => 'bg-emerald-100 text-emerald-800', 'label' => 'Calidad de salida'],
             'EMPAQUETADO' => ['color' => 'bg-pink-100 text-pink-800', 'label' => 'Empaquetado'],
             'ALMACENADO' => ['color' => 'bg-gray-100 text-gray-800', 'label' => 'Almacenado'],
             'DESPACHO' => ['color' => 'bg-teal-100 text-teal-800', 'label' => 'Despacho'],
@@ -245,6 +372,107 @@ public static function generateLoteCode($proveedorCodigo, $fecha, $estadoProduct
         }
         
         return $result;
+    }
+
+    /**
+     * Obtener columnas reales de una tabla (compatibilidad entre esquemas).
+     */
+    public static function getTableColumns(string $table): array {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $table)) {
+            return [];
+        }
+
+        $db = Database::getInstance();
+        try {
+            $rows = $db->fetchAll("SHOW COLUMNS FROM {$table}");
+        } catch (Throwable $e) {
+            return [];
+        }
+
+        $columns = [];
+        foreach ($rows as $row) {
+            $name = $row['Field'] ?? $row['field'] ?? null;
+            if (is_string($name) && $name !== '') {
+                $columns[] = $name;
+            }
+        }
+
+        return array_values(array_unique($columns));
+    }
+
+    /**
+     * Verifica si una columna existe en una tabla.
+     */
+    public static function hasTableColumn(string $table, string $column): bool {
+        static $cache = [];
+        $cacheKey = strtolower($table);
+        if (!array_key_exists($cacheKey, $cache)) {
+            $cache[$cacheKey] = self::getTableColumns($table);
+        }
+        return in_array($column, $cache[$cacheKey], true);
+    }
+
+    /**
+     * Asegura la existencia de la tabla de empaquetado y columnas mínimas.
+     * Permite operar en instalaciones donde el patch aún no se ejecutó.
+     */
+    public static function ensureEmpaquetadoTable(): bool {
+        $db = Database::getInstance();
+
+        try {
+            $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_empaquetado'");
+            if (!$tablaExiste) {
+                $db->query("
+                    CREATE TABLE IF NOT EXISTS registros_empaquetado (
+                        id INT PRIMARY KEY AUTO_INCREMENT,
+                        lote_id INT NOT NULL,
+                        tipo_empaque VARCHAR(30) NOT NULL,
+                        peso_saco DECIMAL(10,2) NOT NULL,
+                        fecha_empaquetado DATE NULL,
+                        numero_sacos INT NULL,
+                        peso_total DECIMAL(10,2) NULL,
+                        lote_empaque VARCHAR(80) NULL,
+                        destino VARCHAR(150) NULL,
+                        observaciones TEXT NULL,
+                        operador_id INT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_empaque_lote (lote_id),
+                        INDEX idx_empaque_fecha (fecha_empaquetado),
+                        CONSTRAINT fk_empaque_lote FOREIGN KEY (lote_id) REFERENCES lotes(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_empaque_operador FOREIGN KEY (operador_id) REFERENCES usuarios(id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                ");
+            }
+
+            $cols = self::getTableColumns('registros_empaquetado');
+            $hasCol = static fn(string $name): bool => in_array($name, $cols, true);
+
+            $alterQueries = [];
+            if (!$hasCol('tipo_empaque')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN tipo_empaque VARCHAR(30) NOT NULL AFTER lote_id";
+            if (!$hasCol('peso_saco')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN peso_saco DECIMAL(10,2) NOT NULL AFTER tipo_empaque";
+            if (!$hasCol('fecha_empaquetado')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN fecha_empaquetado DATE NULL AFTER peso_saco";
+            if (!$hasCol('numero_sacos')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN numero_sacos INT NULL AFTER fecha_empaquetado";
+            if (!$hasCol('peso_total')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN peso_total DECIMAL(10,2) NULL AFTER numero_sacos";
+            if (!$hasCol('lote_empaque')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN lote_empaque VARCHAR(80) NULL AFTER peso_total";
+            if (!$hasCol('destino')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN destino VARCHAR(150) NULL AFTER lote_empaque";
+            if (!$hasCol('observaciones')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN observaciones TEXT NULL AFTER destino";
+            if (!$hasCol('operador_id')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN operador_id INT NULL AFTER observaciones";
+            if (!$hasCol('created_at')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+            if (!$hasCol('updated_at')) $alterQueries[] = "ALTER TABLE registros_empaquetado ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP";
+
+            foreach ($alterQueries as $sql) {
+                try {
+                    $db->query($sql);
+                } catch (Throwable $e) {
+                    // Si no se puede alterar por permisos o FKs existentes, continuar con lo disponible.
+                }
+            }
+
+            return (bool)$db->fetch("SHOW TABLES LIKE 'registros_empaquetado'");
+        } catch (Throwable $e) {
+            return false;
+        }
     }
     
     /**

@@ -23,9 +23,30 @@ if (!$secadoId) {
 
 $db = Database::getInstance();
 
+// Compatibilidad de esquema
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+$colFechaFinSecado = $hasSecCol('fecha_fin') ? 'fecha_fin' : null;
+$selectFechaFinSecado = $colFechaFinSecado ? $colFechaFinSecado : 'NULL';
+
+$colsControl = array_column($db->fetchAll("SHOW COLUMNS FROM secado_control_temperatura"), 'Field');
+$hasCtrlCol = static fn(string $name): bool => in_array($name, $colsControl, true);
+$fkControlCol = $hasCtrlCol('secado_id') ? 'secado_id' : ($hasCtrlCol('registro_secado_id') ? 'registro_secado_id' : null);
+$colFechaControl = $hasCtrlCol('fecha') ? 'fecha' : null;
+$colHoraControl = $hasCtrlCol('hora') ? 'hora' : null;
+$colTempControl = $hasCtrlCol('temperatura') ? 'temperatura' : null;
+$colHumedadControl = $hasCtrlCol('humedad') ? 'humedad' : null;
+$colObsControl = $hasCtrlCol('observaciones') ? 'observaciones' : null;
+$colTurnoControl = $hasCtrlCol('turno') ? 'turno' : null;
+$colRespControl = $hasCtrlCol('responsable_id') ? 'responsable_id' : null;
+
+if (!$fkControlCol) {
+    Helpers::jsonResponse(['success' => false, 'error' => 'El esquema de control de secado no es compatible']);
+}
+
 // Verificar que el secado existe y no está finalizado
 $secado = $db->fetch("
-    SELECT id, lote_id, fecha_fin FROM registros_secado WHERE id = :id
+    SELECT id, lote_id, {$selectFechaFinSecado} as fecha_fin FROM registros_secado WHERE id = :id
 ", ['id' => $secadoId]);
 
 if (!$secado) {
@@ -40,21 +61,49 @@ try {
     $db->beginTransaction();
     
     // Eliminar controles anteriores para este secado
-    $db->delete('secado_control_temperatura', 'secado_id = :id', ['id' => $secadoId]);
+    $db->delete('secado_control_temperatura', "{$fkControlCol} = :id", ['id' => $secadoId]);
     
     // Insertar nuevos controles
     foreach ($controles as $control) {
-        $datos = [
-            'secado_id' => $secadoId,
-            'fecha' => $control['fecha'],
-            'hora' => $control['hora'],
-            'temperatura' => isset($control['temperatura']) && $control['temperatura'] !== '' ? floatval($control['temperatura']) : null,
-            'humedad' => isset($control['humedad']) && $control['humedad'] !== '' ? floatval($control['humedad']) : null,
-            'observaciones' => trim($control['observaciones'] ?? '')
-        ];
+        $temperatura = isset($control['temperatura']) && $control['temperatura'] !== '' ? floatval($control['temperatura']) : null;
+        $humedad = isset($control['humedad']) && $control['humedad'] !== '' ? floatval($control['humedad']) : null;
+        $observaciones = trim($control['observaciones'] ?? '');
+        $horaControl = trim((string)($control['hora'] ?? ''));
+        $turnoControl = 'DIURNO';
+        if ($horaControl !== '') {
+            $horaEntera = (int)substr($horaControl, 0, 2);
+            if ($horaEntera < 6 || $horaEntera > 18) {
+                $turnoControl = 'NOCTURNO';
+            }
+        }
         
         // Solo insertar si tiene al menos un dato
-        if ($datos['temperatura'] !== null || $datos['humedad'] !== null || $datos['observaciones']) {
+        if ($temperatura !== null || $humedad !== null || $observaciones !== '') {
+            $datos = [
+                $fkControlCol => $secadoId
+            ];
+            if ($colFechaControl) {
+                $datos[$colFechaControl] = $control['fecha'] ?? date('Y-m-d');
+            }
+            if ($colHoraControl) {
+                $datos[$colHoraControl] = $horaControl !== '' ? $horaControl : null;
+            }
+            if ($colTempControl) {
+                $datos[$colTempControl] = $temperatura;
+            }
+            if ($colHumedadControl) {
+                $datos[$colHumedadControl] = $humedad;
+            }
+            if ($colObsControl) {
+                $datos[$colObsControl] = $observaciones !== '' ? $observaciones : null;
+            }
+            if ($colTurnoControl) {
+                $datos[$colTurnoControl] = $turnoControl;
+            }
+            if ($colRespControl) {
+                $datos[$colRespControl] = getCurrentUserId();
+            }
+
             $db->insert('secado_control_temperatura', $datos);
         }
     }

@@ -17,6 +17,10 @@ if ($id <= 0) {
 $ficha = $db->fetchOne("
     SELECT f.*,
            l.codigo as lote_codigo,
+           l.proveedor_id as lote_proveedor_id,
+           l.fecha_entrada as lote_fecha_entrada,
+           l.estado_producto_id as lote_estado_producto_id,
+           l.estado_fermentacion_id as lote_estado_fermentacion_id,
            COALESCE(NULLIF(TRIM(p.nombre), ''), NULLIF(TRIM(f.proveedor_ruta), '')) as proveedor_nombre,
            v.nombre as variedad_nombre
     FROM fichas_registro f
@@ -61,7 +65,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $formData = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $ficha;
-$sugerido = trim((string)($ficha['lote_codigo'] ?? ''));
+$sugerido = '';
+$loteProveedorId = (int)($ficha['lote_proveedor_id'] ?? 0);
+$fechaBaseCodificacion = trim((string)($ficha['lote_fecha_entrada'] ?? $ficha['fecha_entrada'] ?? ''));
+$estadoProductoRef = $ficha['lote_estado_producto_id'] ?? null;
+$estadoFermentacionRef = $ficha['lote_estado_fermentacion_id'] ?? null;
+if ($loteProveedorId > 0 && $fechaBaseCodificacion !== '' && !empty($estadoProductoRef)) {
+    $sugerido = Helpers::generateLoteCode($loteProveedorId, $fechaBaseCodificacion, $estadoProductoRef, $estadoFermentacionRef);
+}
+if ($sugerido === '') {
+    $sugerido = trim((string)($ficha['lote_codigo'] ?? ''));
+}
+$prefijoProveedor = Helpers::resolveProveedorLotePrefix(
+    $loteProveedorId > 0 ? $loteProveedorId : ((string)($ficha['proveedor_nombre'] ?? ''))
+);
 
 $pageTitle = "Codificacion de Lote - Ficha #{$id}";
 ob_start();
@@ -88,10 +105,14 @@ ob_start();
     <?php endif; ?>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
                 <p class="text-xs text-gray-500">Proveedor</p>
                 <p class="font-semibold text-gray-900"><?= htmlspecialchars((string)($ficha['proveedor_nombre'] ?? '—')) ?></p>
+            </div>
+            <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                <p class="text-xs text-gray-500">Tipo proveedor (prefijo)</p>
+                <p class="font-semibold text-gray-900"><?= htmlspecialchars($prefijoProveedor !== '' ? $prefijoProveedor : '—') ?></p>
             </div>
             <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
                 <p class="text-xs text-gray-500">Variedad</p>

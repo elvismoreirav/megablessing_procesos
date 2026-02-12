@@ -10,6 +10,37 @@ requireAuth();
 
 $db = Database::getInstance();
 
+if (!Helpers::ensureEmpaquetadoTable()) {
+    setFlash('error', 'No se pudo habilitar el módulo de empaquetado en esta base de datos.');
+    redirect('/calidad-salida/index.php');
+}
+
+// Compatibilidad de esquema
+$colsLotes = Helpers::getTableColumns('lotes');
+$hasLoteCol = static fn(string $name): bool => in_array($name, $colsLotes, true);
+$colsPrueba = Helpers::getTableColumns('registros_prueba_corte');
+$hasPrCol = static fn(string $name): bool => in_array($name, $colsPrueba, true);
+
+$prCalidadExpr = 'NULL';
+$joinPrueba = '';
+if (!empty($colsPrueba)) {
+    $prCalidadExpr = $hasPrCol('calidad_resultado')
+        ? 'rpc.calidad_resultado'
+        : ($hasPrCol('calidad_determinada') ? 'rpc.calidad_determinada' : ($hasPrCol('decision_lote') ? 'rpc.decision_lote' : 'NULL'));
+
+    $joinPrueba = "
+        LEFT JOIN registros_prueba_corte rpc ON rpc.id = (
+            SELECT rpc2.id
+            FROM registros_prueba_corte rpc2
+            WHERE rpc2.lote_id = l.id
+            ORDER BY rpc2.id DESC
+            LIMIT 1
+        )
+    ";
+}
+
+$loteCalidadExpr = "COALESCE({$prCalidadExpr}, 'N/D')";
+
 // Filtros
 $filtroEstado = $_GET['estado'] ?? '';
 $filtroCalidad = $_GET['calidad'] ?? '';
@@ -27,7 +58,7 @@ if ($filtroEstado === 'pendiente') {
 }
 
 if ($filtroCalidad) {
-    $where[] = "l.calidad_final = :calidad";
+    $where[] = "{$loteCalidadExpr} = :calidad";
     $params['calidad'] = $filtroCalidad;
 }
 
@@ -41,10 +72,11 @@ $whereClause = implode(' AND ', $where);
 
 // Contar total
 $total = $db->fetch("
-    SELECT COUNT(*) as total 
+    SELECT COUNT(*) as total
     FROM registros_empaquetado re
     JOIN lotes l ON re.lote_id = l.id
     JOIN proveedores p ON l.proveedor_id = p.id
+    {$joinPrueba}
     WHERE {$whereClause}
 ", $params)['total'];
 
@@ -53,15 +85,16 @@ $pagination = Helpers::paginate($total, ITEMS_PER_PAGE, $pagina);
 
 // Obtener registros
 $registros = $db->fetchAll("
-    SELECT re.*, 
+    SELECT re.*,
            l.codigo as lote_codigo,
-           l.calidad_final,
+           {$loteCalidadExpr} as calidad_final,
            p.nombre as proveedor,
            u.nombre as operador
     FROM registros_empaquetado re
     JOIN lotes l ON re.lote_id = l.id
     JOIN proveedores p ON l.proveedor_id = p.id
-    JOIN usuarios u ON re.operador_id = u.id
+    LEFT JOIN usuarios u ON re.operador_id = u.id
+    {$joinPrueba}
     WHERE {$whereClause}
     ORDER BY re.created_at DESC
     LIMIT {$pagination['per_page']} OFFSET {$pagination['offset']}
@@ -69,9 +102,11 @@ $registros = $db->fetchAll("
 
 // Lotes listos para empaquetado
 $lotesParaEmpaquetar = $db->fetchAll("
-    SELECT l.id, l.codigo, p.nombre as proveedor, l.calidad_final
+    SELECT l.id, l.codigo, p.nombre as proveedor,
+           {$loteCalidadExpr} as calidad_final
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
+    {$joinPrueba}
     WHERE l.estado_proceso = 'EMPAQUETADO'
     AND NOT EXISTS (SELECT 1 FROM registros_empaquetado re WHERE re.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
@@ -133,7 +168,7 @@ ob_start();
                 <?php foreach ($lotesParaEmpaquetar as $lote): ?>
                     <option value="<?= $lote['id'] ?>">
                         <?= htmlspecialchars($lote['codigo']) ?> - <?= htmlspecialchars($lote['proveedor']) ?>
-                        (<?= $lote['calidad_final'] ?>)
+                        (<?= htmlspecialchars((string)($lote['calidad_final'] ?? 'N/D')) ?>)
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -194,7 +229,7 @@ ob_start();
                                     default => 'badge-secondary'
                                 };
                                 ?>
-                                <span class="badge <?= $badgeClass ?>"><?= $reg['calidad_final'] ?></span>
+                                <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars((string)($reg['calidad_final'] ?? 'N/D')) ?></span>
                             </td>
                             <td class="text-center font-medium"><?= $reg['numero_sacos'] ?? '-' ?></td>
                             <td class="text-right"><?= $reg['peso_total'] ? number_format($reg['peso_total'], 2) . ' kg' : '-' ?></td>

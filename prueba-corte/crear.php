@@ -10,6 +10,29 @@ requireAuth();
 
 $db = Database::getInstance();
 $errors = [];
+$tablaCalidadSalidaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+
+// Compatibilidad de esquema para prueba de corte
+$colsPrueba = array_column($db->fetchAll("SHOW COLUMNS FROM registros_prueba_corte"), 'Field');
+$hasPrCol = static fn(string $name): bool => in_array($name, $colsPrueba, true);
+
+$colFechaPrueba = $hasPrCol('fecha_prueba') ? 'fecha_prueba' : ($hasPrCol('fecha') ? 'fecha' : null);
+$colTotalGranos = $hasPrCol('total_granos') ? 'total_granos' : ($hasPrCol('granos_analizados') ? 'granos_analizados' : null);
+$colAnalistaId = $hasPrCol('analista_id')
+    ? 'analista_id'
+    : ($hasPrCol('responsable_analisis_id') ? 'responsable_analisis_id' : ($hasPrCol('usuario_id') ? 'usuario_id' : null));
+$colCalidadResultado = $hasPrCol('calidad_resultado')
+    ? 'calidad_resultado'
+    : ($hasPrCol('calidad_determinada') ? 'calidad_determinada' : ($hasPrCol('decision_lote') ? 'decision_lote' : null));
+
+// Compatibilidad de esquema para lotes
+$colsLotes = array_column($db->fetchAll("SHOW COLUMNS FROM lotes"), 'Field');
+$hasLoteCol = static fn(string $name): bool => in_array($name, $colsLotes, true);
+
+// Compatibilidad de esquema para secado (lectura de humedad final)
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+$exprHumedadSecado = $hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL';
 
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
@@ -27,7 +50,7 @@ if ($loteId) {
 
     $loteInfo = $db->fetch("
         SELECT l.*, p.nombre as proveedor, p.codigo as proveedor_codigo, v.nombre as variedad,
-               rs.humedad_final as humedad_secado
+               {$exprHumedadSecado} as humedad_secado
         FROM lotes l
         JOIN proveedores p ON l.proveedor_id = p.id
         JOIN variedades v ON l.variedad_id = v.id
@@ -51,12 +74,8 @@ if ($loteId) {
     }
 }
 
-// Obtener parámetros de calidad
-$parametrosCalidad = $db->fetchAll("
-    SELECT nombre, valor_minimo, valor_maximo, descripcion 
-    FROM parametros_proceso 
-    WHERE nombre LIKE 'calidad_%' OR nombre LIKE 'defecto_%'
-");
+// Mantener variable por compatibilidad de vista (actualmente no se utiliza en esta pantalla)
+$parametrosCalidad = [];
 
 // Obtener lotes disponibles
 $lotesDisponibles = $db->fetchAll("
@@ -95,6 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$fechaPrueba) $errors[] = 'La fecha de prueba es requerida';
     if ($totalGranos < 100) $errors[] = 'El total de granos debe ser al menos 100';
     if (!$calidad) $errors[] = 'Debe seleccionar una calidad resultado';
+    if ($calidad !== 'RECHAZADO' && !$tablaCalidadSalidaExiste) {
+        $errors[] = 'Falta ejecutar el patch de base de datos para habilitar Calidad de salida.';
+    }
 
     if ($loteId) {
         $fichaRegistro = $db->fetch("
@@ -126,38 +148,142 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             $db->beginTransaction();
+
+            $loteBase = $db->fetch("
+                SELECT l.codigo, l.peso_inicial_kg, l.estado_proceso,
+                       p.nombre as proveedor, v.nombre as variedad
+                FROM lotes l
+                JOIN proveedores p ON l.proveedor_id = p.id
+                JOIN variedades v ON l.variedad_id = v.id
+                WHERE l.id = :id
+            ", ['id' => $loteId]);
             
             // Crear registro
-            $pruebaId = $db->insert('registros_prueba_corte', [
-                'lote_id' => $loteId,
-                'fecha_prueba' => $fechaPrueba,
-                'total_granos' => $totalGranos,
-                'granos_fermentados' => $granosFermentados,
-                'granos_parciales' => $granosParciales,
-                'granos_mohosos' => $granosMohosos,
-                'granos_pizarra' => $granosPizarra,
-                'granos_violetas' => $granosVioletas,
-                'granos_germinados' => $granosGerminados,
-                'granos_dañados' => $granosDañados,
-                'porcentaje_fermentacion' => $porcentajeFermentacion,
-                'humedad' => $humedad ?: null,
-                'calidad_resultado' => $calidad,
-                'observaciones' => $observaciones,
-                'analista_id' => getCurrentUserId()
-            ]);
+            $defectosTotales = $granosMohosos + $granosPizarra + $granosVioletas + $granosGerminados + $granosDañados;
+            $defectosPorcentaje = $totalGranos > 0 ? ($defectosTotales / $totalGranos) * 100 : 0;
+            $decisionLegacy = $calidad === 'RECHAZADO' ? 'RECHAZADO' : 'APROBADO';
+
+            $dataPrueba = [
+                'lote_id' => $loteId
+            ];
+            if ($hasPrCol('tipo_prueba')) {
+                $dataPrueba['tipo_prueba'] = 'POST_SECADO';
+            }
+            if ($colFechaPrueba) {
+                $dataPrueba[$colFechaPrueba] = $fechaPrueba;
+            }
+            if ($colTotalGranos) {
+                $dataPrueba[$colTotalGranos] = $totalGranos;
+            }
+            if ($hasPrCol('codigo_lote') && !empty($loteBase['codigo'])) {
+                $dataPrueba['codigo_lote'] = $loteBase['codigo'];
+            }
+            if ($hasPrCol('proveedor_origen') && !empty($loteBase['proveedor'])) {
+                $dataPrueba['proveedor_origen'] = $loteBase['proveedor'];
+            }
+            if ($hasPrCol('tipo_cacao') && !empty($loteBase['variedad'])) {
+                $dataPrueba['tipo_cacao'] = $loteBase['variedad'];
+            }
+            if ($hasPrCol('estado')) {
+                $dataPrueba['estado'] = 'POST_SECADO';
+            }
+            if ($hasPrCol('cantidad_qq') && isset($loteBase['peso_inicial_kg'])) {
+                $dataPrueba['cantidad_qq'] = Helpers::kgToQQ((float)$loteBase['peso_inicial_kg']);
+            }
+
+            if ($hasPrCol('granos_fermentados')) {
+                $dataPrueba['granos_fermentados'] = $granosFermentados;
+            }
+            if ($hasPrCol('bien_fermentados')) {
+                $dataPrueba['bien_fermentados'] = $granosFermentados;
+            }
+            if ($hasPrCol('granos_parciales')) {
+                $dataPrueba['granos_parciales'] = $granosParciales;
+            }
+            if ($hasPrCol('granos_parcialmente_fermentados')) {
+                $dataPrueba['granos_parcialmente_fermentados'] = $granosParciales;
+            }
+            if ($hasPrCol('granos_mohosos')) {
+                $dataPrueba['granos_mohosos'] = $granosMohosos;
+            }
+            if ($hasPrCol('mohosos')) {
+                $dataPrueba['mohosos'] = $granosMohosos;
+            }
+            if ($hasPrCol('granos_pizarra')) {
+                $dataPrueba['granos_pizarra'] = $granosPizarra;
+            }
+            if ($hasPrCol('pizarrosos')) {
+                $dataPrueba['pizarrosos'] = $granosPizarra;
+            }
+            if ($hasPrCol('granos_violetas')) {
+                $dataPrueba['granos_violetas'] = $granosVioletas;
+            }
+            if ($hasPrCol('violeta')) {
+                $dataPrueba['violeta'] = $granosVioletas;
+            }
+            if ($hasPrCol('granos_germinados')) {
+                $dataPrueba['granos_germinados'] = $granosGerminados;
+            }
+            if ($hasPrCol('germinados')) {
+                $dataPrueba['germinados'] = $granosGerminados;
+            }
+            if ($hasPrCol('granos_dañados')) {
+                $dataPrueba['granos_dañados'] = $granosDañados;
+            }
+            if ($hasPrCol('granos_danados')) {
+                $dataPrueba['granos_danados'] = $granosDañados;
+            }
+            if ($hasPrCol('insectados')) {
+                $dataPrueba['insectados'] = $granosDañados;
+            }
+
+            if ($hasPrCol('porcentaje_fermentacion')) {
+                $dataPrueba['porcentaje_fermentacion'] = $porcentajeFermentacion;
+            }
+            if ($hasPrCol('defectos_totales')) {
+                $dataPrueba['defectos_totales'] = $defectosPorcentaje;
+            }
+            if ($hasPrCol('cumple_especificacion')) {
+                $dataPrueba['cumple_especificacion'] = $calidad === 'RECHAZADO' ? 0 : 1;
+            }
+            if ($hasPrCol('humedad')) {
+                $dataPrueba['humedad'] = $humedad ?: null;
+            }
+            if ($colCalidadResultado) {
+                $dataPrueba[$colCalidadResultado] = $colCalidadResultado === 'decision_lote' ? $decisionLegacy : $calidad;
+            }
+            if ($hasPrCol('decision_lote')) {
+                $dataPrueba['decision_lote'] = $decisionLegacy;
+            }
+            if ($hasPrCol('observaciones')) {
+                $dataPrueba['observaciones'] = $observaciones !== '' ? $observaciones : null;
+            }
+            if ($colAnalistaId) {
+                $dataPrueba[$colAnalistaId] = getCurrentUserId();
+            }
+
+            $pruebaId = $db->insert('registros_prueba_corte', $dataPrueba);
             
             // Actualizar estado del lote
-            $nuevoEstado = $calidad === 'RECHAZADO' ? 'RECHAZADO' : 'EMPAQUETADO';
-            $db->update('lotes', [
-                'estado_proceso' => $nuevoEstado,
-                'calidad_final' => $calidad
-            ], 'id = :id', ['id' => $loteId]);
+            $nuevoEstado = $calidad === 'RECHAZADO' ? 'RECHAZADO' : 'CALIDAD_SALIDA';
+            $dataLote = [
+                'estado_proceso' => $nuevoEstado
+            ];
+            if ($hasLoteCol('calidad_final')) {
+                $dataLote['calidad_final'] = $calidad;
+            }
+            $db->update('lotes', $dataLote, 'id = :id', ['id' => $loteId]);
             
             // Registrar historial
             Helpers::logHistory($loteId, $nuevoEstado, 'Prueba de corte: ' . $calidad . ' (' . number_format($porcentajeFermentacion, 1) . '% fermentación)', getCurrentUserId());
             
             $db->commit();
             
+            if ($nuevoEstado === 'CALIDAD_SALIDA') {
+                setFlash('success', 'Prueba de corte registrada. Continúe con la ficha de Calidad de salida.');
+                redirect('/calidad-salida/crear.php?lote_id=' . (int)$loteId . '&from=prueba-corte');
+            }
+
             setFlash('success', 'Prueba de corte registrada correctamente');
             redirect('/prueba-corte/ver.php?id=' . $pruebaId);
             

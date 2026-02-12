@@ -11,6 +11,63 @@ requireAuth();
 $db = Database::getInstance();
 $errors = [];
 
+if (!Helpers::ensureEmpaquetadoTable()) {
+    setFlash('error', 'No se pudo habilitar el módulo de empaquetado en esta base de datos.');
+    redirect('/calidad-salida/index.php');
+}
+
+// Compatibilidad de esquema
+$colsLotes = Helpers::getTableColumns('lotes');
+$hasLoteCol = static fn(string $name): bool => in_array($name, $colsLotes, true);
+$colsPrueba = Helpers::getTableColumns('registros_prueba_corte');
+$hasPrCol = static fn(string $name): bool => in_array($name, $colsPrueba, true);
+$colsSecado = Helpers::getTableColumns('registros_secado');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+
+$prCalidadExpr = 'NULL';
+$prPctFerExpr = 'NULL';
+$joinPrueba = '';
+
+if (!empty($colsPrueba)) {
+    $prCalidadExpr = $hasPrCol('calidad_resultado')
+        ? 'rpc.calidad_resultado'
+        : ($hasPrCol('calidad_determinada') ? 'rpc.calidad_determinada' : ($hasPrCol('decision_lote') ? 'rpc.decision_lote' : 'NULL'));
+    $prTotalExpr = $hasPrCol('total_granos') ? 'rpc.total_granos' : ($hasPrCol('granos_analizados') ? 'rpc.granos_analizados' : '0');
+    $prFerExpr = $hasPrCol('granos_fermentados') ? 'rpc.granos_fermentados' : ($hasPrCol('bien_fermentados') ? 'rpc.bien_fermentados' : '0');
+    $prParExpr = $hasPrCol('granos_parciales')
+        ? 'rpc.granos_parciales'
+        : ($hasPrCol('granos_parcialmente_fermentados') ? 'rpc.granos_parcialmente_fermentados' : '0');
+    $prPctFerCalcExpr = "CASE WHEN {$prTotalExpr} > 0 THEN (({$prFerExpr} + ({$prParExpr} * 0.5)) / {$prTotalExpr}) * 100 ELSE NULL END";
+    $prPctFerExpr = $hasPrCol('porcentaje_fermentacion')
+        ? "COALESCE(rpc.porcentaje_fermentacion, {$prPctFerCalcExpr})"
+        : $prPctFerCalcExpr;
+
+    $joinPrueba = "
+        LEFT JOIN registros_prueba_corte rpc ON rpc.id = (
+            SELECT rpc2.id
+            FROM registros_prueba_corte rpc2
+            WHERE rpc2.lote_id = l.id
+            ORDER BY rpc2.id DESC
+            LIMIT 1
+        )
+    ";
+}
+
+$loteCalidadExpr = "COALESCE({$prCalidadExpr}, 'N/D')";
+
+$pesoSecadoExpr = 'NULL';
+$humedadSecadoExpr = 'NULL';
+$joinSecado = '';
+if (!empty($colsSecado)) {
+    $pesoSecadoExpr = $hasSecCol('peso_final')
+        ? 'rs.peso_final'
+        : ($hasSecCol('qq_cargados')
+            ? '(rs.qq_cargados * 45.3592)'
+            : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
+    $humedadSecadoExpr = $hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL';
+    $joinSecado = "LEFT JOIN registros_secado rs ON rs.lote_id = l.id";
+}
+
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
@@ -18,13 +75,16 @@ $loteInfo = null;
 if ($loteId) {
     $loteInfo = $db->fetch("
         SELECT l.*, p.nombre as proveedor, p.codigo as proveedor_codigo, v.nombre as variedad,
-               rpc.porcentaje_fermentacion, rpc.calidad_resultado,
-               rs.peso_final as peso_secado, rs.humedad_final as humedad_secado
+               {$prPctFerExpr} as porcentaje_fermentacion,
+               {$prCalidadExpr} as calidad_resultado,
+               {$loteCalidadExpr} as calidad_final,
+               {$pesoSecadoExpr} as peso_secado,
+               {$humedadSecadoExpr} as humedad_secado
         FROM lotes l
         JOIN proveedores p ON l.proveedor_id = p.id
         JOIN variedades v ON l.variedad_id = v.id
-        LEFT JOIN registros_prueba_corte rpc ON rpc.lote_id = l.id
-        LEFT JOIN registros_secado rs ON rs.lote_id = l.id
+        {$joinPrueba}
+        {$joinSecado}
         WHERE l.id = :id AND l.estado_proceso = 'EMPAQUETADO'
     ", ['id' => $loteId]);
     
@@ -46,9 +106,11 @@ if ($loteId) {
 
 // Obtener lotes disponibles
 $lotesDisponibles = $db->fetchAll("
-    SELECT l.id, l.codigo, p.nombre as proveedor, l.calidad_final
+    SELECT l.id, l.codigo, p.nombre as proveedor,
+           {$loteCalidadExpr} as calidad_final
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
+    {$joinPrueba}
     WHERE l.estado_proceso = 'EMPAQUETADO'
     AND NOT EXISTS (SELECT 1 FROM registros_empaquetado re WHERE re.lote_id = l.id)
     ORDER BY l.fecha_entrada DESC
@@ -157,14 +219,15 @@ ob_start();
                         <label class="form-label">Calidad Final</label>
                         <div class="form-control bg-olive/10">
                             <?php
-                            $badgeClass = match($loteInfo['calidad_final']) {
+                            $calidadFinal = (string)($loteInfo['calidad_final'] ?? 'N/D');
+                            $badgeClass = match($calidadFinal) {
                                 'PREMIUM' => 'badge-success',
                                 'EXPORTACION' => 'badge-primary',
                                 'NACIONAL' => 'badge-gold',
                                 default => 'badge-secondary'
                             };
                             ?>
-                            <span class="badge <?= $badgeClass ?>"><?= $loteInfo['calidad_final'] ?></span>
+                            <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars($calidadFinal) ?></span>
                         </div>
                     </div>
                 </div>
@@ -199,7 +262,7 @@ ob_start();
                         <?php foreach ($lotesDisponibles as $lote): ?>
                             <option value="<?= $lote['id'] ?>" <?= (isset($_POST['lote_id']) && $_POST['lote_id'] == $lote['id']) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($lote['codigo']) ?> - <?= htmlspecialchars($lote['proveedor']) ?>
-                                (<?= $lote['calidad_final'] ?>)
+                                (<?= htmlspecialchars((string)($lote['calidad_final'] ?? 'N/D')) ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>

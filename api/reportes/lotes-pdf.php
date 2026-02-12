@@ -80,10 +80,19 @@ if (!empty($filtrosTexto)) {
 
 $pdf = new PdfReport('Reporte de Lotes', $subtitle);
 
-// Obtener nombre de empresa
-$empresaData = $db->fetch("SELECT nombre FROM empresa LIMIT 1");
+// Obtener datos de empresa
+$empresaData = $db->fetch("SELECT nombre, logo FROM empresa LIMIT 1");
 if ($empresaData) {
-    $pdf->setEmpresa($empresaData['nombre']);
+    if (!empty($empresaData['nombre'])) {
+        $pdf->setEmpresa($empresaData['nombre']);
+    }
+    $logoPath = trim((string)($empresaData['logo'] ?? ''));
+    if ($logoPath !== '') {
+        $logoUrl = (preg_match('#^https?://#i', $logoPath) || str_starts_with($logoPath, 'data:image/'))
+            ? $logoPath
+            : rtrim(APP_URL, '/') . '/' . ltrim($logoPath, '/');
+        $pdf->setLogoUrl($logoUrl);
+    }
 }
 
 // Estadísticas principales
@@ -120,6 +129,7 @@ if (!empty($lotes)) {
         'FERMENTACION' => 'yellow',
         'SECADO' => 'yellow',
         'CALIDAD_POST' => 'yellow',
+        'CALIDAD_SALIDA' => 'yellow',
         'EMPAQUETADO' => 'yellow',
         'ALMACENADO' => 'green',
         'DESPACHO' => 'green',

@@ -221,8 +221,11 @@ const App = {
                 'X-CSRF-Token': this.csrfToken
             }
         };
-        
-        const response = await fetch(this.baseUrl + url, {...defaultOptions, ...options});
+
+        const isAbsoluteUrl = /^https?:\/\//i.test(url);
+        const requestUrl = isAbsoluteUrl ? url : (this.baseUrl + url);
+
+        const response = await fetch(requestUrl, {...defaultOptions, ...options});
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);

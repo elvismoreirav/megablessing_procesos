@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS `lotes` (
     `peso_qq` DECIMAL(10,2),
     `humedad_inicial` DECIMAL(5,2),
     `observaciones` TEXT,
-    `estado_proceso` ENUM('RECEPCION','CALIDAD','PRE_SECADO','FERMENTACION','SECADO','CALIDAD_POST','EMPAQUETADO','ALMACENADO','DESPACHO','FINALIZADO') DEFAULT 'RECEPCION',
+    `estado_proceso` ENUM('RECEPCION','CALIDAD','PRE_SECADO','FERMENTACION','SECADO','CALIDAD_POST','CALIDAD_SALIDA','EMPAQUETADO','ALMACENADO','DESPACHO','FINALIZADO','RECHAZADO') DEFAULT 'RECEPCION',
     `usuario_id` INT NOT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -385,6 +385,55 @@ CREATE TABLE IF NOT EXISTS `registros_prueba_corte` (
     FOREIGN KEY (`lote_id`) REFERENCES `lotes`(`id`) ON DELETE CASCADE,
     FOREIGN KEY (`responsable_analisis_id`) REFERENCES `usuarios`(`id`),
     FOREIGN KEY (`responsable_accion_id`) REFERENCES `usuarios`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ========================================================================
+-- REGISTRO DE EMPAQUETADO
+-- ========================================================================
+
+CREATE TABLE IF NOT EXISTS `registros_empaquetado` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `lote_id` INT NOT NULL,
+    `tipo_empaque` VARCHAR(30) NOT NULL,
+    `peso_saco` DECIMAL(10,2) NOT NULL,
+    `fecha_empaquetado` DATE NULL,
+    `numero_sacos` INT NULL,
+    `peso_total` DECIMAL(10,2) NULL,
+    `lote_empaque` VARCHAR(80) NULL,
+    `destino` VARCHAR(150) NULL,
+    `observaciones` TEXT,
+    `operador_id` INT,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`lote_id`) REFERENCES `lotes`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`operador_id`) REFERENCES `usuarios`(`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ========================================================================
+-- REGISTRO DE CALIDAD DE SALIDA
+-- ========================================================================
+
+CREATE TABLE IF NOT EXISTS `registros_calidad_salida` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `lote_id` INT NOT NULL,
+    `fecha_registro` DATE NOT NULL,
+    `fichas_conforman_lote` VARCHAR(255) NOT NULL,
+    `categoria_proveedor` VARCHAR(120) NOT NULL,
+    `fecha_entrada` DATE NOT NULL,
+    `variedad` VARCHAR(100) NOT NULL,
+    `grado_calidad` ENUM('GRADO_1','GRADO_2','GRADO_3','NO_APLICA') DEFAULT 'NO_APLICA',
+    `estado_producto` VARCHAR(50) NOT NULL,
+    `estado_fermentacion` VARCHAR(50) NOT NULL,
+    `certificaciones` JSON,
+    `certificaciones_texto` VARCHAR(255),
+    `otra_certificacion` VARCHAR(120),
+    `observaciones` TEXT,
+    `usuario_id` INT,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_calidad_salida_lote` (`lote_id`),
+    FOREIGN KEY (`lote_id`) REFERENCES `lotes`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ========================================================================

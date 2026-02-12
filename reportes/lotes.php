@@ -168,6 +168,7 @@ ob_start();
                     <option value="FERMENTACION" <?= $estado === 'FERMENTACION' ? 'selected' : '' ?>>Fermentación</option>
                     <option value="SECADO" <?= $estado === 'SECADO' ? 'selected' : '' ?>>Secado</option>
                     <option value="CALIDAD_POST" <?= $estado === 'CALIDAD_POST' ? 'selected' : '' ?>>Prueba de Corte</option>
+                    <option value="CALIDAD_SALIDA" <?= $estado === 'CALIDAD_SALIDA' ? 'selected' : '' ?>>Calidad de salida</option>
                     <option value="EMPAQUETADO" <?= $estado === 'EMPAQUETADO' ? 'selected' : '' ?>>Empaquetado</option>
                     <option value="ALMACENADO" <?= $estado === 'ALMACENADO' ? 'selected' : '' ?>>Almacenado</option>
                     <option value="DESPACHO" <?= $estado === 'DESPACHO' ? 'selected' : '' ?>>Despacho</option>
@@ -240,6 +241,7 @@ ob_start();
                 'FERMENTACION' => 'bg-orange-100 text-orange-800',
                 'SECADO' => 'bg-yellow-100 text-yellow-800',
                 'CALIDAD_POST' => 'bg-purple-100 text-purple-800',
+                'CALIDAD_SALIDA' => 'bg-emerald-100 text-emerald-800',
                 'EMPAQUETADO' => 'bg-blue-100 text-blue-800',
                 'ALMACENADO' => 'bg-slate-100 text-slate-800',
                 'DESPACHO' => 'bg-cyan-100 text-cyan-800',
@@ -253,6 +255,7 @@ ob_start();
                 'FERMENTACION' => 'Fermentación',
                 'SECADO' => 'Secado',
                 'CALIDAD_POST' => 'Prueba de Corte',
+                'CALIDAD_SALIDA' => 'Calidad de salida',
                 'EMPAQUETADO' => 'Empaquetado',
                 'ALMACENADO' => 'Almacenado',
                 'DESPACHO' => 'Despacho',

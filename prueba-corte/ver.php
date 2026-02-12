@@ -83,6 +83,50 @@ if (!$prueba) {
     redirect('/prueba-corte/index.php');
 }
 
+$tablaCalidadSalidaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+$registroCalidadSalida = null;
+if ($tablaCalidadSalidaExiste) {
+    $registroCalidadSalida = $db->fetch(
+        "SELECT id FROM registros_calidad_salida WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1",
+        ['lote_id' => $prueba['lote_id']]
+    );
+}
+
+$accionSiguiente = null;
+if (strtoupper((string)$prueba['calidad_resultado']) === 'RECHAZADO') {
+    $accionSiguiente = [
+        'titulo' => 'Lote rechazado',
+        'descripcion' => 'Este lote fue rechazado en prueba de corte y no avanza a calidad de salida.',
+        'url' => APP_URL . '/lotes/ver.php?id=' . (int)$prueba['lote_id'],
+        'label' => 'Ver lote',
+        'disabled' => false,
+    ];
+} elseif (!$tablaCalidadSalidaExiste) {
+    $accionSiguiente = [
+        'titulo' => 'Patch pendiente',
+        'descripcion' => 'Falta ejecutar el patch de base de datos para habilitar Calidad de salida.',
+        'url' => '#',
+        'label' => 'Patch requerido',
+        'disabled' => true,
+    ];
+} elseif ($registroCalidadSalida) {
+    $accionSiguiente = [
+        'titulo' => 'Calidad de salida ya registrada',
+        'descripcion' => 'Este lote ya tiene registro de calidad de salida.',
+        'url' => APP_URL . '/calidad-salida/ver.php?id=' . (int)$registroCalidadSalida['id'],
+        'label' => 'Ver calidad de salida',
+        'disabled' => false,
+    ];
+} else {
+    $accionSiguiente = [
+        'titulo' => 'Siguiente paso: Calidad de salida',
+        'descripcion' => 'Complete la ficha de calidad de salida antes del empaquetado.',
+        'url' => APP_URL . '/calidad-salida/crear.php?lote_id=' . (int)$prueba['lote_id'] . '&from=prueba-corte',
+        'label' => 'Ir a calidad de salida',
+        'disabled' => false,
+    ];
+}
+
 // Calcular porcentajes
 $total = max(1, (int)($prueba['total_granos'] ?? 0));
 $granosDanados = (int)($prueba['granos_danados'] ?? ($prueba['granos_dañados'] ?? 0));
@@ -148,6 +192,22 @@ ob_start();
         </a>
     </div>
 </div>
+
+<?php if ($accionSiguiente): ?>
+<div class="card mb-6 border border-emerald-200 bg-emerald-50/60">
+    <div class="card-body">
+        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Flujo guiado</p>
+        <h3 class="text-lg font-semibold text-emerald-900 mt-1"><?= htmlspecialchars($accionSiguiente['titulo']) ?></h3>
+        <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($accionSiguiente['descripcion']) ?></p>
+        <div class="mt-4">
+            <a href="<?= htmlspecialchars($accionSiguiente['url']) ?>"
+               class="btn <?= $accionSiguiente['disabled'] ? 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' : 'btn-primary' ?>">
+                <?= htmlspecialchars($accionSiguiente['label']) ?>
+            </a>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Resultados Principales -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

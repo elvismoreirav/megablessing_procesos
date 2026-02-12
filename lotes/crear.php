@@ -15,7 +15,14 @@ $colsProveedores = array_column($db->fetchAll("SHOW COLUMNS FROM proveedores"), 
 $filtroProveedorReal = in_array('es_categoria', $colsProveedores, true)
     ? ' AND (es_categoria = 0 OR es_categoria IS NULL)'
     : '';
-$proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1{$filtroProveedorReal} ORDER BY nombre");
+$selectProveedores = ['id', 'nombre', 'codigo'];
+if (in_array('tipo', $colsProveedores, true)) {
+    $selectProveedores[] = 'tipo';
+}
+if (in_array('categoria', $colsProveedores, true)) {
+    $selectProveedores[] = 'categoria';
+}
+$proveedores = $db->fetchAll("SELECT " . implode(', ', $selectProveedores) . " FROM proveedores WHERE activo = 1{$filtroProveedorReal} ORDER BY nombre");
 $variedades = $db->fetchAll("SELECT id, nombre FROM variedades WHERE activo = 1 ORDER BY nombre");
 $estadosProducto = $db->fetchAll("SELECT id, nombre, codigo FROM estados_producto WHERE activo = 1 ORDER BY id");
 $estadosFermentacion = $db->fetchAll("SELECT id, nombre, codigo FROM estados_fermentacion WHERE activo = 1 ORDER BY id");
@@ -47,12 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        // Obtener código del proveedor
-        $proveedor = $db->fetch("SELECT codigo FROM proveedores WHERE id = ?", [$proveedorId]);
-
         // Generar código del lote
-        // NOTA: Helpers::generateLoteCode debe resolver IDs a códigos y usar NF si no hay fermentación.
-        $codigo = Helpers::generateLoteCode($proveedor['codigo'] ?? 'XX', $fechaEntrada, $estadoProductoId, $estadoFermentacionId);
+        // Usa prefijo por categoría/tipo de proveedor (M, B, ES, FM, VP), no código interno del proveedor.
+        $codigo = Helpers::generateLoteCode($proveedorId, $fechaEntrada, $estadoProductoId, $estadoFermentacionId);
 
         // Calcular peso en quintales
         $pesoInicialQQ = Helpers::kgToQQ($pesoInicialKg);
@@ -152,8 +156,19 @@ ob_start();
                         <select name="proveedor_id" class="form-control form-select" required>
                             <option value="">Seleccione un proveedor</option>
                             <?php foreach ($proveedores as $prov): ?>
+                                <?php
+                                $prefijoReferencia = trim((string)($prov['categoria'] ?? ''));
+                                if ($prefijoReferencia === '') {
+                                    $prefijoReferencia = trim((string)($prov['tipo'] ?? ''));
+                                }
+                                if ($prefijoReferencia === '') {
+                                    $prefijoReferencia = trim((string)($prov['codigo'] ?? ''));
+                                }
+                                $prefijoCodificacion = Helpers::resolveProveedorLotePrefix($prefijoReferencia);
+                                ?>
                                 <option value="<?= (int)$prov['id'] ?>"
                                         data-codigo="<?= htmlspecialchars($prov['codigo']) ?>"
+                                        data-prefijo="<?= htmlspecialchars($prefijoCodificacion) ?>"
                                         <?= (($_POST['proveedor_id'] ?? '') == $prov['id']) ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($prov['codigo']) ?> - <?= htmlspecialchars($prov['nombre']) ?>
                                 </option>
@@ -293,7 +308,7 @@ ob_start();
                     <div>
                         <p class="text-sm text-warmgray">Código del Lote (se generará automáticamente)</p>
                         <p class="text-xl font-bold text-primary" id="codigo_preview">XX-DD-MM-AA-EC-NF</p>
-                        <p class="text-xs text-warmgray mt-1">Proveedor-Día-Mes-Año-Estado-Fermentado</p>
+                        <p class="text-xs text-warmgray mt-1">Categoría-Día-Mes-Año-Estado-Fermentado</p>
                     </div>
                 </div>
             </div>
@@ -332,7 +347,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateCodigoPreview() {
         const proveedorOption = proveedorSelect.options[proveedorSelect.selectedIndex];
-        const proveedorCodigo = proveedorOption?.dataset?.codigo || 'XX';
+        const proveedorCodigo = proveedorOption?.dataset?.prefijo || proveedorOption?.dataset?.codigo || 'XX';
 
         const fecha = fechaInput.value ? new Date(fechaInput.value) : new Date();
         const dia = String(fecha.getDate()).padStart(2, '0');

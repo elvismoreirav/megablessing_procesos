@@ -46,49 +46,209 @@ if (!$lote) {
 // Obtener empresa
 $empresa = $db->fetch("SELECT * FROM empresa WHERE id = 1");
 
+// Compatibilidad de esquema para reportes
+$colsFermentacion = Helpers::getTableColumns('registros_fermentacion');
+$hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
+$colsFerCtrl = Helpers::getTableColumns('fermentacion_control_diario');
+$hasFerCtrlCol = static fn(string $name): bool => in_array($name, $colsFerCtrl, true);
+$colsSecado = Helpers::getTableColumns('registros_secado');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+$colsSecCtrl = Helpers::getTableColumns('secado_control_temperatura');
+$hasSecCtrlCol = static fn(string $name): bool => in_array($name, $colsSecCtrl, true);
+$colsPrueba = Helpers::getTableColumns('registros_prueba_corte');
+$hasPrCol = static fn(string $name): bool => in_array($name, $colsPrueba, true);
+
 // Obtener registros de fermentación
+$ferRespJoinCol = $hasFerCol('responsable_id')
+    ? 'rf.responsable_id'
+    : ($hasFerCol('operador_id') ? 'rf.operador_id' : 'NULL');
+$ferFechaFinExpr = $hasFerCol('fecha_fin')
+    ? 'rf.fecha_fin'
+    : ($hasFerCol('fecha_salida') ? 'rf.fecha_salida' : 'NULL');
+$ferAprobadoExpr = $hasFerCol('aprobado_secado') ? 'rf.aprobado_secado' : '0';
+$ferObsFinalExpr = $hasFerCol('observaciones_finales')
+    ? 'rf.observaciones_finales'
+    : ($hasFerCol('observaciones')
+        ? 'rf.observaciones'
+        : ($hasFerCol('observaciones_generales') ? 'rf.observaciones_generales' : 'NULL'));
+
 $registroFermentacion = $db->fetch("
-    SELECT rf.*, u.nombre as responsable_nombre
+    SELECT rf.*,
+           {$ferFechaFinExpr} as fecha_fin_rep,
+           {$ferAprobadoExpr} as aprobado_secado_rep,
+           {$ferObsFinalExpr} as observaciones_finales_rep,
+           u.nombre as responsable_nombre
     FROM registros_fermentacion rf
-    LEFT JOIN usuarios u ON rf.responsable_id = u.id
+    LEFT JOIN usuarios u ON {$ferRespJoinCol} = u.id
     WHERE rf.lote_id = ?
+    ORDER BY rf.id DESC
+    LIMIT 1
 ", [$id]);
 
 // Obtener control diario de fermentación
 $controlFermentacion = [];
-if ($registroFermentacion) {
-    $controlFermentacion = $db->fetchAll("
-        SELECT * FROM fermentacion_control_diario 
-        WHERE fermentacion_id = ? 
-        ORDER BY dia ASC
-    ", [$registroFermentacion['id']]);
+if ($registroFermentacion && !empty($colsFerCtrl)) {
+    $fkFerCtrlCol = $hasFerCtrlCol('fermentacion_id')
+        ? 'fermentacion_id'
+        : ($hasFerCtrlCol('registro_fermentacion_id') ? 'registro_fermentacion_id' : null);
+
+    if ($fkFerCtrlCol) {
+        $ferDiaCtrlExpr = $hasFerCtrlCol('dia') ? 'fcd.dia' : 'NULL';
+        $ferFechaCtrlExpr = $hasFerCtrlCol('fecha') ? 'fcd.fecha' : 'NULL';
+        $ferVolteoCtrlExpr = $hasFerCtrlCol('volteo') ? 'fcd.volteo' : '0';
+        $ferTempMasaCtrlExpr = $hasFerCtrlCol('temperatura_masa')
+            ? 'fcd.temperatura_masa'
+            : ($hasFerCtrlCol('temperatura_am')
+                ? 'fcd.temperatura_am'
+                : ($hasFerCtrlCol('temp_masa')
+                    ? 'fcd.temp_masa'
+                    : ($hasFerCtrlCol('temp_am') ? 'fcd.temp_am' : 'NULL')));
+        $ferTempAmbCtrlExpr = $hasFerCtrlCol('temperatura_ambiente')
+            ? 'fcd.temperatura_ambiente'
+            : ($hasFerCtrlCol('temperatura_pm')
+                ? 'fcd.temperatura_pm'
+                : ($hasFerCtrlCol('temp_ambiente')
+                    ? 'fcd.temp_ambiente'
+                    : ($hasFerCtrlCol('temp_pm') ? 'fcd.temp_pm' : 'NULL')));
+        $ferPhPulpaCtrlExpr = $hasFerCtrlCol('ph_pulpa') ? 'fcd.ph_pulpa' : ($hasFerCtrlCol('ph_am') ? 'fcd.ph_am' : 'NULL');
+        $ferPhCotCtrlExpr = $hasFerCtrlCol('ph_cotiledon') ? 'fcd.ph_cotiledon' : ($hasFerCtrlCol('ph_pm') ? 'fcd.ph_pm' : 'NULL');
+        $ferOlorCtrlExpr = $hasFerCtrlCol('olor') ? 'fcd.olor' : 'NULL';
+        $ferColorCtrlExpr = $hasFerCtrlCol('color') ? 'fcd.color' : 'NULL';
+        $ferOrderCtrlExpr = $hasFerCtrlCol('dia')
+            ? 'fcd.dia ASC'
+            : ($hasFerCtrlCol('fecha') ? 'fcd.fecha ASC' : 'fcd.id ASC');
+
+        $controlFermentacion = $db->fetchAll("
+            SELECT {$ferDiaCtrlExpr} as dia,
+                   {$ferFechaCtrlExpr} as fecha_control,
+                   {$ferVolteoCtrlExpr} as volteo,
+                   {$ferTempMasaCtrlExpr} as temperatura_masa,
+                   {$ferTempAmbCtrlExpr} as temperatura_ambiente,
+                   {$ferPhPulpaCtrlExpr} as ph_pulpa,
+                   {$ferPhCotCtrlExpr} as ph_cotiledon,
+                   {$ferOlorCtrlExpr} as olor,
+                   {$ferColorCtrlExpr} as color
+            FROM fermentacion_control_diario fcd
+            WHERE fcd.{$fkFerCtrlCol} = ?
+            ORDER BY {$ferOrderCtrlExpr}
+        ", [$registroFermentacion['id']]);
+    }
 }
 
 // Obtener registro de secado
+$secRespJoinCol = $hasSecCol('responsable_id')
+    ? 'rs.responsable_id'
+    : ($hasSecCol('operador_id') ? 'rs.operador_id' : 'NULL');
+$secFechaExpr = $hasSecCol('fecha')
+    ? 'rs.fecha'
+    : ($hasSecCol('fecha_inicio')
+        ? 'rs.fecha_inicio'
+        : ($hasSecCol('created_at') ? 'DATE(rs.created_at)' : 'NULL'));
+$secHumedadIniExpr = $hasSecCol('humedad_inicial') ? 'rs.humedad_inicial' : 'NULL';
+$secHumedadFinExpr = $hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL';
+
 $registroSecado = $db->fetch("
-    SELECT rs.*, u.nombre as responsable_nombre
+    SELECT rs.*,
+           {$secFechaExpr} as fecha_rep,
+           {$secHumedadIniExpr} as humedad_inicial_rep,
+           {$secHumedadFinExpr} as humedad_final_rep,
+           u.nombre as responsable_nombre
     FROM registros_secado rs
-    LEFT JOIN usuarios u ON rs.responsable_id = u.id
+    LEFT JOIN usuarios u ON {$secRespJoinCol} = u.id
     WHERE rs.lote_id = ?
+    ORDER BY rs.id DESC
+    LIMIT 1
 ", [$id]);
 
 // Obtener control de temperatura de secado
 $controlSecado = [];
-if ($registroSecado) {
-    $controlSecado = $db->fetchAll("
-        SELECT * FROM secado_control_temperatura 
-        WHERE secado_id = ? 
-        ORDER BY fecha ASC, slot ASC
-    ", [$registroSecado['id']]);
+if ($registroSecado && !empty($colsSecCtrl)) {
+    $fkSecCtrlCol = $hasSecCtrlCol('secado_id')
+        ? 'secado_id'
+        : ($hasSecCtrlCol('registro_secado_id') ? 'registro_secado_id' : null);
+
+    if ($fkSecCtrlCol) {
+        $secCtrlFechaExpr = $hasSecCtrlCol('fecha') ? 'sct.fecha' : 'NULL';
+        $secCtrlTempExpr = $hasSecCtrlCol('temperatura') ? 'sct.temperatura' : 'NULL';
+        if ($hasSecCtrlCol('slot')) {
+            $secCtrlSlotExpr = 'sct.slot';
+            $secCtrlOrderExpr = ($hasSecCtrlCol('fecha') ? 'sct.fecha ASC, ' : '') . 'sct.slot ASC';
+        } elseif ($hasSecCtrlCol('hora')) {
+            $secCtrlSlotExpr = "CASE
+                WHEN TIME(sct.hora) <= '06:30:00' THEN 1
+                WHEN TIME(sct.hora) <= '08:30:00' THEN 2
+                WHEN TIME(sct.hora) <= '10:30:00' THEN 3
+                WHEN TIME(sct.hora) <= '12:30:00' THEN 4
+                WHEN TIME(sct.hora) <= '14:30:00' THEN 5
+                WHEN TIME(sct.hora) <= '16:30:00' THEN 6
+                ELSE 7
+            END";
+            $secCtrlOrderExpr = ($hasSecCtrlCol('fecha') ? 'sct.fecha ASC, ' : '') . 'sct.hora ASC';
+        } elseif ($hasSecCtrlCol('turno')) {
+            $secCtrlSlotExpr = "CASE UPPER(CAST(sct.turno AS CHAR))
+                WHEN '1' THEN 1
+                WHEN '2' THEN 2
+                WHEN '3' THEN 3
+                WHEN '4' THEN 4
+                WHEN '5' THEN 5
+                WHEN '6' THEN 6
+                WHEN '7' THEN 7
+                WHEN 'AM' THEN 1
+                WHEN 'PM' THEN 5
+                WHEN 'MANANA' THEN 1
+                WHEN 'MAÑANA' THEN 1
+                ELSE 7
+            END";
+            $secCtrlOrderExpr = ($hasSecCtrlCol('fecha') ? 'sct.fecha ASC, ' : '') . 'sct.turno ASC';
+        } else {
+            $secCtrlSlotExpr = '1';
+            $secCtrlOrderExpr = $hasSecCtrlCol('fecha') ? 'sct.fecha ASC' : 'sct.id ASC';
+        }
+
+        $controlSecado = $db->fetchAll("
+            SELECT {$secCtrlFechaExpr} as fecha,
+                   {$secCtrlSlotExpr} as slot,
+                   {$secCtrlTempExpr} as temperatura
+            FROM secado_control_temperatura sct
+            WHERE sct.{$fkSecCtrlCol} = ?
+            ORDER BY {$secCtrlOrderExpr}
+        ", [$registroSecado['id']]);
+    }
 }
 
 // Obtener pruebas de corte
+$prRespJoinCol = $hasPrCol('responsable_analisis_id')
+    ? 'pc.responsable_analisis_id'
+    : ($hasPrCol('responsable_id')
+        ? 'pc.responsable_id'
+        : ($hasPrCol('usuario_id') ? 'pc.usuario_id' : 'NULL'));
+$prFechaExpr = $hasPrCol('fecha')
+    ? 'pc.fecha'
+    : ($hasPrCol('fecha_prueba')
+        ? 'pc.fecha_prueba'
+        : ($hasPrCol('created_at') ? 'DATE(pc.created_at)' : 'NULL'));
+$prTipoExpr = $hasPrCol('tipo_prueba') ? 'pc.tipo_prueba' : "'POST_SECADO'";
+$prClasifExpr = $hasPrCol('clasificacion_calidad')
+    ? 'pc.clasificacion_calidad'
+    : ($hasPrCol('calidad_determinada') ? 'pc.calidad_determinada' : 'NULL');
+$prDecisionExpr = $hasPrCol('decision_lote') ? 'pc.decision_lote' : 'NULL';
+$prObsExpr = $hasPrCol('observaciones') ? 'pc.observaciones' : 'NULL';
+$prOrderExpr = $hasPrCol('fecha')
+    ? 'pc.fecha ASC'
+    : ($hasPrCol('fecha_prueba') ? 'pc.fecha_prueba ASC' : 'pc.id ASC');
+
 $pruebasCorte = $db->fetchAll("
-    SELECT pc.*, u.nombre as responsable_nombre
+    SELECT pc.*,
+           {$prFechaExpr} as fecha_rep,
+           {$prTipoExpr} as tipo_prueba_rep,
+           {$prClasifExpr} as clasificacion_calidad_rep,
+           {$prDecisionExpr} as decision_lote_rep,
+           {$prObsExpr} as observaciones_rep,
+           u.nombre as responsable_nombre
     FROM registros_prueba_corte pc
-    LEFT JOIN usuarios u ON pc.responsable_analisis_id = u.id
+    LEFT JOIN usuarios u ON {$prRespJoinCol} = u.id
     WHERE pc.lote_id = ?
-    ORDER BY pc.fecha ASC
+    ORDER BY {$prOrderExpr}
 ", [$id]);
 
 // Obtener historial
@@ -113,6 +273,7 @@ $estadosProceso = [
     'FERMENTACION' => ['icon' => '🔥', 'label' => 'Fermentación', 'color' => 'orange'],
     'SECADO' => ['icon' => '☀️', 'label' => 'Secado', 'color' => 'yellow'],
     'CALIDAD_POST' => ['icon' => '✂️', 'label' => 'Prueba Corte', 'color' => 'green'],
+    'CALIDAD_SALIDA' => ['icon' => '✅', 'label' => 'Calidad de salida', 'color' => 'emerald'],
     'EMPAQUETADO' => ['icon' => '📦', 'label' => 'Empaquetado', 'color' => 'purple'],
     'ALMACENADO' => ['icon' => '🏭', 'label' => 'Almacenado', 'color' => 'gray'],
     'DESPACHO' => ['icon' => '🚚', 'label' => 'Despacho', 'color' => 'teal'],
@@ -313,7 +474,8 @@ ob_start();
                 </div>
                 <div class="text-center">
                     <p class="text-sm text-gray-600">Fecha Fin</p>
-                    <p class="font-bold"><?= $registroFermentacion['fecha_fin'] ? date('d/m/Y', strtotime($registroFermentacion['fecha_fin'])) : 'En proceso' ?></p>
+                    <?php $fechaFinFer = $registroFermentacion['fecha_fin_rep'] ?? ($registroFermentacion['fecha_fin'] ?? null); ?>
+                    <p class="font-bold"><?= $fechaFinFer ? date('d/m/Y', strtotime((string)$fechaFinFer)) : 'En proceso' ?></p>
                 </div>
                 <div class="text-center">
                     <p class="text-sm text-gray-600">Cajón</p>
@@ -344,10 +506,17 @@ ob_start();
                     <tbody>
                         <?php foreach ($controlFermentacion as $control): ?>
                         <tr class="border-b border-gray-100 hover:bg-gray-50">
-                            <td class="px-3 py-2 font-medium">Día <?= $control['dia'] ?></td>
-                            <td class="px-3 py-2 text-center"><?= $control['volteo'] ? '✅' : '❌' ?></td>
-                            <td class="px-3 py-2 text-center"><?= $control['temperatura_masa'] ? $control['temperatura_masa'] . '°C' : '-' ?></td>
-                            <td class="px-3 py-2 text-center"><?= $control['temperatura_ambiente'] ? $control['temperatura_ambiente'] . '°C' : '-' ?></td>
+                            <?php
+                            $diaControl = $control['dia'] ?? null;
+                            $fechaControl = $control['fecha_control'] ?? null;
+                            $etiquetaDia = ($diaControl !== null && $diaControl !== '')
+                                ? ('Día ' . $diaControl)
+                                : ($fechaControl ? date('d/m', strtotime((string)$fechaControl)) : '-');
+                            ?>
+                            <td class="px-3 py-2 font-medium"><?= htmlspecialchars((string)$etiquetaDia) ?></td>
+                            <td class="px-3 py-2 text-center"><?= !empty($control['volteo']) ? '✅' : '❌' ?></td>
+                            <td class="px-3 py-2 text-center"><?= isset($control['temperatura_masa']) && $control['temperatura_masa'] !== null && $control['temperatura_masa'] !== '' ? $control['temperatura_masa'] . '°C' : '-' ?></td>
+                            <td class="px-3 py-2 text-center"><?= isset($control['temperatura_ambiente']) && $control['temperatura_ambiente'] !== null && $control['temperatura_ambiente'] !== '' ? $control['temperatura_ambiente'] . '°C' : '-' ?></td>
                             <td class="px-3 py-2 text-center"><?= $control['ph_pulpa'] ?? '-' ?></td>
                             <td class="px-3 py-2 text-center"><?= $control['ph_cotiledon'] ?? '-' ?></td>
                             <td class="px-3 py-2"><?= htmlspecialchars($control['olor'] ?? '-') ?></td>
@@ -359,11 +528,11 @@ ob_start();
             </div>
             <?php endif; ?>
             
-            <?php if ($registroFermentacion['aprobado_secado']): ?>
+            <?php if (!empty($registroFermentacion['aprobado_secado_rep'])): ?>
             <div class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <p class="text-green-800 font-medium">✅ Aprobado para Secado</p>
-                <?php if ($registroFermentacion['observaciones_finales']): ?>
-                <p class="text-sm text-green-700 mt-1"><?= htmlspecialchars($registroFermentacion['observaciones_finales']) ?></p>
+                <?php if (!empty($registroFermentacion['observaciones_finales_rep'])): ?>
+                <p class="text-sm text-green-700 mt-1"><?= htmlspecialchars((string)$registroFermentacion['observaciones_finales_rep']) ?></p>
                 <?php endif; ?>
             </div>
             <?php endif; ?>
@@ -381,7 +550,8 @@ ob_start();
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div class="text-center">
                     <p class="text-sm text-gray-600">Fecha</p>
-                    <p class="font-bold"><?= date('d/m/Y', strtotime($registroSecado['fecha'])) ?></p>
+                    <?php $fechaSecado = $registroSecado['fecha_rep'] ?? ($registroSecado['fecha'] ?? null); ?>
+                    <p class="font-bold"><?= $fechaSecado ? date('d/m/Y', strtotime((string)$fechaSecado)) : 'N/R' ?></p>
                 </div>
                 <div class="text-center">
                     <p class="text-sm text-gray-600">Secadora</p>
@@ -389,12 +559,14 @@ ob_start();
                 </div>
                 <div class="text-center">
                     <p class="text-sm text-gray-600">Humedad Inicial</p>
-                    <p class="font-bold"><?= $registroSecado['humedad_inicial'] ? $registroSecado['humedad_inicial'] . '%' : 'N/R' ?></p>
+                    <?php $humedadInicialSecado = $registroSecado['humedad_inicial_rep'] ?? ($registroSecado['humedad_inicial'] ?? null); ?>
+                    <p class="font-bold"><?= $humedadInicialSecado !== null && $humedadInicialSecado !== '' ? $humedadInicialSecado . '%' : 'N/R' ?></p>
                 </div>
                 <div class="text-center">
                     <p class="text-sm text-gray-600">Humedad Final</p>
-                    <p class="font-bold <?= ($registroSecado['humedad_final'] ?? 100) <= 8 ? 'text-green-600' : 'text-amber-600' ?>">
-                        <?= $registroSecado['humedad_final'] ? $registroSecado['humedad_final'] . '%' : 'N/R' ?>
+                    <?php $humedadFinalSecado = $registroSecado['humedad_final_rep'] ?? ($registroSecado['humedad_final'] ?? null); ?>
+                    <p class="font-bold <?= ($humedadFinalSecado !== null && $humedadFinalSecado !== '' && (float)$humedadFinalSecado <= 8) ? 'text-green-600' : 'text-amber-600' ?>">
+                        <?= $humedadFinalSecado !== null && $humedadFinalSecado !== '' ? $humedadFinalSecado . '%' : 'N/R' ?>
                     </p>
                 </div>
                 <div class="text-center">
@@ -423,15 +595,21 @@ ob_start();
                         <?php 
                         $fechasSecado = [];
                         foreach ($controlSecado as $ctrl) {
-                            $fechasSecado[$ctrl['fecha']][$ctrl['slot']] = $ctrl['temperatura'];
+                            $fechaCtrl = $ctrl['fecha'] ?? null;
+                            $slotCtrl = isset($ctrl['slot']) ? (int)$ctrl['slot'] : 1;
+                            if ($slotCtrl < 1 || $slotCtrl > 7) {
+                                $slotCtrl = 7;
+                            }
+                            $fechaKey = $fechaCtrl ?: 'SIN_FECHA';
+                            $fechasSecado[$fechaKey][$slotCtrl] = $ctrl['temperatura'] ?? null;
                         }
                         foreach ($fechasSecado as $fecha => $slots): 
                         ?>
                         <tr class="border-b border-gray-100 hover:bg-gray-50">
-                            <td class="px-3 py-2 font-medium"><?= date('d/m', strtotime($fecha)) ?></td>
+                            <td class="px-3 py-2 font-medium"><?= $fecha === 'SIN_FECHA' ? '-' : date('d/m', strtotime((string)$fecha)) ?></td>
                             <?php for ($i = 1; $i <= 7; $i++): ?>
                             <td class="px-3 py-2 text-center">
-                                <?php if (isset($slots[$i])): ?>
+                                <?php if (isset($slots[$i]) && $slots[$i] !== null && $slots[$i] !== ''): ?>
                                 <span class="<?= $slots[$i] > 60 ? 'text-red-600 font-bold' : '' ?>"><?= $slots[$i] ?>°C</span>
                                 <?php else: ?>
                                 <span class="text-gray-400">-</span>
@@ -456,25 +634,32 @@ ob_start();
         </div>
         <div class="p-6">
             <?php foreach ($pruebasCorte as $idx => $prueba): ?>
+            <?php
+            $tipoPrueba = (string)($prueba['tipo_prueba_rep'] ?? ($prueba['tipo_prueba'] ?? 'POST_SECADO'));
+            $fechaPrueba = $prueba['fecha_rep'] ?? ($prueba['fecha'] ?? null);
+            $clasificacionPrueba = $prueba['clasificacion_calidad_rep'] ?? ($prueba['clasificacion_calidad'] ?? null);
+            $decisionPrueba = $prueba['decision_lote_rep'] ?? ($prueba['decision_lote'] ?? null);
+            $obsPrueba = $prueba['observaciones_rep'] ?? ($prueba['observaciones'] ?? null);
+            ?>
             <div class="<?= $idx > 0 ? 'mt-6 pt-6 border-t border-gray-200' : '' ?>">
                 <div class="flex items-center justify-between mb-4">
                     <div>
                         <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium
-                            <?= $prueba['tipo_prueba'] === 'RECEPCION' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800' ?>">
-                            <?= $prueba['tipo_prueba'] === 'RECEPCION' ? '📥 Recepción' : '✅ Post-Secado' ?>
+                            <?= $tipoPrueba === 'RECEPCION' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800' ?>">
+                            <?= $tipoPrueba === 'RECEPCION' ? '📥 Recepción' : '✅ Post-Secado' ?>
                         </span>
-                        <span class="ml-2 text-sm text-gray-600"><?= date('d/m/Y', strtotime($prueba['fecha'])) ?></span>
+                        <span class="ml-2 text-sm text-gray-600"><?= $fechaPrueba ? date('d/m/Y', strtotime((string)$fechaPrueba)) : 'N/R' ?></span>
                     </div>
-                    <?php if ($prueba['clasificacion_calidad']): ?>
+                    <?php if (!empty($clasificacionPrueba)): ?>
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold
                         <?php
-                        $clasif = strtoupper($prueba['clasificacion_calidad']);
+                        $clasif = strtoupper((string)$clasificacionPrueba);
                         if ($clasif === 'PREMIUM') echo 'bg-green-100 text-green-800';
                         elseif ($clasif === 'EXPORTACION') echo 'bg-blue-100 text-blue-800';
                         elseif ($clasif === 'NACIONAL') echo 'bg-yellow-100 text-yellow-800';
                         else echo 'bg-red-100 text-red-800';
                         ?>">
-                        <?= htmlspecialchars($prueba['clasificacion_calidad']) ?>
+                        <?= htmlspecialchars((string)$clasificacionPrueba) ?>
                     </span>
                     <?php endif; ?>
                 </div>
@@ -525,14 +710,14 @@ ob_start();
                     </div>
                 </div>
                 
-                <?php if ($prueba['decision_lote']): ?>
-                <div class="mt-3 p-3 rounded-lg <?= $prueba['decision_lote'] === 'APROBADO' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200' ?>">
-                    <p class="font-medium <?= $prueba['decision_lote'] === 'APROBADO' ? 'text-green-800' : 'text-red-800' ?>">
-                        <?= $prueba['decision_lote'] === 'APROBADO' ? '✅ Lote Aprobado' : '❌ Lote Rechazado' ?>
+                <?php if (!empty($decisionPrueba)): ?>
+                <div class="mt-3 p-3 rounded-lg <?= $decisionPrueba === 'APROBADO' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200' ?>">
+                    <p class="font-medium <?= $decisionPrueba === 'APROBADO' ? 'text-green-800' : 'text-red-800' ?>">
+                        <?= $decisionPrueba === 'APROBADO' ? '✅ Lote Aprobado' : '❌ Lote Rechazado' ?>
                     </p>
-                    <?php if ($prueba['observaciones']): ?>
-                    <p class="text-sm mt-1 <?= $prueba['decision_lote'] === 'APROBADO' ? 'text-green-700' : 'text-red-700' ?>">
-                        <?= htmlspecialchars($prueba['observaciones']) ?>
+                    <?php if (!empty($obsPrueba)): ?>
+                    <p class="text-sm mt-1 <?= $decisionPrueba === 'APROBADO' ? 'text-green-700' : 'text-red-700' ?>">
+                        <?= htmlspecialchars((string)$obsPrueba) ?>
                     </p>
                     <?php endif; ?>
                 </div>

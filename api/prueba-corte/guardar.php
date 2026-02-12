@@ -109,7 +109,7 @@ try {
     $pruebaId = $db->lastInsertId();
     
     // Determinar nuevo estado del proceso según calidad
-    $nuevoEstado = $input['calidad_determinada'] === 'RECHAZADO' ? 'RECHAZADO' : 'EMPAQUETADO';
+    $nuevoEstado = $input['calidad_determinada'] === 'RECHAZADO' ? 'RECHAZADO' : 'CALIDAD_SALIDA';
     
     // Actualizar lote con calidad final y nuevo estado
     $db->execute(

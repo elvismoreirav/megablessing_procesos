@@ -10,6 +10,11 @@ requireAuth();
 
 $db = Database::getInstance();
 
+if (!Helpers::ensureEmpaquetadoTable()) {
+    setFlash('error', 'No se pudo habilitar el módulo de empaquetado en esta base de datos.');
+    redirect('/calidad-salida/index.php');
+}
+
 $id = $_GET['id'] ?? null;
 
 if (!$id) {
@@ -17,27 +22,94 @@ if (!$id) {
     redirect('/empaquetado/index.php');
 }
 
+// Compatibilidad de esquema
+$colsLotes = Helpers::getTableColumns('lotes');
+$hasLoteCol = static fn(string $name): bool => in_array($name, $colsLotes, true);
+$colsPrueba = Helpers::getTableColumns('registros_prueba_corte');
+$hasPrCol = static fn(string $name): bool => in_array($name, $colsPrueba, true);
+$colsSecado = Helpers::getTableColumns('registros_secado');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+
+$prCalidadExpr = 'NULL';
+$joinPrueba = '';
+if (!empty($colsPrueba)) {
+    $prCalidadExpr = $hasPrCol('calidad_resultado')
+        ? 'rpc.calidad_resultado'
+        : ($hasPrCol('calidad_determinada') ? 'rpc.calidad_determinada' : ($hasPrCol('decision_lote') ? 'rpc.decision_lote' : 'NULL'));
+
+    $joinPrueba = "
+        LEFT JOIN registros_prueba_corte rpc ON rpc.id = (
+            SELECT rpc2.id
+            FROM registros_prueba_corte rpc2
+            WHERE rpc2.lote_id = l.id
+            ORDER BY rpc2.id DESC
+            LIMIT 1
+        )
+    ";
+}
+
+$loteCalidadExpr = "COALESCE({$prCalidadExpr}, 'N/D')";
+
+$pesoSecadoExpr = 'NULL';
+$humedadSecadoExpr = 'NULL';
+$joinSecado = '';
+if (!empty($colsSecado)) {
+    $pesoSecadoExpr = $hasSecCol('peso_final')
+        ? 'rs.peso_final'
+        : ($hasSecCol('qq_cargados')
+            ? '(rs.qq_cargados * 45.3592)'
+            : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
+    $humedadSecadoExpr = $hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL';
+    $joinSecado = "LEFT JOIN registros_secado rs ON rs.lote_id = l.id";
+}
+
 // Obtener datos de empaquetado
 $empaquetado = $db->fetch("
     SELECT re.*, 
            l.codigo as lote_codigo,
-           l.calidad_final,
+           {$loteCalidadExpr} as calidad_final,
            p.nombre as proveedor, 
            p.codigo as proveedor_codigo,
            v.nombre as variedad,
-           rs.peso_final as peso_disponible,
-           rs.humedad_final as humedad
+           {$pesoSecadoExpr} as peso_disponible,
+           {$humedadSecadoExpr} as humedad
     FROM registros_empaquetado re
     JOIN lotes l ON re.lote_id = l.id
     JOIN proveedores p ON l.proveedor_id = p.id
     JOIN variedades v ON l.variedad_id = v.id
-    LEFT JOIN registros_secado rs ON rs.lote_id = l.id
+    {$joinPrueba}
+    {$joinSecado}
     WHERE re.id = :id
 ", ['id' => $id]);
 
 if (!$empaquetado) {
     setFlash('error', 'Registro de empaquetado no encontrado');
     redirect('/empaquetado/index.php');
+}
+
+// Generar código de lote de empaque automáticamente (estable por registro)
+$generarCodigoEmpaque = static function (string $loteCodigo, int $registroId): string {
+    $base = strtoupper(trim($loteCodigo));
+    $base = preg_replace('/[^A-Z0-9-]/', '', $base);
+    $base = preg_replace('/-+/', '-', (string)$base);
+    $base = trim((string)$base, '-');
+    if ($base === '') {
+        $base = 'LOTE';
+    }
+
+    $sufijo = str_pad((string)$registroId, 4, '0', STR_PAD_LEFT);
+    $maxBaseLen = 80 - strlen('EMP--') - strlen($sufijo);
+    if (strlen($base) > $maxBaseLen) {
+        $base = substr($base, 0, $maxBaseLen);
+        $base = rtrim($base, '-');
+    }
+
+    return "EMP-{$base}-{$sufijo}";
+};
+
+$loteEmpaqueAuto = trim((string)($empaquetado['lote_empaque'] ?? ''));
+if ($loteEmpaqueAuto === '') {
+    $loteEmpaqueAuto = $generarCodigoEmpaque((string)($empaquetado['lote_codigo'] ?? ''), (int)$id);
 }
 
 // Si ya está completado, redirigir a ver
@@ -54,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fechaEmpaquetado = $_POST['fecha_empaquetado'] ?? '';
     $numeroSacos = intval($_POST['numero_sacos'] ?? 0);
     $pesoTotal = floatval($_POST['peso_total'] ?? 0);
-    $loteEmpaque = trim($_POST['lote_empaque'] ?? '');
+    $loteEmpaque = $loteEmpaqueAuto;
     $destino = trim($_POST['destino'] ?? '');
     $observaciones = trim($_POST['observaciones'] ?? '');
     
@@ -78,10 +150,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ], 'id = :id', ['id' => $id]);
             
             // Actualizar estado del lote a FINALIZADO
-            $db->update('lotes', [
-                'estado_proceso' => 'FINALIZADO',
-                'peso_final_kg' => $pesoTotal
-            ], 'id = :id', ['id' => $empaquetado['lote_id']]);
+            $dataLote = ['estado_proceso' => 'FINALIZADO'];
+            if ($hasLoteCol('peso_final_kg')) {
+                $dataLote['peso_final_kg'] = $pesoTotal;
+            }
+            $db->update('lotes', $dataLote, 'id = :id', ['id' => $empaquetado['lote_id']]);
             
             // Registrar historial
             Helpers::logHistory(
@@ -144,7 +217,7 @@ ob_start();
                     default => 'badge-secondary'
                 };
                 ?>
-                <span class="badge <?= $badgeClass ?>"><?= $empaquetado['calidad_final'] ?></span>
+                <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars((string)($empaquetado['calidad_final'] ?? 'N/D')) ?></span>
             </div>
             <div class="text-center">
                 <p class="text-xs text-warmgray">Peso Disponible</p>
@@ -177,10 +250,9 @@ ob_start();
                 
                 <div class="form-group">
                     <label class="form-label">Lote de Empaque</label>
-                    <input type="text" name="lote_empaque" class="form-control"
-                           placeholder="Ej: EMP-2025-001"
-                           value="<?= htmlspecialchars($_POST['lote_empaque'] ?? '') ?>">
-                    <p class="text-xs text-warmgray mt-1">Identificador interno del lote empacado</p>
+                    <input type="text" class="form-control bg-olive/10" readonly
+                           value="<?= htmlspecialchars($loteEmpaqueAuto) ?>">
+                    <p class="text-xs text-warmgray mt-1">Código generado automáticamente por el sistema.</p>
                 </div>
                 
                 <div class="form-group">

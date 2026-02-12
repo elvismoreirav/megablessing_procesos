@@ -80,6 +80,16 @@ function requirePermission(string $permission): void {
 }
 
 /**
+ * Compatibilidad legacy: varios módulos llaman getCurrentUserId()
+ */
+if (!function_exists('getCurrentUserId')) {
+    function getCurrentUserId(): ?int {
+        $id = Auth::id();
+        return $id !== null ? (int)$id : null;
+    }
+}
+
+/**
  * CSRF
  */
 function generateCsrfToken(): string {
@@ -110,6 +120,25 @@ function verifyCSRF(string $name = '_csrf'): void {
     if (!$token || !verifyCsrfToken($token)) {
         http_response_code(419);
         die('CSRF inválido. Recarga la página e intenta nuevamente.');
+    }
+}
+
+/**
+ * Compatibilidad legacy: algunos módulos usan validateCsrf()
+ */
+if (!function_exists('validateCsrf')) {
+    function validateCsrf(string $name = 'csrf_token'): void {
+        if (isset($_POST[$name])) {
+            verifyCSRF($name);
+            return;
+        }
+
+        if (isset($_POST['_csrf'])) {
+            verifyCSRF('_csrf');
+            return;
+        }
+
+        verifyCSRF($name);
     }
 }
 

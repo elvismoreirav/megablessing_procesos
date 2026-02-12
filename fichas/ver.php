@@ -156,6 +156,18 @@ if ($tablaPruebaCorte && $tieneLoteAsociado) {
     ", [$ficha['lote_id']]);
 }
 
+$tablaCalidadSalida = $db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+$calidadSalida = null;
+if ($tablaCalidadSalida && $tieneLoteAsociado) {
+    $calidadSalida = $db->fetchOne("
+        SELECT *
+        FROM registros_calidad_salida
+        WHERE lote_id = ?
+        ORDER BY fecha_registro DESC, id DESC
+        LIMIT 1
+    ", [$ficha['lote_id']]);
+}
+
 $fechaPago = $hasFichaCol('fecha_pago') ? ($ficha['fecha_pago'] ?? null) : null;
 $facturaCompra = $hasFichaCol('factura_compra') ? trim((string)($ficha['factura_compra'] ?? '')) : '';
 $cantidadComprada = $hasFichaCol('cantidad_comprada') ? ($ficha['cantidad_comprada'] ?? null) : null;
@@ -624,7 +636,7 @@ ob_start();
                         'RECEPCION', 'RECIBIDO' => 'bg-blue-100 text-blue-700',
                         'FERMENTACION' => 'bg-orange-100 text-orange-700',
                         'PRE_SECADO', 'SECADO' => 'bg-yellow-100 text-yellow-700',
-                        'CALIDAD', 'CALIDAD_POST', 'PRUEBA_CORTE' => 'bg-emerald-100 text-emerald-700',
+                        'CALIDAD', 'CALIDAD_POST', 'PRUEBA_CORTE', 'CALIDAD_SALIDA' => 'bg-emerald-100 text-emerald-700',
                         'EMPAQUETADO', 'ALMACENADO' => 'bg-purple-100 text-purple-700',
                         'FINALIZADO' => 'bg-green-100 text-green-700',
                         'RECHAZADO' => 'bg-red-100 text-red-700',
@@ -639,6 +651,7 @@ ob_start();
                         'SECADO' => 'Secado',
                         'CALIDAD_POST' => 'Prueba de Corte',
                         'PRUEBA_CORTE' => 'Prueba de Corte',
+                        'CALIDAD_SALIDA' => 'Calidad de salida',
                         'EMPAQUETADO' => 'Empaquetado',
                         'ALMACENADO' => 'Almacenado',
                         'DESPACHO' => 'Despacho',
@@ -726,6 +739,12 @@ ob_start();
                             <a href="<?= $tieneLoteAsociado ? APP_URL . '/prueba-corte/crear.php?lote_id=' . (int)$ficha['lote_id'] : '#' ?>" class="flex items-center gap-3 p-3 rounded-lg transition-colors <?= $tieneLoteAsociado ? 'hover:bg-emerald-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
                                 <i class="fas fa-cut text-emerald-600 w-5"></i>
                                 <span class="text-gray-700">d. Prueba de Corte (Ficha de prueba de corte)</span>
+                            </a>
+                            <?php endif; ?>
+                            <?php if ($tablaCalidadSalida && !$calidadSalida): ?>
+                            <a href="<?= $tieneLoteAsociado ? APP_URL . '/calidad-salida/crear.php?lote_id=' . (int)$ficha['lote_id'] : '#' ?>" class="flex items-center gap-3 p-3 rounded-lg transition-colors <?= $tieneLoteAsociado ? 'hover:bg-emerald-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
+                                <i class="fas fa-check-circle text-emerald-600 w-5"></i>
+                                <span class="text-gray-700">e. Calidad de salida</span>
                             </a>
                             <?php endif; ?>
                         </div>

@@ -82,7 +82,7 @@ $lotes = $db->fetchAll("
 
 // Datos para filtros
 $proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE activo = 1 ORDER BY nombre");
-$estados = ['RECEPCION', 'CALIDAD', 'PRE_SECADO', 'FERMENTACION', 'SECADO', 'CALIDAD_POST', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO', 'RECHAZADO'];
+$estados = ['RECEPCION', 'CALIDAD', 'PRE_SECADO', 'FERMENTACION', 'SECADO', 'CALIDAD_POST', 'CALIDAD_SALIDA', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO', 'RECHAZADO'];
 $estadoLabels = [
     'RECEPCION' => 'Recepción',
     'CALIDAD' => 'Verificación de Lote',
@@ -90,6 +90,7 @@ $estadoLabels = [
     'FERMENTACION' => 'Fermentación',
     'SECADO' => 'Secado',
     'CALIDAD_POST' => 'Prueba de Corte',
+    'CALIDAD_SALIDA' => 'Calidad de salida',
     'EMPAQUETADO' => 'Empaquetado',
     'ALMACENADO' => 'Almacenado',
     'DESPACHO' => 'Despacho',

@@ -23,6 +23,32 @@ if (!$lote) {
     redirect('/lotes/index.php');
 }
 
+$fichaRegistro = $db->fetchOne(
+    "SELECT id FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+    [$id]
+);
+$registroFermentacion = $db->fetchOne(
+    "SELECT id FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+    [$id]
+);
+$loteEnFermentacion = strtoupper((string)($lote['estado_proceso'] ?? '')) === 'FERMENTACION';
+$loteListoParaFormularioFermentacion = $loteEnFermentacion && (bool)$fichaRegistro;
+$rutaFermentacion = $registroFermentacion
+    ? (APP_URL . '/fermentacion/control.php?id=' . (int)$registroFermentacion['id'])
+    : (APP_URL . '/fermentacion/crear.php?lote_id=' . $id . '&from=verificacion');
+$labelAccionFermentacion = $registroFermentacion ? 'Ver estado de fermentación' : 'Ir al formulario de fermentación';
+$bloquearAccionFermentacion = !$registroFermentacion && !$loteListoParaFormularioFermentacion;
+$mensajeGuiaFermentacion = '';
+if (!$registroFermentacion) {
+    if (!$fichaRegistro) {
+        $mensajeGuiaFermentacion = 'Primero debe completar la ficha de recepción para habilitar fermentación.';
+    } elseif (!$loteEnFermentacion) {
+        $mensajeGuiaFermentacion = 'Cambie el estado del proceso a Fermentación y guarde para continuar.';
+    } else {
+        $mensajeGuiaFermentacion = 'El lote está listo para iniciar el formulario de fermentación.';
+    }
+}
+
 // Datos para el formulario
 $colsProveedores = array_column($db->fetchAll("SHOW COLUMNS FROM proveedores"), 'Field');
 $filtroProveedorReal = in_array('es_categoria', $colsProveedores, true)
@@ -43,6 +69,7 @@ $estadosProceso = [
     'FERMENTACION' => 'Fermentación',
     'SECADO' => 'Secado',
     'CALIDAD_POST' => 'Prueba de Corte',
+    'CALIDAD_SALIDA' => 'Calidad de salida',
     'EMPAQUETADO' => 'Empaquetado',
     'ALMACENADO' => 'Almacenado',
     'DESPACHO' => 'Despacho',
@@ -53,6 +80,7 @@ $estadosProceso = [
 // Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCSRF();
+    $postAction = trim((string)($_POST['post_action'] ?? 'save'));
     
     $errors = [];
     
@@ -113,7 +141,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Helpers::logHistory($id, 'MODIFICACION', implode('; ', $cambios), $_SESSION['user_id']);
             }
             
-            setFlash('success', 'Lote actualizado correctamente');
+            $fichaRegistroActual = $db->fetchOne(
+                "SELECT id FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+                [$id]
+            );
+            $fermentacionExistente = $db->fetchOne(
+                "SELECT id FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+                [$id]
+            );
+            $estadoActualizadoEnFermentacion = strtoupper((string)$estadoProceso) === 'FERMENTACION';
+
+            if ($postAction === 'goto_fermentacion') {
+                if ($fermentacionExistente) {
+                    setFlash('success', 'Lote actualizado correctamente. Mostrando estado actual de fermentación.');
+                    redirect('/fermentacion/control.php?id=' . (int)$fermentacionExistente['id']);
+                }
+
+                if (!$fichaRegistroActual) {
+                    setFlash('warning', 'Antes de iniciar fermentación debe completar la ficha de recepción.');
+                    redirect('/fichas/crear.php?etapa=recepcion&lote_id=' . $id);
+                }
+
+                if (!$estadoActualizadoEnFermentacion) {
+                    setFlash('warning', 'Para iniciar fermentación, cambie el estado del proceso a Fermentación y guarde.');
+                    redirect('/lotes/editar.php?id=' . $id);
+                }
+
+                setFlash('success', 'Lote actualizado correctamente. Continúe con la ficha de fermentación.');
+                redirect('/fermentacion/crear.php?lote_id=' . $id . '&from=verificacion');
+            }
+
+            if ($estadoActualizadoEnFermentacion && $fichaRegistroActual && !$fermentacionExistente) {
+                setFlash('success', 'Lote actualizado correctamente. Continúe con la ficha de fermentación.');
+                redirect('/fermentacion/crear.php?lote_id=' . $id . '&from=verificacion');
+            }
+
+            setFlash('success', 'Lote actualizado correctamente.');
             redirect('/lotes/ver.php?id=' . $id);
             
         } catch (Exception $e) {
@@ -420,9 +483,30 @@ ob_start();
             </div>
         </div>
 
+        <!-- Guía al siguiente formulario -->
+        <div class="card border border-emerald-200 bg-emerald-50/60">
+            <div class="card-body">
+                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siguiente paso</p>
+                        <h3 class="text-lg font-semibold text-emerald-900">Proceso de Fermentación</h3>
+                        <?php if ($mensajeGuiaFermentacion !== ''): ?>
+                            <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($mensajeGuiaFermentacion) ?></p>
+                        <?php elseif ($registroFermentacion): ?>
+                            <p class="text-sm text-emerald-800 mt-1">Este lote ya tiene fermentación registrada. Puede abrir el control para revisar su estado.</p>
+                        <?php endif; ?>
+                    </div>
+                    <a href="<?= $bloquearAccionFermentacion ? '#' : $rutaFermentacion ?>"
+                       class="btn <?= $bloquearAccionFermentacion ? 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' : 'btn-primary' ?>">
+                        <?= htmlspecialchars($labelAccionFermentacion) ?>
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <!-- Botones -->
         <div class="flex items-center justify-between">
-            <button type="button" onclick="confirmDelete()" class="btn btn-danger">
+            <button type="button" onclick="confirmDeleteLote()" class="btn btn-danger">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                 </svg>
@@ -433,6 +517,12 @@ ob_start();
                 <a href="<?= APP_URL ?>/lotes/ver.php?id=<?= $id ?>" class="btn btn-outline">
                     Cancelar
                 </a>
+                <button type="submit" name="post_action" value="goto_fermentacion" class="btn btn-primary">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                    </svg>
+                    Guardar e ir a Fermentación
+                </button>
                 <button type="submit" class="btn btn-primary">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
@@ -479,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateCalculations();
 });
 
-function confirmDelete() {
+function confirmDeleteLote() {
     if (confirm('¿Está seguro de eliminar este lote? Esta acción no se puede deshacer.')) {
         window.location.href = '<?= APP_URL ?>/lotes/eliminar.php?id=<?= $id ?>&token=<?= generateCSRFToken() ?>';
     }

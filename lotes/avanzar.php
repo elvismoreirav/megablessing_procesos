@@ -85,9 +85,17 @@ $flujoEstados = [
         'label' => 'Prueba de Corte',
         'icon' => 'check-double',
         'color' => 'green',
+        'siguiente' => 'CALIDAD_SALIDA',
+        'accion' => 'Enviar a Calidad de salida',
+        'requiere_finalizar' => 'prueba_corte'
+    ],
+    'CALIDAD_SALIDA' => [
+        'label' => 'Calidad de salida',
+        'icon' => 'award',
+        'color' => 'emerald',
         'siguiente' => 'EMPAQUETADO',
         'accion' => 'Enviar a Empaquetado',
-        'requiere_finalizar' => 'prueba_corte'
+        'requiere_finalizar' => 'calidad_salida'
     ],
     'EMPAQUETADO' => [
         'label' => 'Empaquetado',
@@ -137,7 +145,16 @@ if (!$infoEstadoActual) {
 $fichaRegistro = $db->fetch("SELECT id FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
 $registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
 $registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
-$registroPruebaCorte = $db->fetch("SELECT * FROM registros_prueba_corte WHERE lote_id = ? AND tipo_prueba = 'POST_SECADO' ORDER BY id DESC LIMIT 1", [$id]);
+$colsPruebaCorte = array_column($db->fetchAll("SHOW COLUMNS FROM registros_prueba_corte"), 'Field');
+$hasTipoPrueba = in_array('tipo_prueba', $colsPruebaCorte, true);
+$sqlPrueba = $hasTipoPrueba
+    ? "SELECT * FROM registros_prueba_corte WHERE lote_id = ? AND (tipo_prueba = 'POST_SECADO' OR tipo_prueba IS NULL) ORDER BY id DESC LIMIT 1"
+    : "SELECT * FROM registros_prueba_corte WHERE lote_id = ? ORDER BY id DESC LIMIT 1";
+$registroPruebaCorte = $db->fetch($sqlPrueba, [$id]);
+$tablaCalidadSalidaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+$registroCalidadSalida = $tablaCalidadSalidaExiste
+    ? $db->fetch("SELECT * FROM registros_calidad_salida WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id])
+    : null;
 $registroFermentacionId = (int)($registroFermentacion['id'] ?? 0);
 $registroSecadoId = (int)($registroSecado['id'] ?? 0);
 
@@ -176,13 +193,26 @@ if ($estadoActual === 'SECADO' && $registroSecado) {
 }
 
 if ($estadoActual === 'CALIDAD_POST' && $registroPruebaCorte) {
-    if (empty($registroPruebaCorte['decision_lote'])) {
+    $decisionPrueba = $registroPruebaCorte['decision_lote']
+        ?? ($registroPruebaCorte['calidad_resultado']
+            ?? ($registroPruebaCorte['calidad_determinada'] ?? null));
+    if (empty($decisionPrueba)) {
         $procesoActualFinalizado = false;
         $mensajeBloqueo = 'Debe completar la prueba de corte y registrar la decisión antes de avanzar.';
     }
 } elseif ($estadoActual === 'CALIDAD_POST') {
     $procesoActualFinalizado = false;
     $mensajeBloqueo = 'Debe completar la prueba de corte antes de avanzar.';
+}
+
+if ($estadoActual === 'CALIDAD_SALIDA') {
+    if (!$tablaCalidadSalidaExiste) {
+        $procesoActualFinalizado = false;
+        $mensajeBloqueo = 'Falta ejecutar el patch de base de datos para registrar calidad de salida.';
+    } elseif (!$registroCalidadSalida) {
+        $procesoActualFinalizado = false;
+        $mensajeBloqueo = 'Debe completar la ficha de calidad de salida antes de avanzar.';
+    }
 }
 
 // Procesar avance
@@ -293,6 +323,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
                     break;
                 case 'CALIDAD_POST':
                     redirect('/prueba-corte/crear.php?lote_id=' . $id . '&tipo=POST_SECADO');
+                    break;
+                case 'CALIDAD_SALIDA':
+                    redirect('/calidad-salida/crear.php?lote_id=' . $id);
                     break;
                 default:
                     redirect('/lotes/ver.php?id=' . $id);
@@ -481,6 +514,10 @@ ob_start();
                     <?php elseif ($estadoActual === 'CALIDAD_POST'): ?>
                     <a href="/prueba-corte/crear.php?lote_id=<?= $id ?>&tipo=POST_SECADO" class="mt-4 inline-flex items-center text-green-600 hover:text-green-700">
                         <i class="fas fa-external-link-alt mr-2"></i>Ir a Prueba de Corte
+                    </a>
+                    <?php elseif ($estadoActual === 'CALIDAD_SALIDA'): ?>
+                    <a href="/calidad-salida/<?= $registroCalidadSalida ? 'ver.php?id=' . (int)$registroCalidadSalida['id'] : 'crear.php?lote_id=' . $id ?>" class="mt-4 inline-flex items-center text-emerald-600 hover:text-emerald-700">
+                        <i class="fas fa-external-link-alt mr-2"></i>Ir a Calidad de salida
                     </a>
                     <?php endif; ?>
                 </div>

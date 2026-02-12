@@ -401,6 +401,7 @@ ob_start();
                     <li><a href="<?= APP_URL ?>/fermentacion/index.php" class="hover:underline">b. Fermentación (Ficha de fermentación)</a></li>
                     <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">c. Secado (Ficha de secado)</a></li>
                     <li><a href="<?= APP_URL ?>/prueba-corte/index.php" class="hover:underline">d. Prueba de Corte (Ficha de prueba de corte)</a></li>
+                    <li><a href="<?= APP_URL ?>/calidad-salida/index.php" class="hover:underline">e. Calidad de salida</a></li>
                 </ol>
             </div>
         </div>
@@ -419,6 +420,9 @@ ob_start();
             </a>
             <a href="<?= APP_URL ?>/lotes/index.php" class="btn btn-outline">
                 2.a Verificación de Lote
+            </a>
+            <a href="<?= APP_URL ?>/calidad-salida/index.php" class="btn btn-outline">
+                2.e Calidad de salida
             </a>
         </div>
     </div>
@@ -675,6 +679,7 @@ const estadoLabels = {
   'FERMENTACION': 'Fermentación',
   'SECADO': 'Secado',
   'CALIDAD_POST': 'Prueba de Corte',
+  'CALIDAD_SALIDA': 'Calidad de salida',
   'EMPAQUETADO': 'Empaquetado',
   'ALMACENADO': 'Almacenado',
   'DESPACHO': 'Despacho',
@@ -684,7 +689,7 @@ const estadoLabels = {
 
 const estadoColors = [
   '#3b82f6', '#8b5cf6', '#f59e0b', '#f97316',
-  '#ef4444', '#6366f1', '#ec4899', '#6b7280', '#14b8a6', '#10b981'
+  '#ef4444', '#6366f1', '#10b981', '#ec4899', '#6b7280', '#14b8a6', '#22c55e'
 ];
 
 const ctxEstado = document.getElementById('chartLotesXEstado').getContext('2d');

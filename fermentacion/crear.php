@@ -12,6 +12,30 @@ $db = Database::getInstance();
 $errors = [];
 $success = false;
 
+// Compatibilidad de esquema para registros de fermentación
+$colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
+$hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
+$colPesoFermentacion = $hasFerCol('peso_inicial')
+    ? 'peso_inicial'
+    : ($hasFerCol('peso_lote_kg') ? 'peso_lote_kg' : null);
+$colPhFermentacion = $hasFerCol('ph_inicial')
+    ? 'ph_inicial'
+    : ($hasFerCol('ph_pulpa_inicial') ? 'ph_pulpa_inicial' : null);
+$colObsFermentacion = $hasFerCol('observaciones')
+    ? 'observaciones'
+    : ($hasFerCol('observaciones_generales') ? 'observaciones_generales' : null);
+
+// Compatibilidad de esquema para cajones
+$colsCajones = array_column($db->fetchAll("SHOW COLUMNS FROM cajones_fermentacion"), 'Field');
+$hasCajonCol = static fn(string $name): bool => in_array($name, $colsCajones, true);
+$exprNombreCajon = $hasCajonCol('nombre')
+    ? "NULLIF(TRIM(nombre), '')"
+    : ($hasCajonCol('numero') ? "NULLIF(TRIM(numero), '')" : "NULL");
+$exprCapacidadCajon = $hasCajonCol('capacidad_kg')
+    ? 'capacidad_kg'
+    : ($hasCajonCol('capacidad') ? 'capacidad' : 'NULL');
+$whereCajonActivo = $hasCajonCol('activo') ? 'activo = 1' : '1 = 1';
+
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
@@ -51,7 +75,14 @@ if ($loteId) {
 }
 
 // Obtener cajones disponibles
-$cajones = $db->fetchAll("SELECT id, nombre, capacidad_kg FROM cajones_fermentacion WHERE activo = 1 ORDER BY nombre");
+$cajones = $db->fetchAll("
+    SELECT id,
+           COALESCE({$exprNombreCajon}, CONCAT('Cajón #', id)) as nombre,
+           {$exprCapacidadCajon} as capacidad_kg
+    FROM cajones_fermentacion
+    WHERE {$whereCajonActivo}
+    ORDER BY nombre
+");
 
 // Obtener lotes disponibles para fermentación
 $lotesDisponibles = $db->fetchAll("
@@ -111,17 +142,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->beginTransaction();
             
             // Crear registro de fermentación
-            $fermentacionId = $db->insert('registros_fermentacion', [
+            $dataFermentacion = [
                 'lote_id' => $loteId,
-                'cajon_id' => $cajonId ?: null,
-                'fecha_inicio' => $fechaInicio,
-                'peso_inicial' => $pesoInicial,
-                'humedad_inicial' => $humedadInicial ?: null,
-                'temperatura_inicial' => $temperaturaInicial ?: null,
-                'ph_inicial' => $phInicial ?: null,
-                'observaciones' => $observaciones,
-                'responsable_id' => getCurrentUserId()
-            ]);
+                'fecha_inicio' => $fechaInicio
+            ];
+            if ($hasFerCol('cajon_id')) {
+                $dataFermentacion['cajon_id'] = $cajonId ?: null;
+            }
+            if ($colPesoFermentacion) {
+                $dataFermentacion[$colPesoFermentacion] = $pesoInicial;
+            }
+            if ($hasFerCol('humedad_inicial')) {
+                $dataFermentacion['humedad_inicial'] = $humedadInicial ?: null;
+            }
+            if ($hasFerCol('temperatura_inicial')) {
+                $dataFermentacion['temperatura_inicial'] = $temperaturaInicial ?: null;
+            }
+            if ($colPhFermentacion) {
+                $dataFermentacion[$colPhFermentacion] = $phInicial ?: null;
+            }
+            if ($colObsFermentacion) {
+                $dataFermentacion[$colObsFermentacion] = $observaciones !== '' ? $observaciones : null;
+            }
+            if ($hasFerCol('responsable_id')) {
+                $dataFermentacion['responsable_id'] = getCurrentUserId();
+            }
+
+            $fermentacionId = $db->insert('registros_fermentacion', $dataFermentacion);
             
             // Registrar historial
             Helpers::logHistory($loteId, 'FERMENTACION', 'Inicio de fermentación', getCurrentUserId());
@@ -225,9 +272,14 @@ ob_start();
                     <select name="cajon_id" class="form-control form-select">
                         <option value="">-- Sin asignar --</option>
                         <?php foreach ($cajones as $cajon): ?>
+                            <?php
+                                $capacidadCajonTexto = is_numeric($cajon['capacidad_kg'] ?? null)
+                                    ? number_format((float)$cajon['capacidad_kg'], 0) . ' Kg'
+                                    : 'Capacidad N/D';
+                            ?>
                             <option value="<?= $cajon['id'] ?>" <?= (isset($_POST['cajon_id']) && $_POST['cajon_id'] == $cajon['id']) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($cajon['nombre']) ?> 
-                                (<?= number_format($cajon['capacidad_kg'], 0) ?> Kg)
+                                (<?= htmlspecialchars($capacidadCajonTexto) ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>

@@ -16,20 +16,63 @@ if (!$id) {
     redirect('/secado/index.php');
 }
 
+// Compatibilidad de esquema: registros_secado
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+$fechaInicioExpr = $hasSecCol('fecha_inicio') ? 'rs.fecha_inicio' : ($hasSecCol('fecha') ? 'rs.fecha' : 'NULL');
+$fechaFinExpr = $hasSecCol('fecha_fin') ? 'rs.fecha_fin' : 'NULL';
+$tipoSecadoExpr = $hasSecCol('tipo_secado') ? 'rs.tipo_secado' : ($hasSecCol('estado') ? 'rs.estado' : "'N/D'");
+$pesoInicialExpr = $hasSecCol('peso_inicial')
+    ? 'rs.peso_inicial'
+    : ($hasSecCol('qq_cargados')
+        ? '(rs.qq_cargados * 45.3592)'
+        : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
+$pesoFinalExpr = $hasSecCol('peso_final') ? 'rs.peso_final' : 'NULL';
+$observacionesExpr = $hasSecCol('observaciones')
+    ? 'rs.observaciones'
+    : ($hasSecCol('carga_observaciones')
+        ? 'rs.carga_observaciones'
+        : ($hasSecCol('revision_observaciones') ? 'rs.revision_observaciones' : 'NULL'));
+
+// Compatibilidad de esquema: secadoras
+$colsSecadoras = array_column($db->fetchAll("SHOW COLUMNS FROM secadoras"), 'Field');
+$hasSecadoraCol = static fn(string $name): bool => in_array($name, $colsSecadoras, true);
+$secadoraNombreExpr = $hasSecadoraCol('nombre')
+    ? "COALESCE(NULLIF(TRIM(s.nombre), ''), " . ($hasSecadoraCol('numero') ? "NULLIF(TRIM(s.numero), ''), " : '') . "CONCAT('Secadora #', s.id))"
+    : ($hasSecadoraCol('numero') ? "COALESCE(NULLIF(TRIM(s.numero), ''), CONCAT('Secadora #', s.id))" : "CONCAT('Secadora #', s.id)");
+$tipoSecadoraExpr = $hasSecadoraCol('tipo') ? 's.tipo' : 'NULL';
+
+// Compatibilidad de relación con usuarios
+$joinResponsable = '';
+$responsableExpr = 'NULL';
+if ($hasSecCol('responsable_id')) {
+    $joinResponsable = 'LEFT JOIN usuarios u ON rs.responsable_id = u.id';
+    $responsableExpr = 'u.nombre';
+} elseif ($hasSecCol('operador_id')) {
+    $joinResponsable = 'LEFT JOIN usuarios u ON rs.operador_id = u.id';
+    $responsableExpr = 'u.nombre';
+}
+
 // Obtener registro de secado
 $secado = $db->fetch("
     SELECT rs.*, 
+           {$fechaInicioExpr} as fecha_inicio,
+           {$fechaFinExpr} as fecha_fin,
+           {$tipoSecadoExpr} as tipo_secado,
+           {$pesoInicialExpr} as peso_inicial,
+           {$pesoFinalExpr} as peso_final,
+           {$observacionesExpr} as observaciones,
            l.codigo as lote_codigo, l.id as lote_id,
            p.nombre as proveedor, p.codigo as proveedor_codigo,
            v.nombre as variedad,
-           s.nombre as secadora, s.tipo as tipo_secadora,
-           u.nombre as responsable
+           {$secadoraNombreExpr} as secadora, {$tipoSecadoraExpr} as tipo_secadora,
+           {$responsableExpr} as responsable
     FROM registros_secado rs
     JOIN lotes l ON rs.lote_id = l.id
     JOIN proveedores p ON l.proveedor_id = p.id
     JOIN variedades v ON l.variedad_id = v.id
     LEFT JOIN secadoras s ON rs.secadora_id = s.id
-    JOIN usuarios u ON rs.responsable_id = u.id
+    {$joinResponsable}
     WHERE rs.id = :id
 ", ['id' => $id]);
 
@@ -38,15 +81,51 @@ if (!$secado) {
     redirect('/secado/index.php');
 }
 
+$registroPruebaCorte = $db->fetch(
+    "SELECT id FROM registros_prueba_corte WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+    [$secado['lote_id']]
+);
+$secadoFinalizado = !empty($secado['fecha_fin'])
+    || (!$hasSecCol('fecha_fin') && !empty($secado['humedad_final']));
+$rutaSiguientePrueba = $registroPruebaCorte
+    ? (APP_URL . '/prueba-corte/ver.php?id=' . (int)$registroPruebaCorte['id'])
+    : (APP_URL . '/prueba-corte/crear.php?lote_id=' . (int)$secado['lote_id']);
+$labelSiguientePrueba = $registroPruebaCorte ? 'Ver prueba de corte' : 'Iniciar Prueba de Corte';
+$descripcionSiguientePrueba = $secadoFinalizado
+    ? 'El secado está finalizado. Continúe con la prueba de corte.'
+    : 'Al finalizar el secado se habilitará automáticamente la prueba de corte.';
+
 // Obtener controles de temperatura existentes
-$controlesTemp = $db->fetchAll("
-    SELECT * FROM secado_control_temperatura 
-    WHERE secado_id = :id 
-    ORDER BY fecha ASC, hora ASC
-", ['id' => $id]);
+$colsControl = array_column($db->fetchAll("SHOW COLUMNS FROM secado_control_temperatura"), 'Field');
+$hasCtrlCol = static fn(string $name): bool => in_array($name, $colsControl, true);
+$fkControlCol = $hasCtrlCol('secado_id') ? 'secado_id' : ($hasCtrlCol('registro_secado_id') ? 'registro_secado_id' : null);
+$fechaControlExpr = $hasCtrlCol('fecha') ? 'fecha' : ($hasCtrlCol('created_at') ? 'DATE(created_at)' : 'NULL');
+$horaControlExpr = $hasCtrlCol('hora') ? 'hora' : 'NULL';
+$tempControlExpr = $hasCtrlCol('temperatura') ? 'temperatura' : 'NULL';
+$humedadControlExpr = $hasCtrlCol('humedad') ? 'humedad' : 'NULL';
+$obsControlExpr = $hasCtrlCol('observaciones') ? 'observaciones' : 'NULL';
+$orderControlExpr = ($hasCtrlCol('fecha') ? 'fecha' : ($hasCtrlCol('created_at') ? 'created_at' : 'id'))
+    . ($hasCtrlCol('hora') ? ', hora' : '');
+
+$controlesTemp = [];
+if ($fkControlCol) {
+    $controlesTemp = $db->fetchAll("
+        SELECT {$fechaControlExpr} as fecha,
+               {$horaControlExpr} as hora,
+               {$tempControlExpr} as temperatura,
+               {$humedadControlExpr} as humedad,
+               {$obsControlExpr} as observaciones
+        FROM secado_control_temperatura 
+        WHERE {$fkControlCol} = :id 
+        ORDER BY {$orderControlExpr}
+    ", ['id' => $id]);
+}
 
 // Calcular días transcurridos
-$fechaInicio = new DateTime($secado['fecha_inicio']);
+$fechaInicioBase = !empty($secado['fecha_inicio']) ? $secado['fecha_inicio'] : date('Y-m-d');
+$secado['fecha_inicio'] = $fechaInicioBase;
+$secado['fecha_fin'] = $secado['fecha_fin'] ?? null;
+$fechaInicio = new DateTime($fechaInicioBase);
 $hoy = new DateTime();
 $diasTranscurridos = $fechaInicio->diff($hoy)->days + 1;
 
@@ -63,16 +142,16 @@ for ($i = 0; $i < 7; $i++) {
     $humedad = null;
     
     foreach ($horasControl as $hora) {
-        $control = array_filter($controlesTemp, fn($c) => $c['fecha'] == $fechaStr && substr($c['hora'], 0, 5) == $hora);
+        $control = array_filter($controlesTemp, fn($c) => ($c['fecha'] ?? null) == $fechaStr && substr((string)($c['hora'] ?? ''), 0, 5) == $hora);
         $control = !empty($control) ? array_values($control)[0] : null;
         $temperaturas[] = $control['temperatura'] ?? null;
-        if ($control && $control['humedad']) {
+        if ($control && !empty($control['humedad'])) {
             $humedad = $control['humedad'];
         }
     }
     
     // Obtener observación del día
-    $obsControl = array_filter($controlesTemp, fn($c) => $c['fecha'] == $fechaStr && !empty($c['observaciones']));
+    $obsControl = array_filter($controlesTemp, fn($c) => ($c['fecha'] ?? null) == $fechaStr && !empty($c['observaciones']));
     $obsControl = !empty($obsControl) ? array_values($obsControl)[0] : null;
     
     $diasControl[] = [
@@ -273,6 +352,23 @@ ob_start();
 </div>
 <?php endif; ?>
 
+<!-- Siguiente paso -->
+<div class="card mb-6 border border-emerald-200 bg-emerald-50/60">
+    <div class="card-body">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siguiente paso</p>
+                <h4 class="text-lg font-semibold text-emerald-900">Prueba de Corte</h4>
+                <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($descripcionSiguientePrueba) ?></p>
+            </div>
+            <a href="<?= $secadoFinalizado ? $rutaSiguientePrueba : '#' ?>"
+               class="btn <?= $secadoFinalizado ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
+                <?= htmlspecialchars($labelSiguientePrueba) ?>
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Observaciones Generales -->
 <div class="card mb-6">
     <div class="card-header">
@@ -418,7 +514,7 @@ async function guardarControl() {
     });
     
     try {
-        const response = await App.post('<?= APP_URL ?>/api/secado/guardar-control.php', {
+        const response = await App.post('/api/secado/guardar-control.php', {
             secado_id: secadoId,
             controles: controles
         });
@@ -463,7 +559,7 @@ async function finalizarSecado() {
     await guardarControl();
     
     try {
-        const response = await App.post('<?= APP_URL ?>/api/secado/finalizar.php', {
+        const response = await App.post('/api/secado/finalizar.php', {
             secado_id: secadoId,
             fecha_fin: fechaFin,
             peso_final: pesoFinal || null,
@@ -471,8 +567,9 @@ async function finalizarSecado() {
         });
         
         if (response.success) {
-            App.toast('Secado finalizado', 'success');
-            setTimeout(() => window.location.reload(), 1000);
+            const redirectUrl = response.redirect || '<?= APP_URL ?>/prueba-corte/crear.php?lote_id=<?= (int)$secado['lote_id'] ?>';
+            App.toast('Secado finalizado. Redirigiendo a prueba de corte...', 'success');
+            setTimeout(() => window.location.href = redirectUrl, 900);
         } else {
             App.toast(response.error || 'Error al finalizar', 'error');
         }
@@ -486,7 +583,7 @@ async function guardarObservaciones() {
     const obs = document.getElementById('observaciones_generales').value;
     
     try {
-        const response = await App.post('<?= APP_URL ?>/api/secado/actualizar.php', {
+        const response = await App.post('/api/secado/actualizar.php', {
             secado_id: secadoId,
             observaciones: obs
         });
