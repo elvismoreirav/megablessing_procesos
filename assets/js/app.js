@@ -8,6 +8,7 @@
 const App = {
     baseUrl: '',
     csrfToken: '',
+    scriptPromises: {},
     
     init() {
         this.baseUrl = document.querySelector('meta[name="base-url"]')?.content || '';
@@ -258,14 +259,16 @@ const App = {
     
     // Notificaciones toast
     toast(message, type = 'info', duration = 4000) {
+        const alertType = type === 'error' ? 'danger' : type;
         const container = document.getElementById('toastContainer') || this.createToastContainer();
         
         const toast = document.createElement('div');
-        toast.className = `alert alert-${type} fade-in`;
+        toast.className = `alert alert-${alertType} fade-in`;
+        toast.setAttribute('role', 'status');
         toast.style.marginBottom = '0.5rem';
         toast.innerHTML = `
             <span>${message}</span>
-            <button type="button" class="ml-4 text-lg leading-none opacity-75 hover:opacity-100" onclick="this.parentElement.remove()">×</button>
+            <button type="button" class="ml-4 text-lg leading-none opacity-75 hover:opacity-100" aria-label="Cerrar mensaje" onclick="this.parentElement.remove()">×</button>
         `;
         
         container.appendChild(toast);
@@ -279,6 +282,8 @@ const App = {
     createToastContainer() {
         const container = document.createElement('div');
         container.id = 'toastContainer';
+        container.setAttribute('aria-live', 'polite');
+        container.setAttribute('aria-atomic', 'true');
         container.style.cssText = 'position: fixed; top: 1rem; right: 1rem; z-index: 100; max-width: 400px;';
         document.body.appendChild(container);
         return container;
@@ -311,9 +316,21 @@ const App = {
             
             document.body.insertAdjacentHTML('beforeend', modalHtml);
             document.body.style.overflow = 'hidden';
+            const modal = document.getElementById('confirmModal');
+            const cancelButton = modal?.querySelector('.btn.btn-outline');
+            cancelButton?.focus();
+
+            const keydownHandler = (event) => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.resolveConfirm(false);
+                }
+            };
+            document.addEventListener('keydown', keydownHandler);
             
             this.confirmResolve = (result) => {
-                document.getElementById('confirmModal').remove();
+                document.removeEventListener('keydown', keydownHandler);
+                document.getElementById('confirmModal')?.remove();
                 document.body.style.overflow = '';
                 resolve(result);
             };
@@ -366,12 +383,38 @@ const App = {
     print() {
         window.print();
     },
+
+    async loadScript(url) {
+        if (this.scriptPromises[url]) {
+            return this.scriptPromises[url];
+        }
+
+        this.scriptPromises[url] = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`No se pudo cargar el script: ${url}`));
+            document.head.appendChild(script);
+        });
+
+        return this.scriptPromises[url];
+    },
     
     // Exportar a Excel (básico)
-    exportToExcel(tableId, filename = 'export') {
+    async exportToExcel(tableId, filename = 'export') {
         const table = document.getElementById(tableId);
         if (!table) return;
-        
+
+        if (typeof XLSX === 'undefined') {
+            try {
+                await this.loadScript('https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js');
+            } catch (error) {
+                this.toast('No se pudo cargar el módulo de exportación.', 'error');
+                return;
+            }
+        }
+
         const wb = XLSX.utils.table_to_book(table, {sheet: "Datos"});
         XLSX.writeFile(wb, `${filename}.xlsx`);
     }
@@ -392,6 +435,21 @@ function closeModal(modalId) {
 
 async function confirmDelete(message) {
     return App.confirm(message || '¿Está seguro de eliminar este registro?', 'Eliminar');
+}
+
+function inlineConfirm(event, message, title = 'Confirmar') {
+    const form = event?.target?.closest('form') || event?.target;
+    if (!form) {
+        return false;
+    }
+
+    event.preventDefault();
+    App.confirm(message || '¿Está seguro de continuar?', title).then((confirmed) => {
+        if (confirmed) {
+            form.submit();
+        }
+    });
+    return false;
 }
 
 // Handsontable helpers

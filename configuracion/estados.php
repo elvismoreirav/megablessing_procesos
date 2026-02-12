@@ -4,11 +4,13 @@
  * Administrar estados de fermentación y estados de calidad
  */
 
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../bootstrap.php';
+requireAuth();
 
-Auth::check();
-Auth::requireRole(['admin', 'administrador']);
+if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
+    setFlash('danger', 'No tiene permisos para acceder a esta sección.');
+    redirect('/dashboard.php');
+}
 
 $db = Database::getInstance();
 $message = '';
@@ -145,26 +147,28 @@ $pageTitle = 'Gestión de Estados';
 ob_start();
 ?>
 
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Gestión de Estados</h1>
-            <p class="text-gray-600">Configure los estados del proceso de fermentación y calidad</p>
+            <h1 class="text-3xl font-bold text-primary">Gestión de Estados</h1>
+            <p class="text-warmgray">Configure los estados del proceso de fermentación y calidad</p>
         </div>
-        <a href="/configuracion/" class="text-amber-600 hover:text-amber-700">
-            <i class="fas fa-arrow-left mr-2"></i>Volver a Configuración
+        <a href="/configuracion/"
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+            <i class="fas fa-arrow-left"></i>
+            Volver a Configuración
         </a>
     </div>
 
     <?php if ($message): ?>
-    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+    <div class="alert alert-success" data-auto-dismiss>
         <i class="fas fa-check-circle mr-2"></i><?= htmlspecialchars($message) ?>
     </div>
     <?php endif; ?>
 
     <?php if ($error): ?>
-    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+    <div class="alert alert-danger" data-auto-dismiss>
         <i class="fas fa-exclamation-circle mr-2"></i><?= htmlspecialchars($error) ?>
     </div>
     <?php endif; ?>
@@ -261,7 +265,7 @@ ob_start();
                                 <i class="fas fa-edit"></i>
                             </a>
                             <?php if ($ef['registros_count'] == 0): ?>
-                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este estado?')">
+                            <form method="POST" class="inline" onsubmit="return (window.inlineConfirm ? inlineConfirm(event, '¿Eliminar este estado?', 'Eliminar estado') : confirm('¿Eliminar este estado?'))">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="tipo" value="fermentacion">
                                 <input type="hidden" name="id" value="<?= $ef['id'] ?>">
@@ -374,7 +378,7 @@ ob_start();
                                 <i class="fas fa-edit"></i>
                             </a>
                             <?php if ($ec['lotes_count'] == 0): ?>
-                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este estado?')">
+                            <form method="POST" class="inline" onsubmit="return (window.inlineConfirm ? inlineConfirm(event, '¿Eliminar este estado?', 'Eliminar estado') : confirm('¿Eliminar este estado?'))">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="tipo" value="calidad">
                                 <input type="hidden" name="id" value="<?= $ec['id'] ?>">
@@ -411,5 +415,5 @@ ob_start();
 
 <?php
 $content = ob_get_clean();
-require_once __DIR__ . '/../includes/layout.php';
+include __DIR__ . '/../templates/layouts/main.php';
 ?>

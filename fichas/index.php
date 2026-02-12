@@ -27,19 +27,19 @@ if (!$mostrarFiltroLote) {
 
 $vistaConfig = [
     'recepcion' => [
-        'titulo' => 'a. Recepción (Ficha de Recepción)',
+        'titulo' => 'Recepción (Ficha de Recepción)',
         'descripcion' => 'Registro y verificación visual inicial del lote.'
     ],
     'pagos' => [
-        'titulo' => 'b. Registro de Pagos (Ficha de pagos)',
+        'titulo' => 'Registro de Pagos (Ficha de pagos)',
         'descripcion' => 'Registro y consulta de pagos relacionados a cada ficha de recepción.'
     ],
     'codificacion' => [
-        'titulo' => 'c. Codificación de Lote',
+        'titulo' => 'Codificación de Lote',
         'descripcion' => 'Fichas pendientes por codificación para trazabilidad.'
     ],
     'etiqueta' => [
-        'titulo' => 'i. Imprimir Etiqueta (Etiquetado de registro)',
+        'titulo' => 'Imprimir Etiqueta (Etiquetado de registro)',
         'descripcion' => 'Fichas con codificación disponibles para impresión de etiqueta.'
     ],
 ];
@@ -180,19 +180,19 @@ ob_start();
         <div class="flex flex-wrap gap-2">
             <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion"
                class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'recepcion' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
-                a. Recepción
+                Recepción
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos"
                class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'pagos' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
-                b. Registro de Pagos
+                Registro de Pagos
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion"
                class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'codificacion' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
-                c. Codificación
+                Codificación
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta"
                class="px-3 py-2 rounded-lg text-sm font-medium transition-colors <?= $vistaActual === 'etiqueta' ? 'bg-amber-100 text-amber-700' : 'bg-gray-50 text-gray-600 hover:bg-gray-100' ?>">
-                i. Imprimir Etiqueta
+                Imprimir Etiqueta
             </a>
         </div>
     </div>

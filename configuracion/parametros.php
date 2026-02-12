@@ -292,8 +292,11 @@ ob_start();
 <script>
 const valoresDefecto = <?= json_encode($valoresDefecto) ?>;
 
-function resetDefaults(grupo) {
-    if (!confirm('¿Restaurar valores por defecto de esta sección?')) return;
+async function resetDefaults(grupo) {
+    const confirmed = window.App?.confirm
+        ? await App.confirm('¿Restaurar valores por defecto de esta sección?', 'Restaurar valores')
+        : confirm('¿Restaurar valores por defecto de esta sección?');
+    if (!confirmed) return;
     
     const form = document.querySelector(`input[name="grupo"][value="${grupo}"]`).closest('form');
     const inputs = form.querySelectorAll('input[name]');

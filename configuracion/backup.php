@@ -4,11 +4,13 @@
  * Backup y restauración de la base de datos
  */
 
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../bootstrap.php';
+requireAuth();
 
-Auth::check();
-Auth::requireRole(['admin', 'administrador']);
+if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
+    setFlash('danger', 'No tiene permisos para acceder a esta sección.');
+    redirect('/dashboard.php');
+}
 
 $db = Database::getInstance();
 $message = '';
@@ -54,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Registrar backup en BD
                 $db->query(
                     "INSERT INTO backups (filename, descripcion, size_bytes, usuario_id) VALUES (?, ?, ?, ?)",
-                    [$filename, $descripcion, filesize($filepath), $_SESSION['user_id']]
+                    [$filename, $descripcion, filesize($filepath), Auth::id()]
                 );
                 $message = 'Backup creado exitosamente: ' . $filename;
             } else {
@@ -92,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (file_put_contents($filepath, $sqlContent)) {
                     $db->query(
                         "INSERT INTO backups (filename, descripcion, size_bytes, usuario_id) VALUES (?, ?, ?, ?)",
-                        [$filename, $descripcion, filesize($filepath), $_SESSION['user_id']]
+                        [$filename, $descripcion, filesize($filepath), Auth::id()]
                     );
                     $message = 'Backup creado exitosamente: ' . $filename;
                 } else {
@@ -185,26 +187,28 @@ $pageTitle = 'Gestión de Respaldos';
 ob_start();
 ?>
 
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Gestión de Respaldos</h1>
-            <p class="text-gray-600">Backup y restauración de la base de datos</p>
+            <h1 class="text-3xl font-bold text-primary">Gestión de Respaldos</h1>
+            <p class="text-warmgray">Backup y restauración de la base de datos</p>
         </div>
-        <a href="/configuracion/" class="text-amber-600 hover:text-amber-700">
-            <i class="fas fa-arrow-left mr-2"></i>Volver a Configuración
+        <a href="/configuracion/"
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+            <i class="fas fa-arrow-left"></i>
+            Volver a Configuración
         </a>
     </div>
 
     <?php if ($message): ?>
-    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+    <div class="alert alert-success" data-auto-dismiss>
         <i class="fas fa-check-circle mr-2"></i><?= htmlspecialchars($message) ?>
     </div>
     <?php endif; ?>
 
     <?php if ($error): ?>
-    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+    <div class="alert alert-danger" data-auto-dismiss>
         <i class="fas fa-exclamation-circle mr-2"></i><?= htmlspecialchars($error) ?>
     </div>
     <?php endif; ?>
@@ -373,7 +377,7 @@ ob_start();
                             </span>
                             <?php endif; ?>
                             
-                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este backup?')">
+                            <form method="POST" class="inline" onsubmit="return (window.inlineConfirm ? inlineConfirm(event, '¿Eliminar este backup?', 'Eliminar respaldo') : confirm('¿Eliminar este backup?'))">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= $backup['id'] ?>">
                                 <button type="submit" class="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
@@ -401,5 +405,5 @@ ob_start();
 
 <?php
 $content = ob_get_clean();
-require_once __DIR__ . '/../includes/layout.php';
+include __DIR__ . '/../templates/layouts/main.php';
 ?>

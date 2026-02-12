@@ -546,12 +546,20 @@ async function finalizarSecado() {
     }
     
     if (parseFloat(humedadFinal) > 7) {
-        if (!confirm('La humedad final es mayor a 7%. ¿Desea continuar?')) {
+        const continueWithHighHumidity = await App.confirm(
+            'La humedad final es mayor a 7%. ¿Desea continuar?',
+            'Confirmar humedad'
+        );
+        if (!continueWithHighHumidity) {
             return;
         }
     }
     
-    if (!confirm('¿Está seguro de finalizar el secado? Esta acción no se puede deshacer.')) {
+    const confirmed = await App.confirm(
+        '¿Está seguro de finalizar el secado? Esta acción no se puede deshacer.',
+        'Finalizar secado'
+    );
+    if (!confirmed) {
         return;
     }
     

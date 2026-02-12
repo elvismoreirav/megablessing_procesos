@@ -386,7 +386,7 @@ ob_start();
     <div class="card-body">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
-                <h4 class="font-semibold text-emerald-800 mb-3">1. Procesos Centro de Acopio</h4>
+                <h4 class="font-semibold text-emerald-800 mb-3">Procesos Centro de Acopio</h4>
                 <ol class="space-y-2 text-sm text-emerald-900">
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="hover:underline"> Recepción (Ficha de Recepción)</a></li>
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="hover:underline">Registro de Pagos (Ficha de pagos)</a></li>
@@ -395,34 +395,34 @@ ob_start();
                 </ol>
             </div>
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-5">
-                <h4 class="font-semibold text-blue-800 mb-3">2. Procesos Planta</h4>
+                <h4 class="font-semibold text-blue-800 mb-3">Procesos Planta</h4>
                 <ol class="space-y-2 text-sm text-blue-900">
-                    <li><a href="<?= APP_URL ?>/lotes/index.php" class="hover:underline">a. Verificación de Lote</a></li>
-                    <li><a href="<?= APP_URL ?>/fermentacion/index.php" class="hover:underline">b. Fermentación (Ficha de fermentación)</a></li>
-                    <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">c. Secado (Ficha de secado)</a></li>
-                    <li><a href="<?= APP_URL ?>/prueba-corte/index.php" class="hover:underline">d. Prueba de Corte (Ficha de prueba de corte)</a></li>
-                    <li><a href="<?= APP_URL ?>/calidad-salida/index.php" class="hover:underline">e. Calidad de salida</a></li>
+                    <li><a href="<?= APP_URL ?>/lotes/index.php" class="hover:underline">Verificación de Lote</a></li>
+                    <li><a href="<?= APP_URL ?>/fermentacion/index.php" class="hover:underline">Fermentación (Ficha de fermentación)</a></li>
+                    <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">Secado (Ficha de secado)</a></li>
+                    <li><a href="<?= APP_URL ?>/prueba-corte/index.php" class="hover:underline">Prueba de Corte (Ficha de prueba de corte)</a></li>
+                    <li><a href="<?= APP_URL ?>/calidad-salida/index.php" class="hover:underline">Calidad de salida</a></li>
                 </ol>
             </div>
         </div>
         <div class="mt-4 flex flex-wrap gap-3">
             <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="btn btn-primary">
-                a. Recepción (Listado)
+                Recepción (Listado)
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="btn btn-outline">
-                b. Registro de Pagos
+                Registro de Pagos
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="btn btn-outline">
-                c. Codificación de Lote
+                Codificación de Lote
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="btn btn-outline">
-                i. Imprimir Etiqueta
+                Imprimir Etiqueta
             </a>
             <a href="<?= APP_URL ?>/lotes/index.php" class="btn btn-outline">
-                2.a Verificación de Lote
+                Verificación de Lote
             </a>
             <a href="<?= APP_URL ?>/calidad-salida/index.php" class="btn btn-outline">
-                2.e Calidad de salida
+                Calidad de salida
             </a>
         </div>
     </div>

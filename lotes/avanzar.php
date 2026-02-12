@@ -611,7 +611,7 @@ ob_start();
                 </div>
             </div>
             
-            <form method="POST" class="space-y-4" onsubmit="return confirm('¿Está seguro de retroceder el estado del lote? Esta acción quedará registrada.')">
+            <form method="POST" class="space-y-4" onsubmit="return inlineConfirm(event, '¿Está seguro de retroceder el estado del lote? Esta acción quedará registrada.', 'Retroceder lote')">
                 <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

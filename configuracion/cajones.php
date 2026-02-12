@@ -5,18 +5,12 @@
  */
 
 require_once __DIR__ . '/../bootstrap.php';
+requireAuth();
 
-// Verificar autenticación y rol
-if (!Auth::check()) {
-    header('Location: /login.php');
-    exit;
-}
-
-$user = Auth::user();
-if (!in_array($user['rol'], ['admin', 'administrador', 'supervisor'])) {
-    $_SESSION['error'] = 'No tiene permisos para acceder a esta sección';
-    header('Location: /dashboard.php');
-    exit;
+$rolActual = strtolower((string)(Auth::user()['rol'] ?? ''));
+if (!Auth::isAdmin() && !Auth::hasPermission('configuracion') && $rolActual !== 'supervisor') {
+    setFlash('danger', 'No tiene permisos para acceder a esta sección.');
+    redirect('/dashboard.php');
 }
 
 $db = Database::getInstance()->getConnection();
@@ -179,64 +173,64 @@ $enUso = $db->query("
 ")->fetchColumn();
 
 $pageTitle = 'Gestión de Cajones de Fermentación';
-include __DIR__ . '/../templates/layouts/header.php';
+ob_start();
 ?>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Header -->
-    <div class="mb-8">
-        <div class="flex items-center gap-4 mb-4">
-            <a href="/configuracion/" class="text-gray-500 hover:text-primary-green transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                </svg>
-            </a>
-            <div>
-                <h1 class="text-3xl font-bold text-primary-green">Cajones de Fermentación</h1>
-                <p class="text-warm-gray mt-1">Administre los cajones/cajas utilizados en el proceso de fermentación</p>
-            </div>
+    <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-primary">Cajones de Fermentación</h1>
+            <p class="text-warmgray mt-1">Administre los cajones/cajas utilizados en el proceso de fermentación</p>
         </div>
+        <a href="/configuracion/"
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Volver a Configuración
+        </a>
     </div>
 
     <!-- Estadísticas -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
-            <div class="text-3xl font-bold text-primary-green"><?= number_format($stats['total']) ?></div>
-            <div class="text-sm text-warm-gray">Total Cajones</div>
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
+            <div class="text-3xl font-bold text-primary"><?= number_format($stats['total']) ?></div>
+            <div class="text-sm text-warmgray">Total Cajones</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-emerald-600"><?= number_format($stats['activos']) ?></div>
-            <div class="text-sm text-warm-gray">Disponibles</div>
+            <div class="text-sm text-warmgray">Disponibles</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-blue-600"><?= number_format($enUso) ?></div>
-            <div class="text-sm text-warm-gray">En Uso</div>
+            <div class="text-sm text-warmgray">En Uso</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-amber-600"><?= number_format($stats['activos'] - $enUso) ?></div>
-            <div class="text-sm text-warm-gray">Libres</div>
+            <div class="text-sm text-warmgray">Libres</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-purple-600"><?= number_format($stats['capacidad_total'], 0) ?></div>
-            <div class="text-sm text-warm-gray">Capacidad Total (kg)</div>
+            <div class="text-sm text-warmgray">Capacidad Total (kg)</div>
         </div>
     </div>
 
     <!-- Filtros y Acciones -->
-    <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-6 mb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-6 mb-6">
         <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             <form method="GET" class="flex flex-wrap gap-4 items-center flex-1">
                 <div class="flex-1 min-w-[200px]">
                     <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" 
                            placeholder="Buscar por número, material o ubicación..."
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green">
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
                 </div>
-                <select name="estado" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green">
+                <select name="estado" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary">
                     <option value="">Todos los estados</option>
                     <option value="1" <?= $estado_filter === '1' ? 'selected' : '' ?>>Activos</option>
                     <option value="0" <?= $estado_filter === '0' ? 'selected' : '' ?>>Inactivos</option>
                 </select>
-                <button type="submit" class="px-4 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors">
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
@@ -249,7 +243,7 @@ include __DIR__ . '/../templates/layouts/header.php';
             </form>
             
             <button onclick="openModal('create')" 
-                    class="px-6 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors flex items-center gap-2">
+                    class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                 </svg>
@@ -261,7 +255,7 @@ include __DIR__ . '/../templates/layouts/header.php';
     <!-- Grid de Cajones -->
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <?php if (empty($cajones)): ?>
-        <div class="col-span-full bg-white rounded-xl shadow-sm border border-olive-green/20 p-12 text-center">
+        <div class="col-span-full bg-white rounded-xl shadow-sm border border-olive/20 p-12 text-center">
             <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
             </svg>
@@ -275,8 +269,8 @@ include __DIR__ . '/../templates/layouts/header.php';
         $statusColor = !$cajon['activo'] ? 'bg-gray-400' : ($enUsoActual ? 'bg-blue-500' : 'bg-emerald-500');
         $statusText = !$cajon['activo'] ? 'Inactivo' : ($enUsoActual ? 'En Uso' : 'Libre');
         ?>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 overflow-hidden hover:shadow-md transition-all <?= !$cajon['activo'] ? 'opacity-60' : '' ?>">
-            <div class="bg-gradient-to-r from-primary-green to-primary-green/80 px-4 py-3 flex items-center justify-between">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 overflow-hidden hover:shadow-md transition-all <?= !$cajon['activo'] ? 'opacity-60' : '' ?>">
+            <div class="bg-gradient-to-r from-primary to-primary/80 px-4 py-3 flex items-center justify-between">
                 <span class="text-xl font-bold text-white"><?= htmlspecialchars($cajon['numero']) ?></span>
                 <span class="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-white/20 text-white">
                     <span class="w-2 h-2 rounded-full <?= $statusColor ?>"></span>
@@ -303,7 +297,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                 </div>
                 
                 <div class="mt-4 pt-3 border-t border-gray-100 text-center">
-                    <div class="text-2xl font-bold text-primary-green"><?= number_format($cajon['total_fermentaciones']) ?></div>
+                    <div class="text-2xl font-bold text-primary"><?= number_format($cajon['total_fermentaciones']) ?></div>
                     <div class="text-xs text-gray-500">Fermentaciones</div>
                 </div>
                 
@@ -343,7 +337,7 @@ include __DIR__ . '/../templates/layouts/header.php';
 <!-- Modal Crear/Editar -->
 <div id="cajonModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md transform transition-all">
-        <div class="bg-gradient-to-r from-primary-green to-primary-green/80 px-6 py-4 rounded-t-2xl">
+        <div class="bg-gradient-to-r from-primary to-primary/80 px-6 py-4 rounded-t-2xl">
             <h3 id="modalTitle" class="text-xl font-bold text-white">Nuevo Cajón</h3>
         </div>
         
@@ -355,7 +349,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Número/Código *</label>
                     <input type="text" id="numero" name="numero" required maxlength="20"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green uppercase"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary uppercase"
                            placeholder="Ej: C-001">
                     <p class="text-xs text-gray-500 mt-1">Identificador único del cajón</p>
                 </div>
@@ -363,14 +357,14 @@ include __DIR__ . '/../templates/layouts/header.php';
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Capacidad (kg)</label>
                     <input type="number" id="capacidad_kg" name="capacidad_kg" step="0.01" min="0"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                            placeholder="Ej: 500">
                 </div>
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Material</label>
                     <select id="material" name="material"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green">
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
                         <option value="">Seleccionar...</option>
                         <option value="Madera">Madera</option>
                         <option value="Madera de Laurel">Madera de Laurel</option>
@@ -384,7 +378,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
                     <input type="text" id="ubicacion" name="ubicacion" maxlength="100"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                            placeholder="Ej: Área de Fermentación 1">
                 </div>
             </div>
@@ -395,7 +389,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                     Cancelar
                 </button>
                 <button type="submit" 
-                        class="px-6 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors">
+                        class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
                     <span id="submitBtnText">Guardar</span>
                 </button>
             </div>
@@ -481,8 +475,11 @@ document.getElementById('cajonForm').addEventListener('submit', function(e) {
 });
 
 // Toggle estado
-function toggleEstado(id) {
-    if (!confirm('¿Cambiar el estado de este cajón?')) return;
+async function toggleEstado(id) {
+    const confirmed = window.App?.confirm
+        ? await App.confirm('¿Cambiar el estado de este cajón?', 'Cambiar estado')
+        : confirm('¿Cambiar el estado de este cajón?');
+    if (!confirmed) return;
     
     fetch('/configuracion/cajones.php', {
         method: 'POST',
@@ -501,8 +498,12 @@ function toggleEstado(id) {
 }
 
 // Eliminar cajón
-function deleteCajon(id, numero) {
-    if (!confirm(`¿Está seguro de eliminar el cajón "${numero}"?\n\nEsta acción no se puede deshacer.`)) return;
+async function deleteCajon(id, numero) {
+    const mensaje = `¿Está seguro de eliminar el cajón "${numero}"?\n\nEsta acción no se puede deshacer.`;
+    const confirmed = window.App?.confirm
+        ? await App.confirm(mensaje, 'Eliminar cajón')
+        : confirm(mensaje);
+    if (!confirmed) return;
     
     fetch('/configuracion/cajones.php', {
         method: 'POST',
@@ -522,6 +523,11 @@ function deleteCajon(id, numero) {
 
 // Notificaciones
 function showNotification(message, type = 'info') {
+    if (window.App && typeof App.toast === 'function') {
+        App.toast(message, type);
+        return;
+    }
+
     const colors = {
         success: 'bg-emerald-500',
         error: 'bg-red-500',
@@ -531,6 +537,7 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300`;
     notification.textContent = message;
+    notification.setAttribute('role', 'status');
     document.body.appendChild(notification);
     
     setTimeout(() => {
@@ -550,4 +557,7 @@ document.getElementById('cajonModal').addEventListener('click', function(e) {
 });
 </script>
 
-<?php include __DIR__ . '/../templates/layouts/footer.php'; ?>
+<?php
+$content = ob_get_clean();
+include __DIR__ . '/../templates/layouts/main.php';
+?>

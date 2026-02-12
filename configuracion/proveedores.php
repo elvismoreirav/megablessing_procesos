@@ -1618,8 +1618,11 @@ document.getElementById('categoriaForm').addEventListener('submit', function(e) 
 });
 
 // Toggle estado
-function toggleEstado(id) {
-    if (!confirm('¿Cambiar el estado de este proveedor?')) return;
+async function toggleEstado(id) {
+    const confirmed = window.App?.confirm
+        ? await App.confirm('¿Cambiar el estado de este proveedor?', 'Cambiar estado')
+        : confirm('¿Cambiar el estado de este proveedor?');
+    if (!confirmed) return;
     
     fetch(proveedoresUrl, {
         method: 'POST',
@@ -1638,8 +1641,12 @@ function toggleEstado(id) {
 }
 
 // Eliminar proveedor
-function deleteProveedor(id, nombre) {
-    if (!confirm(`¿Está seguro de eliminar el proveedor "${nombre}"?\n\nEsta acción no se puede deshacer.`)) return;
+async function deleteProveedor(id, nombre) {
+    const mensaje = `¿Está seguro de eliminar el proveedor "${nombre}"?\n\nEsta acción no se puede deshacer.`;
+    const confirmed = window.App?.confirm
+        ? await App.confirm(mensaje, 'Eliminar proveedor')
+        : confirm(mensaje);
+    if (!confirmed) return;
     
     fetch(proveedoresUrl, {
         method: 'POST',
@@ -1659,6 +1666,11 @@ function deleteProveedor(id, nombre) {
 
 // Notificaciones
 function showNotification(message, type = 'info') {
+    if (window.App && typeof App.toast === 'function') {
+        App.toast(message, type);
+        return;
+    }
+
     const colors = {
         success: 'bg-emerald-500',
         error: 'bg-red-500',
@@ -1668,6 +1680,7 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300`;
     notification.textContent = message;
+    notification.setAttribute('role', 'status');
     document.body.appendChild(notification);
     
     setTimeout(() => {

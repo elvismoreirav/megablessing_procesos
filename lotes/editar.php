@@ -569,10 +569,16 @@ document.addEventListener('DOMContentLoaded', function() {
     updateCalculations();
 });
 
-function confirmDeleteLote() {
-    if (confirm('¿Está seguro de eliminar este lote? Esta acción no se puede deshacer.')) {
-        window.location.href = '<?= APP_URL ?>/lotes/eliminar.php?id=<?= $id ?>&token=<?= generateCSRFToken() ?>';
+async function confirmDeleteLote() {
+    const confirmed = await App.confirm(
+        '¿Está seguro de eliminar este lote? Esta acción no se puede deshacer.',
+        'Eliminar lote'
+    );
+    if (!confirmed) {
+        return;
     }
+
+    window.location.href = '<?= APP_URL ?>/lotes/eliminar.php?id=<?= $id ?>&token=<?= generateCSRFToken() ?>';
 }
 </script>
 

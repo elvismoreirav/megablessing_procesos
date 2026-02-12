@@ -4,24 +4,44 @@
  * Información sobre los roles del sistema
  */
 
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../bootstrap.php';
+requireAuth();
 
-Auth::check();
-Auth::requireRole(['admin', 'administrador']);
+if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
+    setFlash('danger', 'No tiene permisos para acceder a esta sección.');
+    redirect('/dashboard.php');
+}
 
 $db = Database::getInstance();
 
-// Obtener conteo de usuarios por rol
-$usuariosPorRol = $db->fetchAll("
-    SELECT rol, COUNT(*) as count
-    FROM usuarios
-    WHERE activo = 1
-    GROUP BY rol
-");
+// Obtener conteo de usuarios por rol (compatibilidad: esquema legado con `rol` o nuevo con `rol_id`).
+$columnasUsuarios = array_column($db->fetchAll("SHOW COLUMNS FROM usuarios"), 'Field');
+$usaRolDirecto = in_array('rol', $columnasUsuarios, true);
+
+if ($usaRolDirecto) {
+    $usuariosPorRol = $db->fetchAll("
+        SELECT rol, COUNT(*) as count
+        FROM usuarios
+        WHERE activo = 1
+        GROUP BY rol
+    ");
+} else {
+    $usuariosPorRol = $db->fetchAll("
+        SELECT LOWER(REPLACE(COALESCE(r.nombre, 'consulta'), ' ', '')) as rol, COUNT(*) as count
+        FROM usuarios u
+        LEFT JOIN roles r ON u.rol_id = r.id
+        WHERE u.activo = 1
+        GROUP BY rol
+    ");
+}
+
 $countsByRol = [];
 foreach ($usuariosPorRol as $row) {
-    $countsByRol[$row['rol']] = $row['count'];
+    $rolKey = strtolower((string)$row['rol']);
+    if ($rolKey === 'administrador') {
+        $rolKey = 'admin';
+    }
+    $countsByRol[$rolKey] = $row['count'];
 }
 
 // Definición de roles y permisos
@@ -96,15 +116,17 @@ $pageTitle = 'Roles y Permisos';
 ob_start();
 ?>
 
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Roles y Permisos</h1>
-            <p class="text-gray-600">Información sobre los niveles de acceso del sistema</p>
+            <h1 class="text-3xl font-bold text-primary">Roles y Permisos</h1>
+            <p class="text-warmgray">Información sobre los niveles de acceso del sistema</p>
         </div>
-        <a href="/configuracion/" class="text-amber-600 hover:text-amber-700">
-            <i class="fas fa-arrow-left mr-2"></i>Volver a Configuración
+        <a href="/configuracion/"
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+            <i class="fas fa-arrow-left"></i>
+            Volver a Configuración
         </a>
     </div>
 
@@ -240,5 +262,5 @@ ob_start();
 
 <?php
 $content = ob_get_clean();
-require_once __DIR__ . '/../includes/layout.php';
+include __DIR__ . '/../templates/layouts/main.php';
 ?>

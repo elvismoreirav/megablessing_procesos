@@ -5,18 +5,12 @@
  */
 
 require_once __DIR__ . '/../bootstrap.php';
+requireAuth();
 
-// Verificar autenticación y rol
-if (!Auth::check()) {
-    header('Location: /login.php');
-    exit;
-}
-
-$user = Auth::user();
-if (!in_array($user['rol'], ['admin', 'administrador', 'supervisor'])) {
-    $_SESSION['error'] = 'No tiene permisos para acceder a esta sección';
-    header('Location: /dashboard.php');
-    exit;
+$rolActual = strtolower((string)(Auth::user()['rol'] ?? ''));
+if (!Auth::isAdmin() && !Auth::hasPermission('configuracion') && $rolActual !== 'supervisor') {
+    setFlash('danger', 'No tiene permisos para acceder a esta sección.');
+    redirect('/dashboard.php');
 }
 
 $db = Database::getInstance()->getConnection();
@@ -189,78 +183,78 @@ $enUso = $db->query("
 ")->fetchColumn();
 
 $pageTitle = 'Gestión de Secadoras';
-include __DIR__ . '/../templates/layouts/header.php';
+ob_start();
 ?>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Header -->
-    <div class="mb-8">
-        <div class="flex items-center gap-4 mb-4">
-            <a href="/configuracion/" class="text-gray-500 hover:text-primary-green transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                </svg>
-            </a>
-            <div>
-                <h1 class="text-3xl font-bold text-primary-green">Gestión de Secadoras</h1>
-                <p class="text-warm-gray mt-1">Administre las secadoras y tendales para el proceso de secado</p>
-            </div>
+    <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-primary">Gestión de Secadoras</h1>
+            <p class="text-warmgray mt-1">Administre las secadoras y tendales para el proceso de secado</p>
         </div>
+        <a href="/configuracion/"
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Volver a Configuración
+        </a>
     </div>
 
     <!-- Estadísticas -->
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-8">
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
-            <div class="text-3xl font-bold text-primary-green"><?= number_format($stats['total']) ?></div>
-            <div class="text-sm text-warm-gray">Total</div>
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
+            <div class="text-3xl font-bold text-primary"><?= number_format($stats['total']) ?></div>
+            <div class="text-sm text-warmgray">Total</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-emerald-600"><?= number_format($stats['activos']) ?></div>
-            <div class="text-sm text-warm-gray">Disponibles</div>
+            <div class="text-sm text-warmgray">Disponibles</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-blue-600"><?= number_format($enUso) ?></div>
-            <div class="text-sm text-warm-gray">En Uso</div>
+            <div class="text-sm text-warmgray">En Uso</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-slate-600"><?= number_format($stats['industrial'] ?? 0) ?></div>
-            <div class="text-sm text-warm-gray">Industrial</div>
+            <div class="text-sm text-warmgray">Industrial</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-amber-600"><?= number_format($stats['artesanal'] ?? 0) ?></div>
-            <div class="text-sm text-warm-gray">Artesanal</div>
+            <div class="text-sm text-warmgray">Artesanal</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-yellow-600"><?= number_format($stats['solar'] ?? 0) ?></div>
-            <div class="text-sm text-warm-gray">Solar</div>
+            <div class="text-sm text-warmgray">Solar</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-purple-600"><?= number_format($stats['capacidad_total'], 0) ?></div>
-            <div class="text-sm text-warm-gray">Cap. Total (qq)</div>
+            <div class="text-sm text-warmgray">Cap. Total (qq)</div>
         </div>
     </div>
 
     <!-- Filtros y Acciones -->
-    <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-6 mb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-6 mb-6">
         <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             <form method="GET" class="flex flex-wrap gap-4 items-center flex-1">
                 <div class="flex-1 min-w-[200px]">
                     <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" 
                            placeholder="Buscar por número, nombre o ubicación..."
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green">
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
                 </div>
-                <select name="tipo" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green">
+                <select name="tipo" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary">
                     <option value="">Todos los tipos</option>
                     <option value="INDUSTRIAL" <?= $tipo_filter === 'INDUSTRIAL' ? 'selected' : '' ?>>Industrial</option>
                     <option value="ARTESANAL" <?= $tipo_filter === 'ARTESANAL' ? 'selected' : '' ?>>Artesanal</option>
                     <option value="SOLAR" <?= $tipo_filter === 'SOLAR' ? 'selected' : '' ?>>Solar</option>
                 </select>
-                <select name="estado" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green">
+                <select name="estado" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary">
                     <option value="">Todos los estados</option>
                     <option value="1" <?= $estado_filter === '1' ? 'selected' : '' ?>>Activos</option>
                     <option value="0" <?= $estado_filter === '0' ? 'selected' : '' ?>>Inactivos</option>
                 </select>
-                <button type="submit" class="px-4 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors">
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
@@ -273,7 +267,7 @@ include __DIR__ . '/../templates/layouts/header.php';
             </form>
             
             <button onclick="openModal('create')" 
-                    class="px-6 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors flex items-center gap-2">
+                    class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                 </svg>
@@ -283,7 +277,7 @@ include __DIR__ . '/../templates/layouts/header.php';
     </div>
 
     <!-- Tabla de Secadoras -->
-    <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 overflow-hidden">
+    <div class="bg-white rounded-xl shadow-sm border border-olive/20 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="bg-gradient-to-r from-teal-600 to-teal-500 text-white">
@@ -326,7 +320,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                     ?>
                     <tr class="hover:bg-ivory-white/50 transition-colors <?= !$sec['activo'] ? 'opacity-60' : '' ?>">
                         <td class="px-6 py-4">
-                            <span class="font-mono font-semibold text-primary-green"><?= htmlspecialchars($sec['numero']) ?></span>
+                            <span class="font-mono font-semibold text-primary"><?= htmlspecialchars($sec['numero']) ?></span>
                         </td>
                         <td class="px-6 py-4 text-gray-900">
                             <?= htmlspecialchars($sec['nombre'] ?: '-') ?>
@@ -345,7 +339,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                         </td>
                         <td class="px-6 py-4 text-center">
                             <div class="flex flex-col items-center">
-                                <span class="font-semibold text-primary-green"><?= number_format($sec['total_secados']) ?></span>
+                                <span class="font-semibold text-primary"><?= number_format($sec['total_secados']) ?></span>
                                 <?php if ($enUsoActual): ?>
                                 <span class="text-xs text-blue-600">(<?= $sec['secados_activos'] ?> activo<?= $sec['secados_activos'] > 1 ? 's' : '' ?>)</span>
                                 <?php endif; ?>
@@ -544,8 +538,11 @@ document.getElementById('secadoraForm').addEventListener('submit', function(e) {
 });
 
 // Toggle estado
-function toggleEstado(id) {
-    if (!confirm('¿Cambiar el estado de esta secadora?')) return;
+async function toggleEstado(id) {
+    const confirmed = window.App?.confirm
+        ? await App.confirm('¿Cambiar el estado de esta secadora?', 'Cambiar estado')
+        : confirm('¿Cambiar el estado de esta secadora?');
+    if (!confirmed) return;
     
     fetch('/configuracion/secadoras.php', {
         method: 'POST',
@@ -564,8 +561,12 @@ function toggleEstado(id) {
 }
 
 // Eliminar secadora
-function deleteSecadora(id, numero) {
-    if (!confirm(`¿Está seguro de eliminar la secadora "${numero}"?\n\nEsta acción no se puede deshacer.`)) return;
+async function deleteSecadora(id, numero) {
+    const mensaje = `¿Está seguro de eliminar la secadora "${numero}"?\n\nEsta acción no se puede deshacer.`;
+    const confirmed = window.App?.confirm
+        ? await App.confirm(mensaje, 'Eliminar secadora')
+        : confirm(mensaje);
+    if (!confirmed) return;
     
     fetch('/configuracion/secadoras.php', {
         method: 'POST',
@@ -585,6 +586,11 @@ function deleteSecadora(id, numero) {
 
 // Notificaciones
 function showNotification(message, type = 'info') {
+    if (window.App && typeof App.toast === 'function') {
+        App.toast(message, type);
+        return;
+    }
+
     const colors = {
         success: 'bg-emerald-500',
         error: 'bg-red-500',
@@ -594,6 +600,7 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300`;
     notification.textContent = message;
+    notification.setAttribute('role', 'status');
     document.body.appendChild(notification);
     
     setTimeout(() => {
@@ -613,4 +620,7 @@ document.getElementById('secadoraModal').addEventListener('click', function(e) {
 });
 </script>
 
-<?php include __DIR__ . '/../templates/layouts/footer.php'; ?>
+<?php
+$content = ob_get_clean();
+include __DIR__ . '/../templates/layouts/main.php';
+?>

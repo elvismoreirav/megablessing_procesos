@@ -482,7 +482,7 @@ ob_start();
                                             </button>
                                         </form>
 
-                                        <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este usuario?');">
+                                        <form method="POST" class="inline" onsubmit="return inlineConfirm(event, '¿Eliminar este usuario?', 'Eliminar usuario');">
                                             <?= csrfField() ?>
                                             <input type="hidden" name="action" value="delete">
                                             <input type="hidden" name="id" value="<?= (int)$usr['id'] ?>">
@@ -523,4 +523,3 @@ ob_start();
 <?php
 $content = ob_get_clean();
 include __DIR__ . '/../templates/layouts/main.php';
-

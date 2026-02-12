@@ -5,18 +5,12 @@
  */
 
 require_once __DIR__ . '/../bootstrap.php';
+requireAuth();
 
-// Verificar autenticación y rol
-if (!Auth::check()) {
-    header('Location: /login.php');
-    exit;
-}
-
-$user = Auth::user();
-if (!in_array($user['rol'], ['admin', 'administrador', 'supervisor'])) {
-    $_SESSION['error'] = 'No tiene permisos para acceder a esta sección';
-    header('Location: /dashboard.php');
-    exit;
+$rolActual = strtolower((string)(Auth::user()['rol'] ?? ''));
+if (!Auth::isAdmin() && !Auth::hasPermission('configuracion') && $rolActual !== 'supervisor') {
+    setFlash('danger', 'No tiene permisos para acceder a esta sección.');
+    redirect('/dashboard.php');
 }
 
 $db = Database::getInstance()->getConnection();
@@ -170,62 +164,62 @@ $stats = $db->query("
 ")->fetch(PDO::FETCH_ASSOC);
 
 $pageTitle = 'Gestión de Variedades';
-include __DIR__ . '/../templates/layouts/header.php';
+ob_start();
 ?>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <!-- Header -->
-    <div class="mb-8">
-        <div class="flex items-center gap-4 mb-4">
-            <a href="/configuracion/" class="text-gray-500 hover:text-primary-green transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                </svg>
-            </a>
-            <div>
-                <h1 class="text-3xl font-bold text-primary-green">Gestión de Variedades</h1>
-                <p class="text-warm-gray mt-1">Administre las variedades de cacao procesadas</p>
-            </div>
+    <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-primary">Gestión de Variedades</h1>
+            <p class="text-warmgray mt-1">Administre las variedades de cacao procesadas</p>
         </div>
+        <a href="/configuracion/"
+           class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Volver a Configuración
+        </a>
     </div>
 
     <!-- Estadísticas -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
-            <div class="text-3xl font-bold text-primary-green"><?= number_format($stats['total']) ?></div>
-            <div class="text-sm text-warm-gray">Total Variedades</div>
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
+            <div class="text-3xl font-bold text-primary"><?= number_format($stats['total']) ?></div>
+            <div class="text-sm text-warmgray">Total Variedades</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-emerald-600"><?= number_format($stats['activas']) ?></div>
-            <div class="text-sm text-warm-gray">Activas</div>
+            <div class="text-sm text-warmgray">Activas</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-amber-600"><?= number_format($stats['total'] - $stats['activas']) ?></div>
-            <div class="text-sm text-warm-gray">Inactivas</div>
+            <div class="text-sm text-warmgray">Inactivas</div>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-4 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-blue-600">
                 <?= $db->query("SELECT COUNT(DISTINCT variedad_id) FROM lotes WHERE variedad_id IS NOT NULL")->fetchColumn() ?>
             </div>
-            <div class="text-sm text-warm-gray">Con Lotes</div>
+            <div class="text-sm text-warmgray">Con Lotes</div>
         </div>
     </div>
 
     <!-- Filtros y Acciones -->
-    <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 p-6 mb-6">
+    <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-6 mb-6">
         <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             <form method="GET" class="flex flex-wrap gap-4 items-center flex-1">
                 <div class="flex-1 min-w-[200px]">
                     <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" 
                            placeholder="Buscar por código, nombre o descripción..."
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green focus:border-primary-green">
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
                 </div>
-                <select name="estado" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-green">
+                <select name="estado" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary">
                     <option value="">Todos los estados</option>
                     <option value="1" <?= $estado_filter === '1' ? 'selected' : '' ?>>Activas</option>
                     <option value="0" <?= $estado_filter === '0' ? 'selected' : '' ?>>Inactivas</option>
                 </select>
-                <button type="submit" class="px-4 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors">
+                <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
@@ -238,7 +232,7 @@ include __DIR__ . '/../templates/layouts/header.php';
             </form>
             
             <button onclick="openModal('create')" 
-                    class="px-6 py-2 bg-primary-green text-white rounded-lg hover:bg-primary-green/90 transition-colors flex items-center gap-2">
+                    class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                 </svg>
@@ -250,7 +244,7 @@ include __DIR__ . '/../templates/layouts/header.php';
     <!-- Grid de Variedades -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <?php if (empty($variedades)): ?>
-        <div class="col-span-full bg-white rounded-xl shadow-sm border border-olive-green/20 p-12 text-center">
+        <div class="col-span-full bg-white rounded-xl shadow-sm border border-olive/20 p-12 text-center">
             <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
             </svg>
@@ -259,7 +253,7 @@ include __DIR__ . '/../templates/layouts/header.php';
         </div>
         <?php else: ?>
         <?php foreach ($variedades as $var): ?>
-        <div class="bg-white rounded-xl shadow-sm border border-olive-green/20 overflow-hidden hover:shadow-md transition-shadow <?= !$var['activo'] ? 'opacity-60' : '' ?>">
+        <div class="bg-white rounded-xl shadow-sm border border-olive/20 overflow-hidden hover:shadow-md transition-shadow <?= !$var['activo'] ? 'opacity-60' : '' ?>">
             <div class="bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-4">
                 <div class="flex items-center justify-between">
                     <span class="text-2xl font-bold text-white"><?= htmlspecialchars($var['codigo']) ?></span>
@@ -278,7 +272,7 @@ include __DIR__ . '/../templates/layouts/header.php';
                 
                 <div class="grid grid-cols-2 gap-4 py-4 border-t border-gray-100">
                     <div class="text-center">
-                        <div class="text-2xl font-bold text-primary-green"><?= number_format($var['total_lotes']) ?></div>
+                        <div class="text-2xl font-bold text-primary"><?= number_format($var['total_lotes']) ?></div>
                         <div class="text-xs text-gray-500">Lotes</div>
                     </div>
                     <div class="text-center">
@@ -446,8 +440,11 @@ document.getElementById('variedadForm').addEventListener('submit', function(e) {
 });
 
 // Toggle estado
-function toggleEstado(id) {
-    if (!confirm('¿Cambiar el estado de esta variedad?')) return;
+async function toggleEstado(id) {
+    const confirmed = window.App?.confirm
+        ? await App.confirm('¿Cambiar el estado de esta variedad?', 'Cambiar estado')
+        : confirm('¿Cambiar el estado de esta variedad?');
+    if (!confirmed) return;
     
     fetch('/configuracion/variedades.php', {
         method: 'POST',
@@ -466,8 +463,12 @@ function toggleEstado(id) {
 }
 
 // Eliminar variedad
-function deleteVariedad(id, nombre) {
-    if (!confirm(`¿Está seguro de eliminar la variedad "${nombre}"?\n\nEsta acción no se puede deshacer.`)) return;
+async function deleteVariedad(id, nombre) {
+    const mensaje = `¿Está seguro de eliminar la variedad "${nombre}"?\n\nEsta acción no se puede deshacer.`;
+    const confirmed = window.App?.confirm
+        ? await App.confirm(mensaje, 'Eliminar variedad')
+        : confirm(mensaje);
+    if (!confirmed) return;
     
     fetch('/configuracion/variedades.php', {
         method: 'POST',
@@ -487,6 +488,11 @@ function deleteVariedad(id, nombre) {
 
 // Notificaciones
 function showNotification(message, type = 'info') {
+    if (window.App && typeof App.toast === 'function') {
+        App.toast(message, type);
+        return;
+    }
+
     const colors = {
         success: 'bg-emerald-500',
         error: 'bg-red-500',
@@ -496,6 +502,7 @@ function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300`;
     notification.textContent = message;
+    notification.setAttribute('role', 'status');
     document.body.appendChild(notification);
     
     setTimeout(() => {
@@ -515,4 +522,7 @@ document.getElementById('variedadModal').addEventListener('click', function(e) {
 });
 </script>
 
-<?php include __DIR__ . '/../templates/layouts/footer.php'; ?>
+<?php
+$content = ob_get_clean();
+include __DIR__ . '/../templates/layouts/main.php';
+?>

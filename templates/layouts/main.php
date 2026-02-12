@@ -14,6 +14,24 @@ $assetVersion = static function (string $path): string {
 };
 $cssVersion = $assetVersion(__DIR__ . '/../../assets/css/app.css');
 $jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
+
+$contentForAssetScan = (string)($content ?? '');
+$extraScriptsForAssetScan = (string)($extraScripts ?? '');
+
+$requiresChartJs = isset($requiresChartJs)
+    ? (bool)$requiresChartJs
+    : (stripos($contentForAssetScan, 'new Chart(') !== false
+        || stripos($extraScriptsForAssetScan, 'new Chart(') !== false);
+
+$requiresHandsontable = isset($requiresHandsontable)
+    ? (bool)$requiresHandsontable
+    : (stripos($contentForAssetScan, 'Handsontable') !== false
+        || stripos($extraScriptsForAssetScan, 'Handsontable') !== false);
+
+$requiresSheetJs = isset($requiresSheetJs)
+    ? (bool)$requiresSheetJs
+    : (stripos($contentForAssetScan, 'XLSX') !== false
+        || stripos($extraScriptsForAssetScan, 'XLSX') !== false);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -54,15 +72,21 @@ $jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
         }
     </script>
     
+    <?php if ($requiresHandsontable): ?>
     <!-- Handsontable -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.css">
     <script src="https://cdn.jsdelivr.net/npm/handsontable/dist/handsontable.full.min.js"></script>
-    
+    <?php endif; ?>
+
+    <?php if ($requiresSheetJs): ?>
     <!-- SheetJS para export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
-    
+    <?php endif; ?>
+
+    <?php if ($requiresChartJs): ?>
     <!-- Chart.js para gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?php endif; ?>
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/app.css?v=<?= $cssVersion ?>">

@@ -480,6 +480,16 @@ body {
     color: var(--color-info);
 }
 
+.badge-secondary {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
+
+.badge-gold {
+    background-color: rgba(214, 194, 154, 0.35);
+    color: #5f4a2a;
+}
+
 /* Alerts */
 .alert {
     padding: 1rem 1.25rem;
@@ -497,6 +507,12 @@ body {
 }
 
 .alert-danger {
+    background-color: rgba(220, 38, 38, 0.1);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    color: #991b1b;
+}
+
+.alert-error {
     background-color: rgba(220, 38, 38, 0.1);
     border: 1px solid rgba(220, 38, 38, 0.2);
     color: #991b1b;

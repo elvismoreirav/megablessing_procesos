@@ -493,7 +493,11 @@ async function finalizarFermentacion() {
         return;
     }
     
-    if (!confirm('¿Está seguro de finalizar la fermentación? Esta acción no se puede deshacer.')) {
+    const confirmed = await App.confirm(
+        '¿Está seguro de finalizar la fermentación? Esta acción no se puede deshacer.',
+        'Finalizar fermentación'
+    );
+    if (!confirmed) {
         return;
     }
     

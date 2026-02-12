@@ -373,31 +373,31 @@ ob_start();
                 </div>
                 <div class="card-body space-y-6">
                     <div>
-                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">1. Procesos Centro de Acopio</h4>
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">Procesos Centro de Acopio</h4>
                         <div class="space-y-3">
                             <a href="<?= $rutaFicha ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
-                                <span class="font-medium text-gray-800">a. Recepción (Ficha de Recepción)</span>
+                                <span class="font-medium text-gray-800">Recepción (Ficha de Recepción)</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneFichaRegistro ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneFichaRegistro ? 'Completado' : 'Pendiente' ?>
                                 </span>
                             </a>
                             <a href="<?= $rutaPago ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
-                                <span class="font-medium text-gray-800">b. Registro de Pagos (Ficha de pagos)</span>
+                                <span class="font-medium text-gray-800">Registro de Pagos (Ficha de pagos)</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneRegistroPago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneRegistroPago ? 'Registrado' : 'Pendiente' ?>
                                 </span>
                             </a>
                             <a href="<?= $rutaCodificacion ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
-                                <span class="font-medium text-gray-800">c. Codificación de Lote</span>
+                                <span class="font-medium text-gray-800">Codificación de Lote</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneCodificacion ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneCodificacion ? 'Codificado' : 'Pendiente' ?>
                                 </span>
                             </a>
                             <a href="<?= $rutaEtiqueta ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
-                                <span class="font-medium text-gray-800">i. Imprimir Etiqueta (Etiquetado de registro)</span>
+                                <span class="font-medium text-gray-800">Imprimir Etiqueta (Etiquetado de registro)</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneFichaRegistro ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneFichaRegistro ? 'Disponible' : 'Pendiente' ?>
                                 </span>
@@ -409,7 +409,7 @@ ob_start();
                     </div>
 
                     <div>
-                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">2. Procesos Planta</h4>
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">Procesos Planta</h4>
                         <div class="space-y-3">
                             <a href="<?= APP_URL ?>/lotes/editar.php?id=<?= $lote['id'] ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
                                 <span class="font-medium text-gray-800">a. Verificación de Lote</span>
@@ -505,25 +505,25 @@ ob_start();
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
                                 </svg>
-                                1.a Recepción (Ficha de Recepción)
+                                Recepción (Ficha de Recepción)
                             </a>
                             <a href="<?= $rutaPago ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2"/>
                                 </svg>
-                                1.b Registro de Pagos (Ficha de pagos)
+                                Registro de Pagos (Ficha de pagos)
                             </a>
                             <a href="<?= $rutaCodificacion ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
                                 </svg>
-                                1.c Codificación de Lote
+                                Codificación de Lote
                             </a>
                             <a href="<?= $rutaEtiqueta ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2"/>
                                 </svg>
-                                1.i Imprimir Etiqueta (Etiquetado de registro)
+                                Imprimir Etiqueta (Etiquetado de registro)
                             </a>
                         </div>
                     </div>
@@ -535,35 +535,35 @@ ob_start();
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11"/>
                                 </svg>
-                                2.a Verificación de Lote
+                                Verificación de Lote
                             </a>
                             <a href="<?= $tieneFichaRegistro ? $rutaFermentacion : '#' ?>"
                                class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10"/>
                                 </svg>
-                                2.b Fermentación (Ficha de fermentación)
+                                Fermentación (Ficha de fermentación)
                             </a>
                             <a href="<?= $tieneFichaRegistro ? $rutaSecado : '#' ?>"
                                class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3"/>
                                 </svg>
-                                2.c Secado (Ficha de secado)
+                                Secado (Ficha de secado)
                             </a>
                             <a href="<?= $tieneFichaRegistro ? $rutaPruebaCorte : '#' ?>"
                                class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10"/>
                                 </svg>
-                                2.d Prueba de Corte (Ficha de prueba de corte)
+                                Prueba de Corte (Ficha de prueba de corte)
                             </a>
                             <a href="<?= ($tieneFichaRegistro && $tablaCalidadSalidaExiste) ? $rutaCalidadSalida : '#' ?>"
                                class="btn w-full justify-start <?= ($tieneFichaRegistro && $tablaCalidadSalidaExiste) ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m4 2a8 8 0 11-16 0 8 8 0 0116 0z"/>
                                 </svg>
-                                2.e Calidad de salida
+                                Calidad de salida
                             </a>
                         </div>
                     </div>
