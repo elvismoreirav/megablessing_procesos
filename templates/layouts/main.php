@@ -107,28 +107,28 @@ $jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
                 </svg>
-                1.a Recepción (Ficha de Recepción)
+                Recepción (Ficha de Recepción)
             </a>
 
             <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1m0-1a3 3 0 01-3-3m3 3a3 3 0 003-3"/>
                 </svg>
-                1.b Registro de Pagos (Ficha de pagos)
+                Registro de Pagos (Ficha de pagos)
             </a>
 
             <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
                 </svg>
-                1.c Codificación de Lote
+                Codificación de Lote
             </a>
 
             <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2z"/>
                 </svg>
-                1.i Imprimir Etiqueta (Etiquetado de registro)
+                Imprimir Etiqueta (Etiquetado de registro)
             </a>
 
             <!-- Procesos Planta -->
@@ -138,28 +138,28 @@ $jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                 </svg>
-                2.a Verificación de Lote
+                Verificación de Lote
             </a>
 
             <a href="<?= APP_URL ?>/fermentacion/index.php" class="sidebar-link <?= $currentDir === 'fermentacion' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
                 </svg>
-                2.b Fermentación (Ficha de fermentación)
+                Fermentación (Ficha de fermentación)
             </a>
 
             <a href="<?= APP_URL ?>/secado/index.php" class="sidebar-link <?= $currentDir === 'secado' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
                 </svg>
-                2.c Secado (Ficha de secado)
+                Secado (Ficha de secado)
             </a>
 
             <a href="<?= APP_URL ?>/prueba-corte/index.php" class="sidebar-link <?= in_array($currentDir, ['prueba-corte', 'prueba_corte'], true) ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                 </svg>
-                2.d Prueba de Corte (Ficha de prueba de corte)
+                Prueba de Corte (Ficha de prueba de corte)
             </a>
             
             <!-- Reportes -->
