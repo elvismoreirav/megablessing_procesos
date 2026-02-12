@@ -232,6 +232,29 @@ $generarCodigoIdentificacion = static function (PDO $pdo): string {
     return 'PRO-' . str_pad((string)($max + 1), 5, '0', STR_PAD_LEFT);
 };
 
+$generarCodigoIdentificacionDisponible = static function (PDO $pdo) use ($generarCodigoIdentificacion): string {
+    $codigo = $generarCodigoIdentificacion($pdo);
+    $intentos = 0;
+
+    while ($intentos < 50) {
+        $stmt = $pdo->prepare("SELECT id FROM proveedores WHERE codigo_identificacion = ? LIMIT 1");
+        $stmt->execute([$codigo]);
+        if (!$stmt->fetch()) {
+            return $codigo;
+        }
+
+        if (preg_match('/^PRO-(\d{5})$/', $codigo, $m)) {
+            $siguiente = (int)$m[1] + 1;
+            $codigo = 'PRO-' . str_pad((string)$siguiente, 5, '0', STR_PAD_LEFT);
+        } else {
+            $codigo = $generarCodigoIdentificacion($pdo);
+        }
+        $intentos++;
+    }
+
+    throw new Exception('No fue posible generar un código de identificación único');
+};
+
 // Procesar acciones POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -402,7 +425,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tipo = strtoupper(trim($_POST['tipo'] ?? 'MERCADO'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
                 $cedulaRuc = preg_replace('/\s+/', '', trim($_POST['cedula_ruc'] ?? ''));
-                $codigoIdentificacion = strtoupper(trim($_POST['codigo_identificacion'] ?? ''));
+                $codigoIdentificacion = '';
                 $direccion = trim($_POST['direccion'] ?? '');
                 $telefono = trim($_POST['telefono'] ?? '');
                 $email = trim($_POST['email'] ?? '');
@@ -435,9 +458,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('El correo electrónico no es válido');
                 }
                 if ($hasProvCol('codigo_identificacion')) {
-                    if ($codigoIdentificacion === '') {
-                        $codigoIdentificacion = $generarCodigoIdentificacion($db);
-                    }
+                    // En creación el código se asigna siempre de forma automática.
+                    $codigoIdentificacion = $generarCodigoIdentificacionDisponible($db);
                     if (!preg_match('/^PRO-\d{5}$/', $codigoIdentificacion)) {
                         throw new Exception('El código de identificación debe tener formato PRO-00001');
                     }
@@ -1149,10 +1171,11 @@ ob_start();
                     </div>
                     <?php if ($hasProvCol('codigo_identificacion')): ?>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Código de identificación *</label>
-                        <input type="text" id="codigo_identificacion" name="codigo_identificacion" maxlength="20"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary uppercase"
-                               placeholder="Ej: PRO-00001">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Código de identificación (automático)</label>
+                        <input type="text" id="codigo_identificacion" name="codigo_identificacion" maxlength="20" readonly
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 uppercase"
+                               placeholder="Se genera automáticamente al crear">
+                        <p class="text-xs text-gray-500 mt-1">Este código se asigna de forma automática en la creación.</p>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -1384,6 +1407,11 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
         action.value = 'create';
         submitBtn.textContent = 'Crear Proveedor';
         document.getElementById('proveedorId').value = '';
+        const codigoIdInput = document.getElementById('codigo_identificacion');
+        if (codigoIdInput) {
+            codigoIdInput.value = '';
+            codigoIdInput.placeholder = 'Se genera automáticamente al crear';
+        }
         actualizarCategorias(categoriaPreset || '', false);
         if (document.getElementById('categoria') && document.getElementById('categoria').options.length === 0) {
             showNotification('Primero cree una categoría/tipo para poder registrar proveedores.', 'error');
@@ -1417,7 +1445,10 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
                 document.getElementById('telefono').value = p.telefono || '';
                 document.getElementById('direccion').value = p.direccion || '';
                 const codigoIdInput = document.getElementById('codigo_identificacion');
-                if (codigoIdInput) codigoIdInput.value = p.codigo_identificacion || '';
+                if (codigoIdInput) {
+                    codigoIdInput.value = p.codigo_identificacion || '';
+                    codigoIdInput.placeholder = 'Código asignado automáticamente';
+                }
                 const cedulaRucInput = document.getElementById('cedula_ruc');
                 if (cedulaRucInput) cedulaRucInput.value = p.cedula_ruc || '';
                 const emailInput = document.getElementById('email');

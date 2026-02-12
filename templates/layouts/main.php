@@ -8,6 +8,12 @@
 $currentUser = Auth::user();
 $currentPage = basename($_SERVER['PHP_SELF'], '.php');
 $currentDir = basename(dirname($_SERVER['PHP_SELF']));
+$assetVersion = static function (string $path): string {
+    $mtime = @filemtime($path);
+    return $mtime !== false ? (string) $mtime : date('YmdHis');
+};
+$cssVersion = $assetVersion(__DIR__ . '/../../assets/css/app.css');
+$jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -59,7 +65,7 @@ $currentDir = basename(dirname($_SERVER['PHP_SELF']));
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/app.css">
+    <link rel="stylesheet" href="<?= APP_URL ?>/assets/css/app.css?v=<?= $cssVersion ?>">
     
     <?php if (isset($extraStyles)): ?>
         <?= $extraStyles ?>
@@ -85,7 +91,7 @@ $currentDir = basename(dirname($_SERVER['PHP_SELF']));
             </div>
         </div>
         
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="Menú principal" tabindex="0">
             <!-- Dashboard -->
             <a href="<?= APP_URL ?>/dashboard.php" class="sidebar-link <?= $currentPage === 'dashboard' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -209,7 +215,7 @@ $currentDir = basename(dirname($_SERVER['PHP_SELF']));
         </nav>
         
         <!-- User info at bottom -->
-        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
+        <div class="sidebar-user">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3">
                     <div class="w-9 h-9 bg-olive rounded-full flex items-center justify-center">
@@ -287,7 +293,7 @@ $currentDir = basename(dirname($_SERVER['PHP_SELF']));
     </main>
     
     <!-- Custom JS -->
-    <script src="<?= APP_URL ?>/assets/js/app.js"></script>
+    <script src="<?= APP_URL ?>/assets/js/app.js?v=<?= $jsVersion ?>"></script>
     
     <?php if (isset($extraScripts)): ?>
         <?= $extraScripts ?>

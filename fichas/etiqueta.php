@@ -55,7 +55,7 @@ $pageTitle = 'Etiqueta de Registro - ' . $codigoEtiqueta;
 ob_start();
 ?>
 
-<div class="max-w-4xl mx-auto space-y-6">
+<div class="max-w-4xl mx-auto space-y-6 etiqueta-page">
     <div class="flex items-center justify-between print:hidden">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Imprimir Etiqueta (Etiquetado de registro)</h1>
@@ -79,10 +79,11 @@ ob_start();
                 <div class="text-2xl font-bold tracking-wide">CODIGO DE LOTE: <?= htmlspecialchars($codigoEtiqueta) ?></div>
             </div>
             <div class="border-b border-black px-6 py-6 flex items-center justify-center">
-                <img src="<?= htmlspecialchars($qrImage) ?>"
-                     alt="QR lote <?= htmlspecialchars($codigoEtiqueta) ?>"
-                     class="w-56 h-56 object-contain"
-                     loading="lazy">
+                    <img src="<?= htmlspecialchars($qrImage) ?>"
+                         alt="QR lote <?= htmlspecialchars($codigoEtiqueta) ?>"
+                         class="w-56 h-56 object-contain"
+                         loading="eager"
+                         decoding="sync">
             </div>
             <div class="px-6 py-5 text-center">
                 <div class="inline-flex items-center gap-2">
@@ -93,7 +94,7 @@ ob_start();
         </div>
     </div>
 
-    <div class="bg-amber-400/90 rounded-xl p-4 text-gray-900 font-semibold leading-tight">
+    <div class="bg-amber-400/90 rounded-xl p-4 text-gray-900 font-semibold leading-tight print:hidden">
         AL ESCANEAR EL QR, SE MOSTRARA LA INFORMACION DE LA FICHA DE LOTE, PERO SIN LA INFORMACION DE PRECIO COMERCIAL.
     </div>
 </div>
@@ -103,13 +104,46 @@ ob_start();
     max-width: 820px;
 }
 @media print {
+    @page {
+        size: A4 landscape;
+        margin: 8mm;
+    }
+
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    body * {
+        visibility: hidden !important;
+    }
+
+    .etiqueta-page,
+    .etiqueta-page * {
+        visibility: visible !important;
+    }
+
+    .etiqueta-page {
+        position: fixed !important;
+        inset: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: none !important;
+    }
+
     .print\\:hidden { display: none !important; }
-    body { background: #fff !important; }
+
     .etiqueta-wrap {
+        margin: 0 auto !important;
         box-shadow: none !important;
         border: none !important;
         padding: 0 !important;
         max-width: 100% !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
     }
 }
 </style>

@@ -25,16 +25,53 @@ const App = {
         const menuToggle = document.getElementById('menuToggle');
         const sidebar = document.querySelector('.sidebar');
         const overlay = document.getElementById('sidebarOverlay');
+        const sidebarNav = sidebar?.querySelector('.sidebar-nav');
+
+        // Fallback: en algunos navegadores/trackpads el scroll sobre un sidebar fijo no se propaga bien.
+        // Redirigimos la rueda al contenedor scrolleable del menú para garantizar acceso a todas las opciones.
+        if (sidebar && sidebarNav) {
+            sidebar.addEventListener('wheel', (event) => {
+                if (sidebarNav.scrollHeight <= sidebarNav.clientHeight) {
+                    return;
+                }
+                if (sidebarNav.contains(event.target)) {
+                    return;
+                }
+
+                event.preventDefault();
+                sidebarNav.scrollTop += event.deltaY;
+            }, { passive: false });
+        }
         
         if (menuToggle && sidebar) {
+            const closeSidebar = () => {
+                sidebar.classList.remove('open');
+                overlay?.classList.remove('active');
+                document.body.style.overflow = '';
+            };
+
             menuToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('open');
-                overlay?.classList.toggle('active');
+                const isOpen = sidebar.classList.toggle('open');
+                overlay?.classList.toggle('active', isOpen);
+                document.body.style.overflow = isOpen ? 'hidden' : '';
             });
             
             overlay?.addEventListener('click', () => {
-                sidebar.classList.remove('open');
-                overlay.classList.remove('active');
+                closeSidebar();
+            });
+
+            sidebar.querySelectorAll('.sidebar-link').forEach((link) => {
+                link.addEventListener('click', () => {
+                    if (window.innerWidth <= 1024) {
+                        closeSidebar();
+                    }
+                });
+            });
+
+            window.addEventListener('resize', () => {
+                if (window.innerWidth > 1024) {
+                    closeSidebar();
+                }
             });
         }
     },
