@@ -161,6 +161,13 @@ $jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
                 </svg>
                 Prueba de Corte (Ficha de prueba de corte)
             </a>
+
+            <a href="<?= APP_URL ?>/calidad-salida/index.php" class="sidebar-link <?= in_array($currentDir, ['calidad-salida', 'calidad_salida'], true) ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m4 2a8 8 0 11-16 0 8 8 0 0116 0z"/>
+                </svg>
+                Calidad de salida
+            </a>
             
             <!-- Reportes -->
             <div class="sidebar-section-title">Reportes</div>
@@ -203,6 +210,13 @@ $jsVersion = $assetVersion(__DIR__ . '/../../assets/js/app.js');
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
                 Parámetros
+            </a>
+
+            <a href="<?= APP_URL ?>/configuracion/empresa.php" class="sidebar-link <?= $currentPage === 'empresa' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v12m0 0l-3-3m3 3l3-3"/>
+                </svg>
+                Empresa y logo
             </a>
             
             <a href="<?= APP_URL ?>/usuarios/index.php" class="sidebar-link <?= $currentDir === 'usuarios' ? 'active' : '' ?>">

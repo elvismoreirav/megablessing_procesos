@@ -40,6 +40,35 @@ if (!$ficha) {
     redirect('/fichas/index.php?vista=recepcion');
 }
 
+// Configuración de empresa/logo (compatibilidad)
+$empresaCols = Helpers::getTableColumns('empresa');
+$hasEmpresaCol = static fn(string $name): bool => in_array($name, $empresaCols, true);
+$hasEmpresaLogoCol = $hasEmpresaCol('logo');
+$hasEmpresaNombreCol = $hasEmpresaCol('nombre');
+
+$empresa = null;
+if (!empty($empresaCols)) {
+    $selectCols = ['id'];
+    if ($hasEmpresaNombreCol) {
+        $selectCols[] = 'nombre';
+    }
+    if ($hasEmpresaLogoCol) {
+        $selectCols[] = 'logo';
+    }
+    $empresa = $db->fetch("SELECT " . implode(', ', $selectCols) . " FROM empresa ORDER BY id ASC LIMIT 1");
+}
+
+$buildPublicUrl = static function (string $path): string {
+    $path = trim($path);
+    if ($path === '') {
+        return '';
+    }
+    if (preg_match('#^https?://#i', $path) || str_starts_with($path, 'data:image/')) {
+        return $path;
+    }
+    return rtrim(APP_URL, '/') . '/' . ltrim($path, '/');
+};
+
 $codigoEtiqueta = trim((string)($ficha['codificacion'] ?? ''));
 if ($codigoEtiqueta === '') {
     $codigoEtiqueta = trim((string)($ficha['lote_codigo'] ?? ''));
@@ -47,6 +76,9 @@ if ($codigoEtiqueta === '') {
 if ($codigoEtiqueta === '') {
     $codigoEtiqueta = 'SIN-CODIGO';
 }
+
+$logoPath = trim((string)($empresa['logo'] ?? ''));
+$logoUrl = $buildPublicUrl($logoPath);
 
 $urlConsulta = APP_URL . '/fichas/consulta.php?ficha_id=' . (int)$ficha['id'];
 $qrImage = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=' . urlencode($urlConsulta);
@@ -86,10 +118,18 @@ ob_start();
                          decoding="sync">
             </div>
             <div class="px-6 py-5 text-center">
-                <div class="inline-flex items-center gap-2">
-                    <span class="text-4xl text-red-600 leading-none">*</span>
-                    <span class="text-5xl font-semibold text-gray-800 tracking-tight">megaBlessing</span>
-                </div>
+                <?php if ($logoUrl !== ''): ?>
+                    <img src="<?= htmlspecialchars($logoUrl) ?>"
+                         alt="Logo Megablessing"
+                         class="mx-auto h-20 object-contain"
+                         loading="eager"
+                         decoding="sync">
+                <?php else: ?>
+                    <div class="inline-flex items-center gap-2">
+                        <span class="text-4xl text-red-600 leading-none">*</span>
+                        <span class="text-5xl font-semibold text-gray-800 tracking-tight">megaBlessing</span>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
