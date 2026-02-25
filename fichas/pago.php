@@ -16,7 +16,7 @@ if ($id <= 0) {
 
 $colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
 $hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
-$columnasPago = ['fecha_pago', 'factura_compra', 'cantidad_comprada', 'forma_pago'];
+$columnasPago = ['fecha_pago', 'tipo_comprobante', 'factura_compra', 'cantidad_comprada_unidad', 'cantidad_comprada', 'forma_pago'];
 $faltantesPago = array_values(array_filter($columnasPago, static fn(string $col): bool => !$hasFichaCol($col)));
 $columnasPrecio = ['precio_base_dia', 'diferencial_usd', 'precio_unitario_final', 'precio_total_pagar'];
 $faltantesPrecio = array_values(array_filter($columnasPrecio, static fn(string $col): bool => !$hasFichaCol($col)));
@@ -41,8 +41,10 @@ if (!$ficha) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fecha_pago = trim((string)($_POST['fecha_pago'] ?? ''));
+    $tipo_comprobante = strtoupper(trim((string)($_POST['tipo_comprobante'] ?? '')));
     $factura_compra = trim((string)($_POST['factura_compra'] ?? ''));
     $cantidad_comprada = is_numeric($_POST['cantidad_comprada'] ?? null) ? (float)$_POST['cantidad_comprada'] : null;
+    $cantidad_comprada_unidad = strtoupper(trim((string)($_POST['cantidad_comprada_unidad'] ?? 'KG')));
     $forma_pago = strtoupper(trim((string)($_POST['forma_pago'] ?? '')));
     $precio_base_dia = is_numeric($_POST['precio_base_dia'] ?? null) ? (float)$_POST['precio_base_dia'] : null;
     $diferencial_usd = is_numeric($_POST['diferencial_usd'] ?? null) ? (float)$_POST['diferencial_usd'] : 0.0;
@@ -55,10 +57,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Faltan columnas de pago en fichas_registro. Ejecute database/patch_registro_pagos_fichas.sql';
     } elseif ($fecha_pago === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_pago)) {
         $error = 'Debe ingresar una fecha de pago válida';
+    } elseif (!in_array($tipo_comprobante, ['FACTURA', 'NOTA_COMPRA'], true)) {
+        $error = 'Debe seleccionar un tipo de comprobante válido';
     } elseif ($factura_compra === '') {
         $error = 'Debe ingresar la factura asignada a la compra';
     } elseif ($cantidad_comprada === null || $cantidad_comprada <= 0) {
         $error = 'Debe ingresar una cantidad comprada mayor a 0';
+    } elseif (!in_array($cantidad_comprada_unidad, ['LB', 'KG', 'QQ'], true)) {
+        $error = 'Debe seleccionar una unidad válida para la cantidad comprada';
     } elseif (!in_array($forma_pago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)) {
         $error = 'Debe seleccionar una forma de pago válida';
     } elseif ($precio_base_dia === null || $precio_base_dia < 0) {
@@ -74,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$error) {
-        $precio_total_pagar = $precio_unitario_final * $cantidad_comprada;
+        $cantidadCompradaKg = Helpers::pesoToKg($cantidad_comprada, $cantidad_comprada_unidad);
+        $precio_total_pagar = $precio_unitario_final * $cantidadCompradaKg;
 
         try {
             $dataPago = [];
@@ -93,8 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($hasFichaCol('fecha_pago')) {
                 $dataPago['fecha_pago'] = $fecha_pago;
             }
+            if ($hasFichaCol('tipo_comprobante')) {
+                $dataPago['tipo_comprobante'] = $tipo_comprobante;
+            }
             if ($hasFichaCol('factura_compra')) {
                 $dataPago['factura_compra'] = $factura_compra;
+            }
+            if ($hasFichaCol('cantidad_comprada_unidad')) {
+                $dataPago['cantidad_comprada_unidad'] = $cantidad_comprada_unidad;
             }
             if ($hasFichaCol('cantidad_comprada')) {
                 $dataPago['cantidad_comprada'] = $cantidad_comprada;
@@ -116,6 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $formData = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $ficha;
+if (!isset($formData['cantidad_comprada_unidad']) || trim((string)$formData['cantidad_comprada_unidad']) === '') {
+    $formData['cantidad_comprada_unidad'] = (string)($ficha['cantidad_comprada_unidad'] ?? 'KG');
+}
+if (!isset($formData['tipo_comprobante']) || trim((string)$formData['tipo_comprobante']) === '') {
+    $formData['tipo_comprobante'] = (string)($ficha['tipo_comprobante'] ?? '');
+}
 $pesoFinalKg = Helpers::pesoToKg(
     (float)($formData['peso_final_registro'] ?? 0),
     (string)($formData['unidad_peso'] ?? 'KG')
@@ -128,7 +147,7 @@ ob_start();
 <div class="max-w-4xl mx-auto space-y-6">
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Registro de Pagos (Ficha de pagos)</h1>
+            <h1 class="text-2xl font-bold text-gray-900">Registro de Pagos</h1>
             <p class="text-gray-600">Ficha #<?= (int)$id ?> · Lote <?= htmlspecialchars((string)($ficha['lote_codigo'] ?: 'Sin lote asignado')) ?></p>
         </div>
         <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="text-amber-600 hover:text-amber-700">
@@ -172,7 +191,17 @@ ob_start();
                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Factura asignada a la compra <span class="text-red-500">*</span></label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de comprobante <span class="text-red-500">*</span></label>
+                <?php $tipoComprobanteActual = strtoupper((string)($formData['tipo_comprobante'] ?? '')); ?>
+                <select name="tipo_comprobante" required
+                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <option value="">Seleccione</option>
+                    <option value="FACTURA" <?= $tipoComprobanteActual === 'FACTURA' ? 'selected' : '' ?>>Factura</option>
+                    <option value="NOTA_COMPRA" <?= $tipoComprobanteActual === 'NOTA_COMPRA' ? 'selected' : '' ?>>Nota de compra</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Factura/Comprobante asignado <span class="text-red-500">*</span></label>
                 <input type="text" name="factura_compra"
                        value="<?= htmlspecialchars((string)($formData['factura_compra'] ?? '')) ?>"
                        placeholder="Nro. de factura o comprobante"
@@ -180,11 +209,21 @@ ob_start();
                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad comprada (kg) <span class="text-red-500">*</span></label>
-                <input type="number" name="cantidad_comprada" id="cantidad_comprada" step="0.01" min="0.01"
-                       value="<?= htmlspecialchars((string)($formData['cantidad_comprada'] ?? '')) ?>"
-                       required
-                       class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad comprada <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-3 gap-2">
+                    <input type="number" name="cantidad_comprada" id="cantidad_comprada" step="0.01" min="0.01"
+                           value="<?= htmlspecialchars((string)($formData['cantidad_comprada'] ?? '')) ?>"
+                           required
+                           class="col-span-2 w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <?php $cantidadUnidadActual = strtoupper((string)($formData['cantidad_comprada_unidad'] ?? 'KG')); ?>
+                    <select name="cantidad_comprada_unidad" id="cantidad_comprada_unidad"
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="LB" <?= $cantidadUnidadActual === 'LB' ? 'selected' : '' ?>>LB</option>
+                        <option value="KG" <?= $cantidadUnidadActual === 'KG' ? 'selected' : '' ?>>KG</option>
+                        <option value="QQ" <?= $cantidadUnidadActual === 'QQ' ? 'selected' : '' ?>>QQ</option>
+                    </select>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">El sistema convierte automáticamente la cantidad a kg para calcular el total.</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Forma de pago <span class="text-red-500">*</span></label>
@@ -255,6 +294,7 @@ ob_start();
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const cantidadInput = document.getElementById('cantidad_comprada');
+    const cantidadUnidadSelect = document.getElementById('cantidad_comprada_unidad');
     const baseInput = document.getElementById('precio_base_dia');
     const diferencialInput = document.getElementById('diferencial_usd');
     const unitarioInput = document.getElementById('precio_unitario_final');
@@ -262,6 +302,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function toNumber(input) {
         return parseFloat(input?.value || '0') || 0;
+    }
+
+    function pesoToKg(peso, unidad) {
+        if (unidad === 'LB') return peso * 0.45359237;
+        if (unidad === 'QQ') return peso * 45.36;
+        return peso;
     }
 
     function calcularUnitario() {
@@ -279,13 +325,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function calcularTotal() {
         const unitario = toNumber(unitarioInput);
         const cantidad = toNumber(cantidadInput);
-        totalInput.value = (unitario * cantidad).toFixed(2);
+        const unidadCantidad = cantidadUnidadSelect?.value || 'KG';
+        const cantidadKg = pesoToKg(cantidad, unidadCantidad);
+        totalInput.value = (unitario * cantidadKg).toFixed(2);
     }
 
     baseInput?.addEventListener('input', calcularUnitario);
     diferencialInput?.addEventListener('input', calcularUnitario);
     unitarioInput?.addEventListener('input', calcularTotal);
     cantidadInput?.addEventListener('input', calcularTotal);
+    cantidadUnidadSelect?.addEventListener('change', calcularTotal);
 
     calcularUnitario();
 });

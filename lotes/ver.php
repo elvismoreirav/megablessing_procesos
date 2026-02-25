@@ -64,7 +64,9 @@ $registroCalidadSalida = $tablaCalidadSalidaExiste
 $colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
 $hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
 $camposPagoCompletos = $hasFichaCol('fecha_pago')
+    && $hasFichaCol('tipo_comprobante')
     && $hasFichaCol('factura_compra')
+    && $hasFichaCol('cantidad_comprada_unidad')
     && $hasFichaCol('cantidad_comprada')
     && $hasFichaCol('forma_pago');
 
@@ -73,7 +75,9 @@ $tieneRegistroPago = false;
 if ($tieneFichaRegistro) {
     if ($camposPagoCompletos) {
         $tieneRegistroPago = !empty($fichaRegistro['fecha_pago'])
+            && trim((string)($fichaRegistro['tipo_comprobante'] ?? '')) !== ''
             && trim((string)($fichaRegistro['factura_compra'] ?? '')) !== ''
+            && trim((string)($fichaRegistro['cantidad_comprada_unidad'] ?? '')) !== ''
             && isset($fichaRegistro['cantidad_comprada']) && (float)$fichaRegistro['cantidad_comprada'] > 0
             && trim((string)($fichaRegistro['forma_pago'] ?? '')) !== '';
     } else {
@@ -139,7 +143,7 @@ if ($mostrarSiguienteFermentacion) {
 $estadosProceso = [
     'RECEPCION' => ['icon' => 'truck', 'label' => 'Recepción'],
     'CALIDAD' => ['icon' => 'check-circle', 'label' => 'Verificación de Lote'],
-    'PRE_SECADO' => ['icon' => 'sun', 'label' => 'Pre-secado (Legado)'],
+    'PRE_SECADO' => ['icon' => 'sun', 'label' => 'Pre-secado'],
     'FERMENTACION' => ['icon' => 'fire', 'label' => 'Fermentación'],
     'SECADO' => ['icon' => 'sun', 'label' => 'Secado'],
     'CALIDAD_POST' => ['icon' => 'clipboard-check', 'label' => 'Prueba de Corte'],
@@ -373,7 +377,7 @@ ob_start();
                 </div>
                 <div class="card-body space-y-6">
                     <div>
-                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">Procesos Centro de Acopio</h4>
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">Procesos de Recepción</h4>
                         <div class="space-y-3">
                             <a href="<?= $rutaFicha ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
                                 <span class="font-medium text-gray-800">Recepción (Ficha de Recepción)</span>
@@ -383,7 +387,7 @@ ob_start();
                             </a>
                             <a href="<?= $rutaPago ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
-                                <span class="font-medium text-gray-800">Registro de Pagos (Ficha de pagos)</span>
+                                <span class="font-medium text-gray-800">Registro de Pagos</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneRegistroPago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneRegistroPago ? 'Registrado' : 'Pendiente' ?>
                                 </span>
@@ -397,7 +401,7 @@ ob_start();
                             </a>
                             <a href="<?= $rutaEtiqueta ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
-                                <span class="font-medium text-gray-800">Imprimir Etiqueta (Etiquetado de registro)</span>
+                                <span class="font-medium text-gray-800">Imprimir Etiqueta</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneFichaRegistro ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneFichaRegistro ? 'Disponible' : 'Pendiente' ?>
                                 </span>
@@ -409,7 +413,7 @@ ob_start();
                     </div>
 
                     <div>
-                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">Procesos Planta</h4>
+                        <h4 class="text-sm font-semibold uppercase tracking-wide text-gray-600 mb-3">Procesos Post-cosecha</h4>
                         <div class="space-y-3">
                             <a href="<?= APP_URL ?>/lotes/editar.php?id=<?= $lote['id'] ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50">
                                 <span class="font-medium text-gray-800">a. Verificación de Lote</span>
@@ -424,7 +428,7 @@ ob_start();
                             </a>
                             <a href="<?= $tieneFichaRegistro ? $rutaSecado : '#' ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed' ?>">
-                                <span class="font-medium text-gray-800">c. Secado (Ficha de secado)</span>
+                                <span class="font-medium text-gray-800">c. Pre-secado / Secado final (Ficha de secado)</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $registroSecado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $registroSecado ? 'Registrado' : 'Pendiente' ?>
                                 </span>
@@ -468,29 +472,12 @@ ob_start();
 
         <!-- Columna lateral -->
         <div class="space-y-6">
-            <!-- Información comercial -->
-            <?php if ($lote['precio_kg']): ?>
             <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">
-                        <svg class="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Información Comercial
-                    </h3>
-                </div>
-                <div class="card-body space-y-4">
-                    <div>
-                        <p class="text-sm text-warmgray">Precio por Kg</p>
-                        <p class="text-2xl font-bold text-primary">$<?= Helpers::formatNumber($lote['precio_kg'], 2) ?></p>
-                    </div>
-                    <div class="pt-4 border-t border-gray-100">
-                        <p class="text-sm text-warmgray">Total Estimado</p>
-                        <p class="text-3xl font-bold text-gold">$<?= Helpers::formatNumber($lote['peso_inicial_kg'] * $lote['precio_kg'], 2) ?></p>
-                    </div>
+                <div class="card-body">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-1">Información restringida</p>
+                    <p class="text-sm text-gray-700">La verificación de lote no muestra información comercial de precios.</p>
                 </div>
             </div>
-            <?php endif; ?>
 
             <!-- Acciones rápidas -->
             <div class="card">
@@ -511,7 +498,7 @@ ob_start();
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2"/>
                                 </svg>
-                                Registro de Pagos (Ficha de pagos)
+                                Registro de Pagos
                             </a>
                             <a href="<?= $rutaCodificacion ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -523,13 +510,13 @@ ob_start();
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2"/>
                                 </svg>
-                                Imprimir Etiqueta (Etiquetado de registro)
+                                Imprimir Etiqueta
                             </a>
                         </div>
                     </div>
 
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Procesos Planta</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Procesos Post-cosecha</p>
                         <div class="space-y-2">
                             <a href="<?= APP_URL ?>/lotes/editar.php?id=<?= $lote['id'] ?>" class="btn btn-outline w-full justify-start">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -549,7 +536,7 @@ ob_start();
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3"/>
                                 </svg>
-                                Secado (Ficha de secado)
+                                Pre-secado / Secado final (Ficha de secado)
                             </a>
                             <a href="<?= $tieneFichaRegistro ? $rutaPruebaCorte : '#' ?>"
                                class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">

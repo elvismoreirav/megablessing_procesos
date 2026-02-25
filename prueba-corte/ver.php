@@ -154,6 +154,20 @@ $granosData = [
     ['label' => 'Dañados', 'value' => $granosDanados, 'color' => '#dc2626']
 ];
 
+$observacionesRaw = (string)($prueba['observaciones'] ?? '');
+$observacionesTexto = trim(preg_replace('/\[FOTOS_PRUEBA_CORTE\].*$/s', '', $observacionesRaw));
+$fotosPruebaUrls = [];
+if (preg_match('/\[FOTOS_PRUEBA_CORTE\]\s*(.*)$/s', $observacionesRaw, $matchFotos)) {
+    $lineas = preg_split('/\R+/', trim((string)($matchFotos[1] ?? ''))) ?: [];
+    foreach ($lineas as $linea) {
+        $ruta = trim($linea);
+        if ($ruta === '' || !str_starts_with($ruta, 'uploads/prueba-corte/')) {
+            continue;
+        }
+        $fotosPruebaUrls[] = rtrim(APP_URL, '/') . '/' . ltrim($ruta, '/');
+    }
+}
+
 $pageTitle = 'Prueba de Corte: ' . $prueba['lote_codigo'];
 $pageSubtitle = 'Análisis de calidad post-secado';
 
@@ -212,18 +226,16 @@ ob_start();
 <!-- Resultados Principales -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= $prueba['porcentaje_fermentacion'] >= 70 ? 'text-green-600' : ($prueba['porcentaje_fermentacion'] >= 60 ? 'text-gold' : 'text-red-600') ?>">
+        <p class="text-3xl font-bold text-primary">
             <?= number_format($prueba['porcentaje_fermentacion'], 1) ?>%
         </p>
         <p class="text-xs text-warmgray">Fermentación</p>
-        <p class="text-xs <?= $prueba['porcentaje_fermentacion'] >= 70 ? 'text-green-600' : 'text-warmgray' ?>">Objetivo: ≥70%</p>
     </div>
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= $pctDefectos <= 5 ? 'text-green-600' : ($pctDefectos <= 10 ? 'text-gold' : 'text-red-600') ?>">
+        <p class="text-3xl font-bold text-red-600">
             <?= number_format($pctDefectos, 1) ?>%
         </p>
         <p class="text-xs text-warmgray">Defectos</p>
-        <p class="text-xs <?= $pctDefectos <= 5 ? 'text-green-600' : 'text-warmgray' ?>">Máximo: ≤5%</p>
     </div>
     <div class="card p-4 text-center">
         <p class="text-3xl font-bold text-primary"><?= $prueba['total_granos'] ?></p>
@@ -277,51 +289,72 @@ ob_start();
             </div>
         </div>
         
-        <!-- Criterios de Calidad -->
+        <!-- Referencia CCN51 -->
         <div class="card mt-6">
             <div class="card-header">
-                <h3 class="card-title">Criterios de Clasificación</h3>
+                <h3 class="card-title">Tabla de referencia CCN51</h3>
             </div>
-            <div class="card-body space-y-3">
-                <div class="p-3 rounded-lg border-2 <?= $prueba['calidad_resultado'] === 'PREMIUM' ? 'border-green-500 bg-green-50' : 'border-gray-200' ?>">
-                    <div class="flex items-center gap-2">
-                        <span class="text-lg">🏆</span>
-                        <span class="font-semibold text-green-600">PREMIUM</span>
-                    </div>
-                    <p class="text-xs text-warmgray mt-1">≥80% fermentación, ≤3% defectos</p>
-                </div>
-                <div class="p-3 rounded-lg border-2 <?= $prueba['calidad_resultado'] === 'EXPORTACION' ? 'border-primary bg-olive/20' : 'border-gray-200' ?>">
-                    <div class="flex items-center gap-2">
-                        <span class="text-lg">✈️</span>
-                        <span class="font-semibold text-primary">EXPORTACIÓN</span>
-                    </div>
-                    <p class="text-xs text-warmgray mt-1">≥70% fermentación, ≤5% defectos</p>
-                </div>
-                <div class="p-3 rounded-lg border-2 <?= $prueba['calidad_resultado'] === 'NACIONAL' ? 'border-gold bg-yellow-50' : 'border-gray-200' ?>">
-                    <div class="flex items-center gap-2">
-                        <span class="text-lg">🏠</span>
-                        <span class="font-semibold text-gold">NACIONAL</span>
-                    </div>
-                    <p class="text-xs text-warmgray mt-1">≥60% fermentación, ≤10% defectos</p>
-                </div>
-                <div class="p-3 rounded-lg border-2 <?= $prueba['calidad_resultado'] === 'RECHAZADO' ? 'border-red-500 bg-red-50' : 'border-gray-200' ?>">
-                    <div class="flex items-center gap-2">
-                        <span class="text-lg">❌</span>
-                        <span class="font-semibold text-red-600">RECHAZADO</span>
-                    </div>
-                    <p class="text-xs text-warmgray mt-1">&lt;60% fermentación o &gt;10% defectos</p>
+            <div class="card-body">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-xs">
+                        <thead>
+                            <tr class="text-left text-gray-600 border-b border-gray-200">
+                                <th class="py-2 pr-4">Parámetro</th>
+                                <th class="py-2 pr-4">Rango referencial</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 text-gray-700">
+                            <tr>
+                                <td class="py-2 pr-4">Bien fermentados</td>
+                                <td class="py-2 pr-4">≥ 65%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Violetas</td>
+                                <td class="py-2 pr-4">≤ 15%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Pizarrosos</td>
+                                <td class="py-2 pr-4">≤ 3%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Mohosos</td>
+                                <td class="py-2 pr-4">≤ 3%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Germinados / Dañados</td>
+                                <td class="py-2 pr-4">≤ 3%</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
         
         <!-- Observaciones -->
-        <?php if ($prueba['observaciones']): ?>
+        <?php if ($observacionesTexto !== ''): ?>
         <div class="card mt-6">
             <div class="card-header">
                 <h3 class="card-title">Observaciones</h3>
             </div>
             <div class="card-body">
-                <p class="text-warmgray whitespace-pre-wrap"><?= htmlspecialchars($prueba['observaciones']) ?></p>
+                <p class="text-warmgray whitespace-pre-wrap"><?= htmlspecialchars($observacionesTexto) ?></p>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!empty($fotosPruebaUrls)): ?>
+        <div class="card mt-6">
+            <div class="card-header">
+                <h3 class="card-title">Fotos de la Muestra</h3>
+            </div>
+            <div class="card-body">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <?php foreach ($fotosPruebaUrls as $fotoUrl): ?>
+                        <a href="<?= htmlspecialchars($fotoUrl) ?>" target="_blank" rel="noopener" class="block border border-gray-200 rounded-lg overflow-hidden hover:border-primary transition-colors">
+                            <img src="<?= htmlspecialchars($fotoUrl) ?>" alt="Foto de muestra" class="w-full h-48 object-cover">
+                        </a>
+                    <?php endforeach; ?>
+                </div>
             </div>
         </div>
         <?php endif; ?>

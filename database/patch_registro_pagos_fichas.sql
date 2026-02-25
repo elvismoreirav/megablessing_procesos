@@ -25,6 +25,22 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- tipo_comprobante
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE fichas_registro ADD COLUMN tipo_comprobante ENUM(''FACTURA'',''NOTA_COMPRA'') NULL AFTER fecha_pago',
+        'SELECT ''tipo_comprobante ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'fichas_registro'
+      AND COLUMN_NAME = 'tipo_comprobante'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- factura_compra
 SET @sql = (
     SELECT IF(
@@ -36,6 +52,22 @@ SET @sql = (
     WHERE TABLE_SCHEMA = @db_name
       AND TABLE_NAME = 'fichas_registro'
       AND COLUMN_NAME = 'factura_compra'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- cantidad_comprada_unidad
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE fichas_registro ADD COLUMN cantidad_comprada_unidad ENUM(''LB'',''KG'',''QQ'') NOT NULL DEFAULT ''KG'' AFTER factura_compra',
+        'SELECT ''cantidad_comprada_unidad ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'fichas_registro'
+      AND COLUMN_NAME = 'cantidad_comprada_unidad'
 );
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
@@ -56,6 +88,10 @@ SET @sql = (
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- ampliar enum calidad_registro para incluir ESCURRIDO
+ALTER TABLE fichas_registro
+MODIFY COLUMN calidad_registro ENUM('SECO','SEMISECO','ESCURRIDO','BABA') NULL;
 
 -- forma_pago
 SET @sql = (

@@ -40,6 +40,11 @@ $fkControlCol = $hasCtrlCol('fermentacion_id') ? 'fermentacion_id' : 'registro_f
 $fechaCtrlExpr = $hasCtrlCol('fecha') ? 'fecha' : 'NULL';
 $tempAmExpr = $hasCtrlCol('temperatura_am') ? 'temperatura_am' : ($hasCtrlCol('temp_masa') ? 'temp_masa' : 'NULL');
 $tempPmExpr = $hasCtrlCol('temperatura_pm') ? 'temperatura_pm' : ($hasCtrlCol('temp_ambiente') ? 'temp_ambiente' : 'NULL');
+$temp20Expr = $hasCtrlCol('temp_20h') ? 'temp_20h' : 'NULL';
+$temp22Expr = $hasCtrlCol('temp_22h') ? 'temp_22h' : 'NULL';
+$temp24Expr = $hasCtrlCol('temp_24h') ? 'temp_24h' : 'NULL';
+$temp02Expr = $hasCtrlCol('temp_02h') ? 'temp_02h' : 'NULL';
+$temp04Expr = $hasCtrlCol('temp_04h') ? 'temp_04h' : 'NULL';
 $phAmExpr = $hasCtrlCol('ph_am') ? 'ph_am' : ($hasCtrlCol('ph_pulpa') ? 'ph_pulpa' : 'NULL');
 $phPmExpr = $hasCtrlCol('ph_pm') ? 'ph_pm' : ($hasCtrlCol('ph_cotiledon') ? 'ph_cotiledon' : 'NULL');
 $horaCtrlExpr = $hasCtrlCol('hora_volteo') ? 'hora_volteo' : ($hasCtrlCol('hora') ? 'hora' : 'NULL');
@@ -91,6 +96,11 @@ $controlesDiarios = $db->fetchAll("
            {$fechaCtrlExpr} as fecha,
            {$tempAmExpr} as temperatura_am,
            {$tempPmExpr} as temperatura_pm,
+           {$temp20Expr} as temp_20h,
+           {$temp22Expr} as temp_22h,
+           {$temp24Expr} as temp_24h,
+           {$temp02Expr} as temp_02h,
+           {$temp04Expr} as temp_04h,
            {$phAmExpr} as ph_am,
            {$phPmExpr} as ph_pm,
            volteo,
@@ -119,6 +129,11 @@ for ($i = 1; $i <= 6; $i++) {
         'fecha_display' => $fechaDia->format('d/m'),
         'temp_am' => $control['temperatura_am'] ?? null,
         'temp_pm' => $control['temperatura_pm'] ?? null,
+        'temp_20h' => $control['temp_20h'] ?? null,
+        'temp_22h' => $control['temp_22h'] ?? null,
+        'temp_24h' => $control['temp_24h'] ?? null,
+        'temp_02h' => $control['temp_02h'] ?? null,
+        'temp_04h' => $control['temp_04h'] ?? null,
         'ph_am' => $control['ph_am'] ?? null,
         'ph_pm' => $control['ph_pm'] ?? null,
         'volteo' => $control['volteo'] ?? 0,
@@ -154,6 +169,9 @@ $extraHead = <<<HTML
     }
     .handsontable td.temp-optima {
         background-color: #d4edda !important;
+    }
+    .handsontable td.temp-baja {
+        background-color: #fff3cd !important;
     }
     .control-summary {
         display: grid;
@@ -255,11 +273,15 @@ ob_start();
         <div class="flex flex-wrap items-center gap-4 text-sm">
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #d4edda"></span>
-                <span>Temperatura óptima (45-50°C)</span>
+                <span>Temperatura en rango (70-130°C)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="w-4 h-4 rounded" style="background-color: #fff3cd"></span>
+                <span>Temperatura baja (&lt;70°C)</span>
             </div>
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #f8d7da"></span>
-                <span>Temperatura alta (&gt;50°C)</span>
+                <span>Temperatura alta (&gt;130°C)</span>
             </div>
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #d4edda"></span>
@@ -391,6 +413,11 @@ const hot = new Handsontable(container, {
     data: datosControl.map(d => [
         d.dia,
         d.fecha_display,
+        d.temp_20h,
+        d.temp_22h,
+        d.temp_24h,
+        d.temp_02h,
+        d.temp_04h,
         d.temp_am,
         d.temp_pm,
         d.ph_am,
@@ -399,19 +426,39 @@ const hot = new Handsontable(container, {
         d.hora_volteo,
         d.observaciones
     ]),
-    colHeaders: ['Día', 'Fecha', 'Temp AM (°C)', 'Temp PM (°C)', 'pH AM', 'pH PM', 'Volteo', 'Hora Volteo', 'Observaciones'],
+    colHeaders: [
+        'Día',
+        'Fecha',
+        '20h (°C)',
+        '22h (°C)',
+        '24h (°C)',
+        '02h (°C)',
+        '04h (°C)',
+        'Temp AM (°C)',
+        'Temp PM (°C)',
+        'pH AM',
+        'pH PM',
+        'Volteo',
+        'Hora Volteo',
+        'Observaciones'
+    ],
     columns: [
         { data: 0, type: 'numeric', readOnly: true, className: 'htCenter htDimmed' },
         { data: 1, type: 'text', readOnly: true, className: 'htCenter htDimmed' },
         { data: 2, type: 'numeric', numericFormat: { pattern: '0.0' } },
         { data: 3, type: 'numeric', numericFormat: { pattern: '0.0' } },
-        { data: 4, type: 'numeric', numericFormat: { pattern: '0.00' } },
-        { data: 5, type: 'numeric', numericFormat: { pattern: '0.00' } },
-        { data: 6, type: 'dropdown', source: ['Sí', 'No'], className: 'htCenter' },
-        { data: 7, type: 'time', timeFormat: 'HH:mm', correctFormat: true },
-        { data: 8, type: 'text', width: 200 }
+        { data: 4, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 5, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 6, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 7, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 8, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 9, type: 'numeric', numericFormat: { pattern: '0.00' } },
+        { data: 10, type: 'numeric', numericFormat: { pattern: '0.00' } },
+        { data: 11, type: 'dropdown', source: ['Sí', 'No'], className: 'htCenter' },
+        { data: 12, type: 'time', timeFormat: 'HH:mm', correctFormat: true },
+        { data: 13, type: 'text', width: 220 }
     ],
-    colWidths: [50, 80, 100, 100, 80, 80, 70, 100, 200],
+    colWidths: [50, 80, 85, 85, 85, 85, 85, 95, 95, 75, 75, 70, 100, 220],
     rowHeaders: false,
     height: 'auto',
     licenseKey: 'non-commercial-and-evaluation',
@@ -421,19 +468,21 @@ const hot = new Handsontable(container, {
         const data = this.instance.getData();
         
         // Colorear celdas de temperatura
-        if (col === 2 || col === 3) {
+        if (col >= 2 && col <= 8) {
             const val = data[row][col];
             if (val !== null && val !== '') {
-                if (val > 50) {
+                if (val > 130) {
                     cellProperties.className = 'htCenter temp-alta';
-                } else if (val >= 45 && val <= 50) {
+                } else if (val < 70) {
+                    cellProperties.className = 'htCenter temp-baja';
+                } else {
                     cellProperties.className = 'htCenter temp-optima';
                 }
             }
         }
         
         // Colorear columna de volteo
-        if (col === 6) {
+        if (col === 11) {
             const val = data[row][col];
             if (val === 'Sí') {
                 cellProperties.className = 'htCenter volteo-si';
@@ -457,13 +506,18 @@ async function guardarControl() {
     const controles = data.map((row, idx) => ({
         dia: row[0],
         fecha: datosControl[idx].fecha,
-        temp_am: row[2],
-        temp_pm: row[3],
-        ph_am: row[4],
-        ph_pm: row[5],
-        volteo: row[6] === 'Sí' ? 1 : 0,
-        hora_volteo: row[7],
-        observaciones: row[8]
+        temp_20h: row[2],
+        temp_22h: row[3],
+        temp_24h: row[4],
+        temp_02h: row[5],
+        temp_04h: row[6],
+        temp_am: row[7],
+        temp_pm: row[8],
+        ph_am: row[9],
+        ph_pm: row[10],
+        volteo: row[11] === 'Sí' ? 1 : 0,
+        hora_volteo: row[12],
+        observaciones: row[13]
     }));
     
     try {

@@ -56,12 +56,17 @@ $colObservacionesSecado = $hasRegSecCol('observaciones')
     : ($hasRegSecCol('carga_observaciones')
         ? 'carga_observaciones'
         : ($hasRegSecCol('revision_observaciones') ? 'revision_observaciones' : null));
+$exprCierreSecado = $hasRegSecCol('fecha_fin')
+    ? 'fecha_fin'
+    : ($hasRegSecCol('humedad_final') ? 'humedad_final' : 'NULL');
 
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
 $loteInfo = null;
 $loteSinFichaRecepcion = false;
 $registroFermentacion = null;
+$etapaSecado = null;
+$etapaSecadoLabel = static fn(string $etapa): string => $etapa === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
 
 if ($loteId) {
     $fichaRegistro = $db->fetch("
@@ -84,6 +89,7 @@ if ($loteId) {
         setFlash('error', 'Lote no válido para secado');
         redirect('/secado/index.php');
     }
+    $etapaSecado = ($loteInfo['estado_proceso'] ?? '') === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL';
 
     if ($loteSinFichaRecepcion) {
         $registroFermentacion = $db->fetch("
@@ -91,14 +97,27 @@ if ($loteId) {
         ", ['lote_id' => $loteId]);
     }
     
-    // Verificar que no tenga secado activo
-    $secadoExistente = $db->fetch("
-        SELECT id FROM registros_secado WHERE lote_id = :lote_id
+    // Verificar duplicidad por etapa (permite una ficha de pre-secado y una de secado final)
+    $registrosSecadoExistentes = $db->fetchAll("
+        SELECT id, {$exprCierreSecado} as cierre
+        FROM registros_secado
+        WHERE lote_id = :lote_id
+        ORDER BY id ASC
     ", ['lote_id' => $loteId]);
-    
-    if ($secadoExistente) {
-        setFlash('error', 'Este lote ya tiene un registro de secado');
-        redirect('/secado/control.php?id=' . $secadoExistente['id']);
+    $totalRegistrosSecado = count($registrosSecadoExistentes);
+
+    if ($etapaSecado === 'PRE_SECADO' && $totalRegistrosSecado >= 1) {
+        setFlash('error', 'Este lote ya tiene una ficha de pre-secado registrada.');
+        redirect('/secado/control.php?id=' . (int)$registrosSecadoExistentes[0]['id']);
+    }
+    if ($etapaSecado === 'SECADO_FINAL' && $totalRegistrosSecado >= 2) {
+        $ultimoRegistro = end($registrosSecadoExistentes);
+        setFlash('error', 'Este lote ya tiene una ficha de secado final registrada.');
+        redirect('/secado/control.php?id=' . (int)$ultimoRegistro['id']);
+    }
+    if ($etapaSecado === 'SECADO_FINAL' && $totalRegistrosSecado === 1 && empty($registrosSecadoExistentes[0]['cierre'])) {
+        setFlash('error', 'Ya existe una ficha de secado en proceso para este lote.');
+        redirect('/secado/control.php?id=' . (int)$registrosSecadoExistentes[0]['id']);
     }
 }
 
@@ -112,15 +131,26 @@ $secadoras = $db->fetchAll("
     WHERE {$whereSecadoraActiva}
     ORDER BY nombre
 ");
+$totalSecadorasActivas = count($secadoras);
 
 // Obtener lotes disponibles para secado
 $lotesDisponibles = $db->fetchAll("
-    SELECT l.id, l.codigo, l.peso_inicial_kg, p.nombre as proveedor
+    SELECT l.id, l.codigo, l.peso_inicial_kg, p.nombre as proveedor, l.estado_proceso
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso IN ('PRE_SECADO', 'SECADO')
     AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
-    AND NOT EXISTS (SELECT 1 FROM registros_secado rs WHERE rs.lote_id = l.id)
+    AND (
+        (
+            l.estado_proceso = 'PRE_SECADO'
+            AND (SELECT COUNT(*) FROM registros_secado rs WHERE rs.lote_id = l.id) = 0
+        )
+        OR
+        (
+            l.estado_proceso = 'SECADO'
+            AND (SELECT COUNT(*) FROM registros_secado rs WHERE rs.lote_id = l.id) < 2
+        )
+    )
     ORDER BY l.fecha_entrada DESC
 ");
 
@@ -131,6 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $loteId = $_POST['lote_id'] ?? '';
     $secadoraId = $_POST['secadora_id'] ?? null;
     $tipoSecado = $_POST['tipo_secado'] ?? 'SOLAR';
+    $etapaSecadoPost = strtoupper(trim((string)($_POST['etapa_secado'] ?? '')));
     $fechaInicio = $_POST['fecha_inicio'] ?? '';
     $pesoInicial = floatval($_POST['peso_inicial'] ?? 0);
     $humedadInicial = floatval($_POST['humedad_inicial'] ?? 0);
@@ -141,7 +172,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$fechaInicio) $errors[] = 'La fecha de inicio es requerida';
     if ($pesoInicial <= 0) $errors[] = 'El peso inicial debe ser mayor a 0';
 
+    $loteEstadoProceso = null;
     if ($loteId) {
+        $loteEstado = $db->fetch("
+            SELECT estado_proceso
+            FROM lotes
+            WHERE id = :id
+        ", ['id' => $loteId]);
+        $loteEstadoProceso = (string)($loteEstado['estado_proceso'] ?? '');
+
+        if (!in_array($loteEstadoProceso, ['PRE_SECADO', 'SECADO'], true)) {
+            $errors[] = 'Lote no válido para iniciar secado.';
+        } else {
+            $etapaSecado = $loteEstadoProceso === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL';
+            if ($etapaSecadoPost !== '' && $etapaSecadoPost !== $etapaSecado) {
+                $errors[] = 'La etapa de secado no coincide con el estado actual del lote.';
+            }
+        }
+
         $fichaRegistro = $db->fetch("
             SELECT id FROM fichas_registro WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
         ", ['lote_id' => $loteId]);
@@ -151,17 +199,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($loteId && empty($errors)) {
-        $loteValido = $db->fetch("
-            SELECT l.id
-            FROM lotes l
-            WHERE l.id = :id
-              AND l.estado_proceso IN ('PRE_SECADO', 'SECADO')
-              AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
-              AND NOT EXISTS (SELECT 1 FROM registros_secado rs WHERE rs.lote_id = l.id)
-        ", ['id' => $loteId]);
+        $registrosSecadoEstado = $db->fetchAll("
+            SELECT id, {$exprCierreSecado} as cierre
+            FROM registros_secado
+            WHERE lote_id = :lote_id
+            ORDER BY id ASC
+        ", ['lote_id' => $loteId]);
+        $registrosSecadoCount = count($registrosSecadoEstado);
 
-        if (!$loteValido) {
-            $errors[] = 'Lote no válido para iniciar secado.';
+        if ($etapaSecado === 'PRE_SECADO' && $registrosSecadoCount >= 1) {
+            $errors[] = 'Ya existe una ficha de pre-secado para este lote.';
+        }
+        if ($etapaSecado === 'SECADO_FINAL' && $registrosSecadoCount >= 2) {
+            $errors[] = 'Ya existe una ficha de secado final para este lote.';
+        }
+        if ($etapaSecado === 'SECADO_FINAL' && $registrosSecadoCount === 1 && empty($registrosSecadoEstado[0]['cierre'])) {
+            $errors[] = 'Ya existe una ficha de secado en proceso para este lote.';
         }
     }
     
@@ -175,6 +228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             if ($hasRegSecCol('secadora_id')) {
                 $dataSecado['secadora_id'] = $secadoraId ?: null;
+            }
+            if ($hasRegSecCol('etapa_proceso')) {
+                $dataSecado['etapa_proceso'] = ($etapaSecado === 'PRE_SECADO') ? 'PRE_SECADO' : 'SECADO_FINAL';
             }
             if ($colTipoSecadoSecado) {
                 $dataSecado[$colTipoSecadoSecado] = $tipoSecado;
@@ -208,11 +264,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $secadoId = $db->insert('registros_secado', $dataSecado);
             
             // Registrar historial
-            Helpers::logHistory($loteId, 'SECADO', 'Inicio de secado (' . $tipoSecado . ')', getCurrentUserId());
+            $etapaHistorial = ($etapaSecado === 'PRE_SECADO') ? 'Pre-secado' : 'Secado final';
+            Helpers::logHistory($loteId, 'SECADO', 'Inicio de ' . $etapaHistorial . ' (' . $tipoSecado . ')', getCurrentUserId());
             
             $db->commit();
             
-            setFlash('success', 'Secado iniciado correctamente');
+            setFlash('success', (($etapaSecado === 'PRE_SECADO') ? 'Pre-secado' : 'Secado final') . ' iniciado correctamente');
             redirect('/secado/control.php?id=' . $secadoId);
             
         } catch (Exception $e) {
@@ -222,8 +279,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = 'Iniciar Secado';
-$pageSubtitle = 'Registrar nuevo proceso de secado';
+$etapaSecadoVista = $etapaSecado;
+if ($etapaSecadoVista === null) {
+    $etapaSecadoVista = (strtoupper(trim((string)($_POST['etapa_secado'] ?? ''))) === 'PRE_SECADO')
+        ? 'PRE_SECADO'
+        : 'SECADO_FINAL';
+}
+$tituloEtapaSecado = $etapaSecadoLabel($etapaSecadoVista);
+$pageTitle = 'Iniciar ' . $tituloEtapaSecado;
+$pageSubtitle = 'Registrar nuevo proceso de ' . strtolower($tituloEtapaSecado);
 
 ob_start();
 ?>
@@ -305,6 +369,25 @@ ob_start();
 <?php else: ?>
 <form method="POST" class="max-w-4xl">
     <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+    <?php
+        $etapaFormulario = $etapaSecado ?? $etapaSecadoVista;
+    ?>
+    <input type="hidden" name="etapa_secado" id="etapa_secado" value="<?= htmlspecialchars($etapaFormulario) ?>">
+
+    <div class="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Etapa de la ficha</p>
+        <p id="etapa_secado_label" class="text-lg font-semibold text-blue-900">
+            <?= htmlspecialchars($etapaSecadoLabel($etapaFormulario)) ?>
+        </p>
+    </div>
+    <?php if ($totalSecadorasActivas < 13): ?>
+        <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p class="text-sm text-amber-900">
+                Actualmente hay <strong><?= (int)$totalSecadorasActivas ?></strong> secadora(s) activa(s).
+                Recomendación del proceso: configurar un total de <strong>13 secadoras</strong>.
+            </p>
+        </div>
+    <?php endif; ?>
     
     <!-- Selección de Lote -->
     <div class="card mb-6">
@@ -348,7 +431,9 @@ ob_start();
                     <select name="lote_id" class="form-control form-select" required>
                         <option value="">-- Seleccione un lote --</option>
                         <?php foreach ($lotesDisponibles as $lote): ?>
-                            <option value="<?= $lote['id'] ?>" <?= (isset($_POST['lote_id']) && $_POST['lote_id'] == $lote['id']) ? 'selected' : '' ?>>
+                            <?php $etapaOpcion = ($lote['estado_proceso'] ?? '') === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL'; ?>
+                            <option value="<?= $lote['id'] ?>" data-etapa="<?= htmlspecialchars($etapaOpcion) ?>" <?= (isset($_POST['lote_id']) && $_POST['lote_id'] == $lote['id']) ? 'selected' : '' ?>>
+                                <?= $etapaOpcion === 'PRE_SECADO' ? '[Pre-secado] ' : '[Secado final] ' ?>
                                 <?= htmlspecialchars($lote['codigo']) ?> - <?= htmlspecialchars($lote['proveedor']) ?> 
                                 (<?= number_format($lote['peso_inicial_kg'], 2) ?> Kg)
                             </option>
@@ -365,7 +450,7 @@ ob_start();
     <!-- Datos de Secado -->
     <div class="card mb-6">
         <div class="card-header">
-            <h3 class="card-title">Datos de Secado</h3>
+            <h3 class="card-title">Datos de <?= htmlspecialchars($etapaSecadoLabel($etapaFormulario)) ?></h3>
         </div>
         <div class="card-body">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -437,12 +522,13 @@ ob_start();
                     </svg>
                 </div>
                 <div>
-                    <h4 class="font-semibold text-primary mb-2">Proceso de Secado</h4>
+                    <h4 class="font-semibold text-primary mb-2">Proceso de <?= htmlspecialchars($etapaSecadoLabel($etapaFormulario)) ?></h4>
                     <ul class="text-sm text-warmgray space-y-1">
                         <li>• El secado típico dura entre 5-8 días (solar) o 1-2 días (mecánico)</li>
                         <li>• La humedad objetivo final es 6-7%</li>
                         <li>• Temperatura máxima recomendada: 60°C</li>
                         <li>• Se deben registrar temperaturas cada 2 horas</li>
+                        <li>• Configuración recomendada del sistema: 13 secadoras activas</li>
                     </ul>
                 </div>
             </div>
@@ -455,11 +541,31 @@ ob_start();
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
-            Iniciar Secado
+            Iniciar <?= htmlspecialchars($etapaSecadoLabel($etapaFormulario)) ?>
         </button>
         <a href="<?= APP_URL ?>/secado/index.php" class="btn btn-outline">Cancelar</a>
     </div>
 </form>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const loteSelect = document.querySelector('select[name=\"lote_id\"]');
+    const etapaInput = document.getElementById('etapa_secado');
+    const etapaLabel = document.getElementById('etapa_secado_label');
+    if (!loteSelect || !etapaInput || !etapaLabel) {
+        return;
+    }
+
+    const syncEtapa = () => {
+        const option = loteSelect.options[loteSelect.selectedIndex];
+        const etapa = option?.dataset?.etapa === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL';
+        etapaInput.value = etapa;
+        etapaLabel.textContent = etapa === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
+    };
+
+    loteSelect.addEventListener('change', syncEtapa);
+    syncEtapa();
+});
+</script>
 <?php endif; ?>
 
 <?php

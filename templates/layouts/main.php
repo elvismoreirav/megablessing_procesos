@@ -8,6 +8,25 @@
 $currentUser = Auth::user();
 $currentPage = basename($_SERVER['PHP_SELF'], '.php');
 $currentDir = basename(dirname($_SERVER['PHP_SELF']));
+$canDashboard = Auth::hasModuleAccess('dashboard');
+$canRecepcion = Auth::hasModuleAccess('recepcion');
+$canPagos = Auth::hasModuleAccess('pagos');
+$canCodificacion = Auth::hasModuleAccess('codificacion');
+$canEtiqueta = Auth::hasModuleAccess('etiqueta');
+$canLotes = Auth::hasModuleAccess('lotes');
+$canFermentacion = Auth::hasModuleAccess('fermentacion');
+$canSecado = Auth::hasModuleAccess('secado');
+$canPruebaCorte = Auth::hasModuleAccess('prueba_corte');
+$canCalidadSalida = Auth::hasModuleAccess('calidad_salida');
+$canReportes = Auth::hasModuleAccess('reportes');
+$canIndicadores = Auth::hasModuleAccess('indicadores');
+$canProveedores = Auth::hasModuleAccess('proveedores');
+$canConfiguracion = Auth::hasModuleAccess('configuracion');
+$canUsuarios = Auth::hasModuleAccess('usuarios');
+$showRecepcionSection = $canRecepcion || $canPagos || $canCodificacion || $canEtiqueta;
+$showPostcosechaSection = $canLotes || $canFermentacion || $canSecado || $canPruebaCorte || $canCalidadSalida;
+$showReportesSection = $canReportes || $canIndicadores;
+$showConfiguracionSection = $canProveedores || $canConfiguracion || $canUsuarios;
 $assetVersion = static function (string $path): string {
     $mtime = @filemtime($path);
     return $mtime !== false ? (string) $mtime : date('YmdHis');
@@ -116,118 +135,132 @@ $requiresSheetJs = isset($requiresSheetJs)
         </div>
         
         <nav class="sidebar-nav" aria-label="Menú principal" tabindex="0">
-            <!-- Dashboard -->
+            <?php if ($canDashboard): ?>
             <a href="<?= APP_URL ?>/dashboard.php" class="sidebar-link <?= $currentPage === 'dashboard' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                 </svg>
                 Dashboard
             </a>
-            
-            <!-- Procesos Centro de Acopio -->
-            <div class="sidebar-section-title">Procesos Centro de Acopio</div>
+            <?php endif; ?>
 
+            <?php if ($showRecepcionSection): ?>
+            <div class="sidebar-section-title">Procesos de Recepción</div>
+            <?php if ($canRecepcion): ?>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
                 </svg>
                 Recepción (Ficha de Recepción)
             </a>
-
+            <?php endif; ?>
+            <?php if ($canPagos): ?>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1m0-1a3 3 0 01-3-3m3 3a3 3 0 003-3"/>
                 </svg>
-                Registro de Pagos (Ficha de pagos)
+                Registro de Pagos
             </a>
-
+            <?php endif; ?>
+            <?php if ($canCodificacion): ?>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
                 </svg>
                 Codificación de Lote
             </a>
-
+            <?php endif; ?>
+            <?php if ($canEtiqueta): ?>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2z"/>
                 </svg>
-                Imprimir Etiqueta (Etiquetado de registro)
+                Imprimir Etiqueta
             </a>
+            <?php endif; ?>
+            <?php endif; ?>
 
-            <!-- Procesos Planta -->
-            <div class="sidebar-section-title">Procesos Planta</div>
-
+            <?php if ($showPostcosechaSection): ?>
+            <div class="sidebar-section-title">Procesos Post-cosecha</div>
+            <?php if ($canLotes): ?>
             <a href="<?= APP_URL ?>/lotes/index.php" class="sidebar-link <?= $currentDir === 'lotes' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                 </svg>
                 Verificación de Lote
             </a>
-
+            <?php endif; ?>
+            <?php if ($canFermentacion): ?>
             <a href="<?= APP_URL ?>/fermentacion/index.php" class="sidebar-link <?= $currentDir === 'fermentacion' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
                 </svg>
                 Fermentación (Ficha de fermentación)
             </a>
-
+            <?php endif; ?>
+            <?php if ($canSecado): ?>
             <a href="<?= APP_URL ?>/secado/index.php" class="sidebar-link <?= $currentDir === 'secado' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
                 </svg>
                 Secado (Ficha de secado)
             </a>
-
+            <?php endif; ?>
+            <?php if ($canPruebaCorte): ?>
             <a href="<?= APP_URL ?>/prueba-corte/index.php" class="sidebar-link <?= in_array($currentDir, ['prueba-corte', 'prueba_corte'], true) ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                 </svg>
                 Prueba de Corte (Ficha de prueba de corte)
             </a>
-
+            <?php endif; ?>
+            <?php if ($canCalidadSalida): ?>
             <a href="<?= APP_URL ?>/calidad-salida/index.php" class="sidebar-link <?= in_array($currentDir, ['calidad-salida', 'calidad_salida'], true) ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m4 2a8 8 0 11-16 0 8 8 0 0116 0z"/>
                 </svg>
                 Calidad de salida
             </a>
-            
-            <!-- Reportes -->
+            <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if ($showReportesSection): ?>
             <div class="sidebar-section-title">Reportes</div>
-            
+            <?php if ($canReportes): ?>
             <a href="<?= APP_URL ?>/reportes/index.php" class="sidebar-link <?= $currentDir === 'reportes' && $currentPage === 'index' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                 </svg>
                 Reportes
             </a>
-
+            <?php endif; ?>
+            <?php if ($canIndicadores): ?>
             <a href="<?= APP_URL ?>/indicadores/index.php" class="sidebar-link <?= $currentDir === 'indicadores' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15v3m4-7v7m4-11v11"/>
                 </svg>
                 Registro KPIs
             </a>
-            
             <a href="<?= APP_URL ?>/reportes/indicadores.php" class="sidebar-link <?= $currentPage === 'indicadores' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                 </svg>
                 Indicadores
             </a>
-            
-            <?php if (Auth::isAdmin() || Auth::hasPermission('configuracion')): ?>
-            <!-- Configuración -->
+            <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if ($showConfiguracionSection): ?>
             <div class="sidebar-section-title">Configuración</div>
-            
+            <?php if ($canProveedores): ?>
             <a href="<?= APP_URL ?>/configuracion/proveedores.php" class="sidebar-link <?= $currentPage === 'proveedores' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
                 Proveedores
             </a>
-            
+            <?php endif; ?>
+            <?php if ($canConfiguracion): ?>
             <a href="<?= APP_URL ?>/configuracion/parametros.php" class="sidebar-link <?= $currentPage === 'parametros' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -235,20 +268,21 @@ $requiresSheetJs = isset($requiresSheetJs)
                 </svg>
                 Parámetros
             </a>
-
             <a href="<?= APP_URL ?>/configuracion/empresa.php" class="sidebar-link <?= $currentPage === 'empresa' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v12m0 0l-3-3m3 3l3-3"/>
                 </svg>
                 Empresa y logo
             </a>
-            
+            <?php endif; ?>
+            <?php if ($canUsuarios): ?>
             <a href="<?= APP_URL ?>/usuarios/index.php" class="sidebar-link <?= $currentDir === 'usuarios' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
                 </svg>
                 Usuarios
             </a>
+            <?php endif; ?>
             <?php endif; ?>
         </nav>
         

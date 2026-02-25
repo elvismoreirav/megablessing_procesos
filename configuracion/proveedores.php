@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../bootstrap.php';
 
 requireAuth();
-if (!Auth::isAdmin() && !Auth::hasRole('Supervisor') && !Auth::hasPermission('configuracion')) {
+if (!Auth::hasModuleAccess('proveedores')) {
     setFlash('danger', 'No tiene permisos para acceder a esta sección.');
     redirect('/dashboard.php');
 }
@@ -34,6 +34,92 @@ $normalizarCategoria = static function (string $valor): string {
 };
 
 $tiposProveedor = ['MERCADO', 'BODEGA', 'RUTA', 'PRODUCTOR'];
+$parseUpperList = static function ($value, array $allowList = []): array {
+    $items = [];
+    if (is_array($value)) {
+        $items = $value;
+    } elseif (is_string($value) && trim($value) !== '') {
+        $items = preg_split('/[\s,;|]+/', trim($value));
+    }
+
+    $result = [];
+    foreach ($items as $item) {
+        $val = strtoupper(trim((string)$item));
+        if ($val === '') {
+            continue;
+        }
+        if (!empty($allowList) && !in_array($val, $allowList, true)) {
+            continue;
+        }
+        if (!in_array($val, $result, true)) {
+            $result[] = $val;
+        }
+    }
+    return $result;
+};
+$certificacionesProveedorLabels = [
+    'ORGANICA' => 'Orgánica',
+    'FAIR_TRADE' => 'Fair Trade (Comercio Justo)',
+    'UEDR' => 'UEDR',
+    'RAINFOREST_ALLIANCE' => 'Rainforest Alliance',
+    'OTRAS' => 'Otras',
+    'NO_APLICA' => 'No aplica',
+];
+$parseCertificacionesProveedor = static function ($input) use ($parseUpperList): array {
+    $allowed = ['ORGANICA', 'FAIR_TRADE', 'UEDR', 'RAINFOREST_ALLIANCE', 'OTRAS', 'NO_APLICA'];
+    $values = $parseUpperList($input, $allowed);
+    if (in_array('NO_APLICA', $values, true)) {
+        return ['NO_APLICA'];
+    }
+    return $values;
+};
+$guardarDocumentoCertificaciones = static function (array $file, ?string $actualPath = null): ?string {
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return $actualPath;
+    }
+
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+        throw new Exception('No se pudo cargar el PDF de certificaciones');
+    }
+
+    $tmpName = (string)($file['tmp_name'] ?? '');
+    if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+        throw new Exception('Archivo inválido de certificaciones');
+    }
+
+    $mime = mime_content_type($tmpName) ?: '';
+    $name = (string)($file['name'] ?? '');
+    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    if ($mime !== 'application/pdf' && $ext !== 'pdf') {
+        throw new Exception('El documento de certificaciones debe ser un PDF');
+    }
+
+    $size = (int)($file['size'] ?? 0);
+    if ($size > 8 * 1024 * 1024) {
+        throw new Exception('El PDF de certificaciones no debe superar 8MB');
+    }
+
+    $dirAbs = __DIR__ . '/../uploads/proveedores-certificaciones';
+    $dirRel = 'uploads/proveedores-certificaciones';
+    if (!is_dir($dirAbs) && !mkdir($dirAbs, 0775, true) && !is_dir($dirAbs)) {
+        throw new Exception('No se pudo crear la carpeta para documentos de certificaciones');
+    }
+
+    $baseName = 'cert-' . date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.pdf';
+    $destAbs = $dirAbs . '/' . $baseName;
+    if (!move_uploaded_file($tmpName, $destAbs)) {
+        throw new Exception('No se pudo guardar el PDF de certificaciones');
+    }
+
+    if ($actualPath) {
+        $actualAbs = __DIR__ . '/../' . ltrim($actualPath, '/');
+        if (is_file($actualAbs) && strpos(realpath($actualAbs) ?: '', realpath($dirAbs) ?: '') === 0) {
+            @unlink($actualAbs);
+        }
+    }
+
+    return $dirRel . '/' . $baseName;
+};
 $categoriasSeed = [
     ['codigo' => 'M', 'nombre' => 'Mercado', 'tipo' => 'MERCADO', 'categoria' => 'MERCADO'],
     ['codigo' => 'B', 'nombre' => 'Bodega', 'tipo' => 'BODEGA', 'categoria' => 'BODEGA'],
@@ -46,6 +132,7 @@ $categoriaLabels = [];
 $categoriasProveedor = [];
 $tipoPorCategoria = [];
 $categoriasCatalogo = [];
+$tiposPermitidosPorCategoria = [];
 
 $colsLotes = $getTableColumns($db, 'lotes');
 $exprPesoRecepcion = in_array('peso_recepcion_kg', $colsLotes, true)
@@ -74,6 +161,39 @@ if (!$hasProvCol('es_categoria')) {
 if (!$hasProvCol('email')) {
     $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN email VARCHAR(120) NULL AFTER telefono";
 }
+if (!$hasProvCol('tipos_permitidos')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN tipos_permitidos VARCHAR(120) NULL AFTER categoria";
+}
+if (!$hasProvCol('utm_este_x')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN utm_este_x VARCHAR(50) NULL AFTER direccion";
+}
+if (!$hasProvCol('utm_norte_y')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN utm_norte_y VARCHAR(50) NULL AFTER utm_este_x";
+}
+if (!$hasProvCol('seguridad_deforestacion')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN seguridad_deforestacion TINYINT(1) NULL AFTER utm_norte_y";
+}
+if (!$hasProvCol('arboles_endemicos')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN arboles_endemicos TINYINT(1) NULL AFTER seguridad_deforestacion";
+}
+if (!$hasProvCol('hectareas_totales')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN hectareas_totales DECIMAL(10,2) NULL AFTER arboles_endemicos";
+}
+if (!$hasProvCol('hectareas_ccn51')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN hectareas_ccn51 DECIMAL(10,2) NULL AFTER hectareas_totales";
+}
+if (!$hasProvCol('hectareas_fino_aroma')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN hectareas_fino_aroma DECIMAL(10,2) NULL AFTER hectareas_ccn51";
+}
+if (!$hasProvCol('certificaciones')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN certificaciones TEXT NULL AFTER hectareas_fino_aroma";
+}
+if (!$hasProvCol('certificacion_otras')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN certificacion_otras VARCHAR(255) NULL AFTER certificaciones";
+}
+if (!$hasProvCol('documento_certificaciones')) {
+    $schemaStatements[] = "ALTER TABLE proveedores ADD COLUMN documento_certificaciones VARCHAR(255) NULL AFTER certificacion_otras";
+}
 
 foreach ($schemaStatements as $statement) {
     try {
@@ -83,6 +203,19 @@ foreach ($schemaStatements as $statement) {
     }
 }
 $colsProveedores = $getTableColumns($db, 'proveedores');
+
+if (in_array('tipos_permitidos', $colsProveedores, true)) {
+    try {
+        $db->exec(
+            "UPDATE proveedores
+             SET tipos_permitidos = UPPER(tipo)
+             WHERE es_categoria = 1
+               AND (tipos_permitidos IS NULL OR TRIM(tipos_permitidos) = '')"
+        );
+    } catch (Throwable $e) {
+        // Compatibilidad: continuar si la actualización no aplica.
+    }
+}
 
 if ($hasProvCol('es_categoria')) {
     // Marcar registros base como categorías para separar tipos de proveedores reales.
@@ -111,8 +244,13 @@ if ($hasProvCol('es_categoria') && $hasProvCol('categoria')) {
             $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($existing) {
-                $stmtUpdate = $db->prepare("UPDATE proveedores SET categoria = ?, tipo = ? WHERE id = ?");
-                $stmtUpdate->execute([$categoriaClave, $tipoSeed, (int)$existing['id']]);
+                if ($hasProvCol('tipos_permitidos')) {
+                    $stmtUpdate = $db->prepare("UPDATE proveedores SET categoria = ?, tipo = ?, tipos_permitidos = ? WHERE id = ?");
+                    $stmtUpdate->execute([$categoriaClave, $tipoSeed, $tipoSeed, (int)$existing['id']]);
+                } else {
+                    $stmtUpdate = $db->prepare("UPDATE proveedores SET categoria = ?, tipo = ? WHERE id = ?");
+                    $stmtUpdate->execute([$categoriaClave, $tipoSeed, (int)$existing['id']]);
+                }
                 continue;
             }
 
@@ -130,6 +268,9 @@ if ($hasProvCol('es_categoria') && $hasProvCol('categoria')) {
                 'activo' => 1,
                 'es_categoria' => 1,
             ];
+            if ($hasProvCol('tipos_permitidos')) {
+                $insertSeed['tipos_permitidos'] = $tipoSeed;
+            }
             if ($hasProvCol('codigo_identificacion')) {
                 $insertSeed['codigo_identificacion'] = null;
             }
@@ -165,7 +306,7 @@ if ($hasProvCol('es_categoria') && $hasProvCol('categoria')) {
 if ($hasProvCol('es_categoria')) {
     try {
         $stmtCategorias = $db->query(
-            "SELECT id, codigo, nombre, tipo, categoria, activo
+            "SELECT id, codigo, nombre, tipo, categoria, activo" . ($hasProvCol('tipos_permitidos') ? ", tipos_permitidos" : "") . "
              FROM proveedores
              WHERE es_categoria = 1
              ORDER BY activo DESC, tipo ASC, nombre ASC"
@@ -184,6 +325,7 @@ if (empty($categoriasCatalogo)) {
             'nombre' => $seed['nombre'],
             'tipo' => strtoupper($seed['tipo']),
             'categoria' => $normalizarCategoria($seed['categoria']),
+            'tipos_permitidos' => strtoupper($seed['tipo']),
             'activo' => 1,
         ];
     }
@@ -199,22 +341,33 @@ foreach ($categoriasCatalogo as $catRow) {
         continue;
     }
 
-    $tipoCat = strtoupper(trim((string)($catRow['tipo'] ?? 'RUTA')));
-    if (!in_array($tipoCat, $tiposProveedor, true)) {
-        $tipoCat = 'RUTA';
+    $tiposPermitidos = $parseUpperList(
+        $catRow['tipos_permitidos'] ?? ($catRow['tipo'] ?? ''),
+        $tiposProveedor
+    );
+    if (empty($tiposPermitidos)) {
+        $tipoFallback = strtoupper(trim((string)($catRow['tipo'] ?? 'RUTA')));
+        $tiposPermitidos = in_array($tipoFallback, $tiposProveedor, true) ? [$tipoFallback] : ['RUTA'];
     }
+    $tipoCat = $tiposPermitidos[0];
     $labelCat = trim((string)($catRow['nombre'] ?? $categoriaKey));
     if ($labelCat === '') {
         $labelCat = $categoriaKey;
     }
 
-    if (!in_array($categoriaKey, $categoriasPorTipo[$tipoCat], true)) {
-        $categoriasPorTipo[$tipoCat][] = $categoriaKey;
+    foreach ($tiposPermitidos as $tipoPermitido) {
+        if (!isset($categoriasPorTipo[$tipoPermitido])) {
+            $categoriasPorTipo[$tipoPermitido] = [];
+        }
+        if (!in_array($categoriaKey, $categoriasPorTipo[$tipoPermitido], true)) {
+            $categoriasPorTipo[$tipoPermitido][] = $categoriaKey;
+        }
     }
     if (!in_array($categoriaKey, $categoriasProveedor, true)) {
         $categoriasProveedor[] = $categoriaKey;
     }
     $tipoPorCategoria[$categoriaKey] = $tipoCat;
+    $tiposPermitidosPorCategoria[$categoriaKey] = $tiposPermitidos;
     $categoriaLabels[$categoriaKey] = $labelCat;
 }
 
@@ -309,14 +462,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create_category':
                 $codigo = strtoupper(trim($_POST['codigo'] ?? ''));
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipo = strtoupper(trim($_POST['tipo'] ?? 'RUTA'));
+                $tipoLegacy = strtoupper(trim($_POST['tipo'] ?? ''));
+                $tiposPermitidos = $parseUpperList(
+                    $_POST['tipos_permitidos'] ?? ($tipoLegacy !== '' ? [$tipoLegacy] : []),
+                    $tiposProveedor
+                );
+                $tipo = $tiposPermitidos[0] ?? '';
                 $categoria = $normalizarCategoria($nombre);
 
                 if ($codigo === '' || $nombre === '') {
                     throw new Exception('Código y nombre de categoría son obligatorios');
                 }
-                if (!in_array($tipo, $tiposProveedor, true)) {
-                    throw new Exception('Tipo de categoría no válido');
+                if (empty($tiposPermitidos)) {
+                    throw new Exception('Seleccione al menos un tipo permitido para la categoría');
                 }
                 if (!$hasProvCol('categoria')) {
                     throw new Exception('La columna de categoría no está disponible');
@@ -343,6 +501,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'categoria' => $categoria,
                     'activo' => 1,
                 ];
+                if ($hasProvCol('tipos_permitidos')) {
+                    $insertData['tipos_permitidos'] = implode(',', $tiposPermitidos);
+                }
                 if ($hasProvCol('es_categoria')) {
                     $insertData['es_categoria'] = 1;
                 }
@@ -379,14 +540,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = (int)($_POST['id'] ?? 0);
                 $codigo = strtoupper(trim($_POST['codigo'] ?? ''));
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipo = strtoupper(trim($_POST['tipo'] ?? 'RUTA'));
+                $tipoLegacy = strtoupper(trim($_POST['tipo'] ?? ''));
+                $tiposPermitidos = $parseUpperList(
+                    $_POST['tipos_permitidos'] ?? ($tipoLegacy !== '' ? [$tipoLegacy] : []),
+                    $tiposProveedor
+                );
+                $tipo = $tiposPermitidos[0] ?? '';
                 $categoriaNueva = $normalizarCategoria($nombre);
 
                 if (!$id || $codigo === '' || $nombre === '') {
                     throw new Exception('Datos incompletos para actualizar la categoría');
                 }
-                if (!in_array($tipo, $tiposProveedor, true)) {
-                    throw new Exception('Tipo de categoría no válido');
+                if (empty($tiposPermitidos)) {
+                    throw new Exception('Seleccione al menos un tipo permitido para la categoría');
                 }
                 if (!$hasProvCol('categoria')) {
                     throw new Exception('La columna de categoría no está disponible');
@@ -416,6 +582,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'tipo' => $tipo,
                     'categoria' => $categoriaNueva,
                 ];
+                if ($hasProvCol('tipos_permitidos')) {
+                    $updateData['tipos_permitidos'] = implode(',', $tiposPermitidos);
+                }
                 if ($hasProvCol('es_categoria')) {
                     $updateData['es_categoria'] = 1;
                 }
@@ -426,30 +595,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $db->prepare("UPDATE proveedores SET {$setClause} WHERE id = ?");
                 $stmt->execute($paramsUpdate);
 
+                $whereProviders = $hasProvCol('es_categoria')
+                    ? "WHERE es_categoria = 0 AND categoria = ?"
+                    : "WHERE id != ? AND categoria = ?";
+
                 if ($categoriaAnterior !== '' && $categoriaAnterior !== $categoriaNueva) {
                     if ($hasProvCol('es_categoria')) {
-                        $stmt = $db->prepare(
-                            "UPDATE proveedores
-                             SET tipo = ?, categoria = ?
-                             WHERE es_categoria = 0 AND categoria = ?"
-                        );
-                        $stmt->execute([$tipo, $categoriaNueva, $categoriaAnterior]);
+                        $stmt = $db->prepare("UPDATE proveedores SET categoria = ? {$whereProviders}");
+                        $stmt->execute([$categoriaNueva, $categoriaAnterior]);
                     } else {
-                        $stmt = $db->prepare(
-                            "UPDATE proveedores
-                             SET tipo = ?, categoria = ?
-                             WHERE id != ? AND categoria = ?"
-                        );
-                        $stmt->execute([$tipo, $categoriaNueva, $id, $categoriaAnterior]);
+                        $stmt = $db->prepare("UPDATE proveedores SET categoria = ? {$whereProviders}");
+                        $stmt->execute([$categoriaNueva, $id, $categoriaAnterior]);
                     }
-                } else {
-                    if ($hasProvCol('es_categoria')) {
-                        $stmt = $db->prepare(
-                            "UPDATE proveedores
-                             SET tipo = ?
-                             WHERE es_categoria = 0 AND categoria = ?"
-                        );
-                        $stmt->execute([$tipo, $categoriaNueva]);
+                }
+
+                $paramsTipo = $hasProvCol('es_categoria') ? [$categoriaNueva] : [$id, $categoriaNueva];
+                $stmtProv = $db->prepare(
+                    "SELECT id, tipo FROM proveedores " . $whereProviders
+                );
+                $stmtProv->execute($paramsTipo);
+                $proveedoresCategoria = $stmtProv->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($proveedoresCategoria as $provCat) {
+                    $tipoProv = strtoupper(trim((string)($provCat['tipo'] ?? '')));
+                    if (!in_array($tipoProv, $tiposPermitidos, true)) {
+                        $stmt = $db->prepare("UPDATE proveedores SET tipo = ? WHERE id = ?");
+                        $stmt->execute([$tipo, (int)$provCat['id']]);
                     }
                 }
 
@@ -467,21 +637,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $telefono = trim($_POST['telefono'] ?? '');
                 $email = trim($_POST['email'] ?? '');
                 $contacto = trim($_POST['contacto'] ?? '');
+                $utmEsteX = trim((string)($_POST['utm_este_x'] ?? ''));
+                $utmNorteY = trim((string)($_POST['utm_norte_y'] ?? ''));
+                $seguridadDeforestacionRaw = strtoupper(trim((string)($_POST['seguridad_deforestacion'] ?? '')));
+                $arbolesEndemicosRaw = strtoupper(trim((string)($_POST['arboles_endemicos'] ?? '')));
+                $hectareasTotales = is_numeric($_POST['hectareas_totales'] ?? null) ? (float)$_POST['hectareas_totales'] : null;
+                $hectareasCcn51 = is_numeric($_POST['hectareas_ccn51'] ?? null) ? (float)$_POST['hectareas_ccn51'] : null;
+                $hectareasFinoAroma = is_numeric($_POST['hectareas_fino_aroma'] ?? null) ? (float)$_POST['hectareas_fino_aroma'] : null;
+                $certificacionesSeleccionadas = $parseCertificacionesProveedor($_POST['certificaciones'] ?? []);
+                $certificacionOtras = trim((string)($_POST['certificacion_otras'] ?? ''));
+                $documentoCertificaciones = null;
 
                 if ($nombre === '') {
                     throw new Exception('El nombre es obligatorio');
                 }
 
                 if ($hasProvCol('categoria')) {
-                    if ($categoria !== '' && isset($tipoPorCategoria[$categoria])) {
-                        $tipo = $tipoPorCategoria[$categoria];
+                    if ($categoria !== '' && !isset($tiposPermitidosPorCategoria[$categoria])) {
+                        throw new Exception('Seleccione una categoría válida para registrar el proveedor');
                     } elseif ($categoria === '' && isset($categoriasPorTipo[$tipo][0])) {
                         $categoria = $categoriasPorTipo[$tipo][0];
                     }
-                    if ($categoria === '' || !isset($tipoPorCategoria[$categoria])) {
+                    if ($categoria === '' || !isset($tiposPermitidosPorCategoria[$categoria])) {
                         throw new Exception('Seleccione una categoría válida para registrar el proveedor');
                     }
-                    $tipo = $tipoPorCategoria[$categoria];
+                    $tiposCategoria = $tiposPermitidosPorCategoria[$categoria] ?? [];
+                    if (!in_array($tipo, $tiposCategoria, true)) {
+                        $tipo = $tiposCategoria[0] ?? ($tipoPorCategoria[$categoria] ?? 'RUTA');
+                    }
                 }
 
                 if (!in_array($tipo, $tiposProveedor, true)) {
@@ -493,6 +676,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ($hasProvCol('email') && $email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     throw new Exception('El correo electrónico no es válido');
+                }
+                if (!in_array($seguridadDeforestacionRaw, ['', 'SI', 'NO'], true)) {
+                    throw new Exception('Seguridad contra la deforestación debe ser SI o NO');
+                }
+                if (!in_array($arbolesEndemicosRaw, ['', 'SI', 'NO'], true)) {
+                    throw new Exception('Cuenta con árboles endémicos debe ser SI o NO');
+                }
+                if (in_array('OTRAS', $certificacionesSeleccionadas, true) && $certificacionOtras === '') {
+                    throw new Exception('Debe detallar la certificación en el campo "Otras"');
+                }
+                if (in_array('NO_APLICA', $certificacionesSeleccionadas, true)) {
+                    $certificacionesSeleccionadas = ['NO_APLICA'];
+                    $certificacionOtras = '';
                 }
                 if ($hasProvCol('codigo_identificacion')) {
                     // En creación el código se asigna siempre de forma automática.
@@ -527,6 +723,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new Exception('Ya existe un proveedor con esta cédula/RUC');
                     }
                 }
+                if ($hasProvCol('documento_certificaciones')) {
+                    $documentoCertificaciones = $guardarDocumentoCertificaciones(
+                        $_FILES['documento_certificaciones'] ?? ['error' => UPLOAD_ERR_NO_FILE]
+                    );
+                }
 
                 $insertData = [
                     'codigo' => $codigo,
@@ -554,6 +755,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($hasProvCol('email')) {
                     $insertData['email'] = $email !== '' ? $email : null;
                 }
+                if ($hasProvCol('tipos_permitidos')) {
+                    $insertData['tipos_permitidos'] = null;
+                }
+                if ($hasProvCol('utm_este_x')) {
+                    $insertData['utm_este_x'] = $utmEsteX !== '' ? $utmEsteX : null;
+                }
+                if ($hasProvCol('utm_norte_y')) {
+                    $insertData['utm_norte_y'] = $utmNorteY !== '' ? $utmNorteY : null;
+                }
+                if ($hasProvCol('seguridad_deforestacion')) {
+                    $insertData['seguridad_deforestacion'] = $seguridadDeforestacionRaw === '' ? null : ($seguridadDeforestacionRaw === 'SI' ? 1 : 0);
+                }
+                if ($hasProvCol('arboles_endemicos')) {
+                    $insertData['arboles_endemicos'] = $arbolesEndemicosRaw === '' ? null : ($arbolesEndemicosRaw === 'SI' ? 1 : 0);
+                }
+                if ($hasProvCol('hectareas_totales')) {
+                    $insertData['hectareas_totales'] = $hectareasTotales;
+                }
+                if ($hasProvCol('hectareas_ccn51')) {
+                    $insertData['hectareas_ccn51'] = $hectareasCcn51;
+                }
+                if ($hasProvCol('hectareas_fino_aroma')) {
+                    $insertData['hectareas_fino_aroma'] = $hectareasFinoAroma;
+                }
+                if ($hasProvCol('certificaciones')) {
+                    $insertData['certificaciones'] = !empty($certificacionesSeleccionadas)
+                        ? json_encode($certificacionesSeleccionadas, JSON_UNESCAPED_UNICODE)
+                        : null;
+                }
+                if ($hasProvCol('certificacion_otras')) {
+                    $insertData['certificacion_otras'] = $certificacionOtras !== '' ? $certificacionOtras : null;
+                }
+                if ($hasProvCol('documento_certificaciones')) {
+                    $insertData['documento_certificaciones'] = $documentoCertificaciones;
+                }
 
                 $columns = array_keys($insertData);
                 $placeholders = implode(', ', array_fill(0, count($columns), '?'));
@@ -577,6 +813,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $telefono = trim($_POST['telefono'] ?? '');
                 $email = trim($_POST['email'] ?? '');
                 $contacto = trim($_POST['contacto'] ?? '');
+                $utmEsteX = trim((string)($_POST['utm_este_x'] ?? ''));
+                $utmNorteY = trim((string)($_POST['utm_norte_y'] ?? ''));
+                $seguridadDeforestacionRaw = strtoupper(trim((string)($_POST['seguridad_deforestacion'] ?? '')));
+                $arbolesEndemicosRaw = strtoupper(trim((string)($_POST['arboles_endemicos'] ?? '')));
+                $hectareasTotales = is_numeric($_POST['hectareas_totales'] ?? null) ? (float)$_POST['hectareas_totales'] : null;
+                $hectareasCcn51 = is_numeric($_POST['hectareas_ccn51'] ?? null) ? (float)$_POST['hectareas_ccn51'] : null;
+                $hectareasFinoAroma = is_numeric($_POST['hectareas_fino_aroma'] ?? null) ? (float)$_POST['hectareas_fino_aroma'] : null;
+                $certificacionesSeleccionadas = $parseCertificacionesProveedor($_POST['certificaciones'] ?? []);
+                $certificacionOtras = trim((string)($_POST['certificacion_otras'] ?? ''));
 
                 if (!$id || $nombre === '') {
                     throw new Exception('Datos incompletos');
@@ -599,15 +844,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if ($hasProvCol('categoria')) {
-                    if ($categoria !== '' && isset($tipoPorCategoria[$categoria])) {
-                        $tipo = $tipoPorCategoria[$categoria];
+                    if ($categoria !== '' && !isset($tiposPermitidosPorCategoria[$categoria])) {
+                        throw new Exception('Seleccione una categoría válida para el proveedor');
                     } elseif ($categoria === '' && isset($categoriasPorTipo[$tipo][0])) {
                         $categoria = $categoriasPorTipo[$tipo][0];
                     }
-                    if ($categoria === '' || !isset($tipoPorCategoria[$categoria])) {
+                    if ($categoria === '' || !isset($tiposPermitidosPorCategoria[$categoria])) {
                         throw new Exception('Seleccione una categoría válida para el proveedor');
                     }
-                    $tipo = $tipoPorCategoria[$categoria];
+                    $tiposCategoria = $tiposPermitidosPorCategoria[$categoria] ?? [];
+                    if (!in_array($tipo, $tiposCategoria, true)) {
+                        $tipo = $tiposCategoria[0] ?? ($tipoPorCategoria[$categoria] ?? 'RUTA');
+                    }
                 }
 
                 if (!in_array($tipo, $tiposProveedor, true)) {
@@ -621,6 +869,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ($hasProvCol('codigo_identificacion') && $codigoIdentificacion !== '' && !preg_match('/^PRO-\d{5}$/', $codigoIdentificacion)) {
                     throw new Exception('El código de identificación debe tener formato PRO-00001');
+                }
+                if (!in_array($seguridadDeforestacionRaw, ['', 'SI', 'NO'], true)) {
+                    throw new Exception('Seguridad contra la deforestación debe ser SI o NO');
+                }
+                if (!in_array($arbolesEndemicosRaw, ['', 'SI', 'NO'], true)) {
+                    throw new Exception('Cuenta con árboles endémicos debe ser SI o NO');
+                }
+                if (in_array('OTRAS', $certificacionesSeleccionadas, true) && $certificacionOtras === '') {
+                    throw new Exception('Debe detallar la certificación en el campo "Otras"');
+                }
+                if (in_array('NO_APLICA', $certificacionesSeleccionadas, true)) {
+                    $certificacionesSeleccionadas = ['NO_APLICA'];
+                    $certificacionOtras = '';
                 }
 
                 $stmt = $db->prepare("SELECT id FROM proveedores WHERE codigo = ? AND id != ?");
@@ -641,6 +902,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($stmt->fetch()) {
                         throw new Exception('Ya existe otro proveedor con esta cédula/RUC');
                     }
+                }
+
+                $documentoActual = $hasProvCol('documento_certificaciones')
+                    ? trim((string)($actual['documento_certificaciones'] ?? ''))
+                    : '';
+                $documentoCertificaciones = $documentoActual !== '' ? $documentoActual : null;
+                if ($hasProvCol('documento_certificaciones')) {
+                    $documentoCertificaciones = $guardarDocumentoCertificaciones(
+                        $_FILES['documento_certificaciones'] ?? ['error' => UPLOAD_ERR_NO_FILE],
+                        $documentoActual !== '' ? $documentoActual : null
+                    );
                 }
 
                 $updateData = [
@@ -667,6 +939,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ($hasProvCol('es_categoria')) {
                     $updateData['es_categoria'] = 0;
+                }
+                if ($hasProvCol('tipos_permitidos')) {
+                    $updateData['tipos_permitidos'] = null;
+                }
+                if ($hasProvCol('utm_este_x')) {
+                    $updateData['utm_este_x'] = $utmEsteX !== '' ? $utmEsteX : null;
+                }
+                if ($hasProvCol('utm_norte_y')) {
+                    $updateData['utm_norte_y'] = $utmNorteY !== '' ? $utmNorteY : null;
+                }
+                if ($hasProvCol('seguridad_deforestacion')) {
+                    $updateData['seguridad_deforestacion'] = $seguridadDeforestacionRaw === '' ? null : ($seguridadDeforestacionRaw === 'SI' ? 1 : 0);
+                }
+                if ($hasProvCol('arboles_endemicos')) {
+                    $updateData['arboles_endemicos'] = $arbolesEndemicosRaw === '' ? null : ($arbolesEndemicosRaw === 'SI' ? 1 : 0);
+                }
+                if ($hasProvCol('hectareas_totales')) {
+                    $updateData['hectareas_totales'] = $hectareasTotales;
+                }
+                if ($hasProvCol('hectareas_ccn51')) {
+                    $updateData['hectareas_ccn51'] = $hectareasCcn51;
+                }
+                if ($hasProvCol('hectareas_fino_aroma')) {
+                    $updateData['hectareas_fino_aroma'] = $hectareasFinoAroma;
+                }
+                if ($hasProvCol('certificaciones')) {
+                    $updateData['certificaciones'] = !empty($certificacionesSeleccionadas)
+                        ? json_encode($certificacionesSeleccionadas, JSON_UNESCAPED_UNICODE)
+                        : null;
+                }
+                if ($hasProvCol('certificacion_otras')) {
+                    $updateData['certificacion_otras'] = $certificacionOtras !== '' ? $certificacionOtras : null;
+                }
+                if ($hasProvCol('documento_certificaciones')) {
+                    $updateData['documento_certificaciones'] = $documentoCertificaciones;
                 }
 
                 $setClause = implode(', ', array_map(static fn($col) => "{$col} = ?", array_keys($updateData)));
@@ -968,7 +1275,7 @@ ob_start();
                     <tr>
                         <th class="px-4 py-3 text-left font-semibold text-gray-700">Código</th>
                         <th class="px-4 py-3 text-left font-semibold text-gray-700">Categoría/Tipo</th>
-                        <th class="px-4 py-3 text-left font-semibold text-gray-700">Tipo</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-700">Tipos permitidos</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700">Proveedores</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700">Lotes directos</th>
                         <th class="px-4 py-3 text-center font-semibold text-gray-700">Estado</th>
@@ -982,7 +1289,20 @@ ob_start();
                         <td class="px-4 py-3 font-mono font-semibold text-primary"><?= htmlspecialchars($cat['codigo']) ?></td>
                         <td class="px-4 py-3"><?= htmlspecialchars($cat['nombre']) ?></td>
                         <td class="px-4 py-3">
-                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700"><?= htmlspecialchars($cat['tipo']) ?></span>
+                            <?php
+                            $tiposCat = $parseUpperList(
+                                $cat['tipos_permitidos'] ?? ($cat['tipo'] ?? ''),
+                                $tiposProveedor
+                            );
+                            if (empty($tiposCat)) {
+                                $tiposCat = [strtoupper((string)($cat['tipo'] ?? 'RUTA'))];
+                            }
+                            ?>
+                            <div class="flex flex-wrap gap-1">
+                                <?php foreach ($tiposCat as $tipoCatBadge): ?>
+                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700"><?= htmlspecialchars($tipoCatBadge) ?></span>
+                                <?php endforeach; ?>
+                            </div>
                         </td>
                         <td class="px-4 py-3 text-center font-semibold text-primary"><?= number_format((int)($cat['total_proveedores'] ?? 0)) ?></td>
                         <td class="px-4 py-3 text-center font-semibold text-primary"><?= number_format((int)($cat['total_lotes_directos'] ?? 0)) ?></td>
@@ -1205,7 +1525,7 @@ ob_start();
             <h3 id="modalTitle" class="text-xl font-bold text-white">Nuevo Proveedor</h3>
         </div>
         
-        <form id="proveedorForm" class="p-6">
+        <form id="proveedorForm" class="p-6" enctype="multipart/form-data">
             <input type="hidden" id="proveedorId" name="id">
             <input type="hidden" id="formAction" name="action" value="create">
             <input type="hidden" name="_csrf" value="<?= e($csrfToken) ?>">
@@ -1289,6 +1609,107 @@ ob_start();
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                               placeholder="Dirección completa"></textarea>
                 </div>
+
+                <div class="border-t border-gray-100 pt-4">
+                    <h4 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Trazabilidad y sostenibilidad</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Coordenada UTM Este (X)</label>
+                            <input type="text" id="utm_este_x" name="utm_este_x" maxlength="50"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                                   placeholder="Ej: 654321">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Coordenada UTM Norte (Y)</label>
+                            <input type="text" id="utm_norte_y" name="utm_norte_y" maxlength="50"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                                   placeholder="Ej: 9876543">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Seguridad contra la deforestación</label>
+                            <select id="seguridad_deforestacion" name="seguridad_deforestacion"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                                <option value="">No definido</option>
+                                <option value="SI">Sí</option>
+                                <option value="NO">No</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cuenta con árboles endémicos</label>
+                            <select id="arboles_endemicos" name="arboles_endemicos"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                                <option value="">No definido</option>
+                                <option value="SI">Sí</option>
+                                <option value="NO">No</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ha totales cacao</label>
+                            <input type="number" id="hectareas_totales" name="hectareas_totales" step="0.01" min="0"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                                   placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ha CCN51</label>
+                            <input type="number" id="hectareas_ccn51" name="hectareas_ccn51" step="0.01" min="0"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                                   placeholder="0.00">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ha Fino de Aroma/Nacional</label>
+                            <input type="number" id="hectareas_fino_aroma" name="hectareas_fino_aroma" step="0.01" min="0"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                                   placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Certificaciones</label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" name="certificaciones[]" value="ORGANICA" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span>Orgánica</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" name="certificaciones[]" value="FAIR_TRADE" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span>Fair Trade (Comercio Justo)</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" name="certificaciones[]" value="UEDR" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span>UEDR</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" name="certificaciones[]" value="RAINFOREST_ALLIANCE" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span>Rainforest Alliance</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" name="certificaciones[]" value="OTRAS" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span>Otras</span>
+                            </label>
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" id="cert_no_aplica" name="certificaciones[]" value="NO_APLICA" class="rounded border-gray-300 text-primary focus:ring-primary">
+                                <span>No aplica</span>
+                            </label>
+                        </div>
+                        <div class="mt-2">
+                            <input type="text" id="certificacion_otras" name="certificacion_otras" maxlength="255"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
+                                   placeholder="Detalle de otras certificaciones">
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Documento de respaldo (PDF)</label>
+                        <input type="file" id="documento_certificaciones" name="documento_certificaciones" accept="application/pdf"
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary bg-white">
+                        <p class="text-xs text-gray-500 mt-1">Máximo 8MB. Solo PDF.</p>
+                        <a id="documento_actual_link" href="#" target="_blank" rel="noopener noreferrer"
+                           class="hidden inline-flex mt-2 text-xs font-semibold text-primary hover:underline">Ver documento actual</a>
+                    </div>
+                </div>
             </div>
             
             <div class="flex justify-end gap-3 mt-6 pt-6 border-t">
@@ -1331,14 +1752,26 @@ ob_start();
                            placeholder="Ej: Esmeraldas, Bodega, Vía Pedernales">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
-                    <select id="categoriaTipo" name="tipo" required
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                        <option value="MERCADO">Mercado</option>
-                        <option value="BODEGA">Bodega</option>
-                        <option value="RUTA">Ruta</option>
-                        <option value="PRODUCTOR">Productor</option>
-                    </select>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipos permitidos *</label>
+                    <div id="categoriaTiposPermitidos" class="grid grid-cols-2 gap-2 text-sm">
+                        <label class="inline-flex items-center gap-2">
+                            <input type="checkbox" name="tipos_permitidos[]" value="MERCADO" class="rounded border-gray-300 text-primary focus:ring-primary">
+                            <span>Mercado</span>
+                        </label>
+                        <label class="inline-flex items-center gap-2">
+                            <input type="checkbox" name="tipos_permitidos[]" value="BODEGA" class="rounded border-gray-300 text-primary focus:ring-primary">
+                            <span>Bodega</span>
+                        </label>
+                        <label class="inline-flex items-center gap-2">
+                            <input type="checkbox" name="tipos_permitidos[]" value="RUTA" class="rounded border-gray-300 text-primary focus:ring-primary">
+                            <span>Ruta</span>
+                        </label>
+                        <label class="inline-flex items-center gap-2">
+                            <input type="checkbox" name="tipos_permitidos[]" value="PRODUCTOR" class="rounded border-gray-300 text-primary focus:ring-primary">
+                            <span>Productor</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Puede seleccionar más de un tipo para categorías mixtas.</p>
                 </div>
             </div>
 
@@ -1359,13 +1792,19 @@ ob_start();
 <script>
 const proveedoresUrl = '<?= APP_URL ?>/configuracion/proveedores.php';
 const csrfToken = '<?= e($csrfToken) ?>';
-const categoriasCatalogoData = <?= json_encode(array_map(static function (array $cat) use ($normalizarCategoria, $categoriaLabels) {
+const categoriasCatalogoData = <?= json_encode(array_map(static function (array $cat) use ($normalizarCategoria, $categoriaLabels, $parseUpperList, $tiposProveedor) {
     $key = $normalizarCategoria((string)($cat['categoria'] ?? $cat['nombre'] ?? ''));
+    $tiposPermitidos = $parseUpperList($cat['tipos_permitidos'] ?? ($cat['tipo'] ?? ''), $tiposProveedor);
+    if (empty($tiposPermitidos)) {
+        $tipoFallback = strtoupper((string)($cat['tipo'] ?? 'RUTA'));
+        $tiposPermitidos = [$tipoFallback];
+    }
     return [
         'id' => (int)($cat['id'] ?? 0),
         'codigo' => (string)($cat['codigo'] ?? ''),
         'label' => (string)($cat['nombre'] ?? ($categoriaLabels[$key] ?? $key)),
         'tipo' => strtoupper((string)($cat['tipo'] ?? 'RUTA')),
+        'tipos_permitidos' => $tiposPermitidos,
         'key' => $key,
         'activo' => (int)($cat['activo'] ?? 1),
     ];
@@ -1373,23 +1812,29 @@ const categoriasCatalogoData = <?= json_encode(array_map(static function (array 
 const categoriasPorTipo = <?= json_encode($categoriasPorTipo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const categoriasDisponibles = <?= json_encode($categoriasProveedor, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const tipoPorCategoria = <?= json_encode($tipoPorCategoria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const tiposPermitidosPorCategoria = <?= json_encode($tiposPermitidosPorCategoria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const categoriaLabels = <?= json_encode($categoriaLabels, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 
-function sincronizarTipoDesdeCategoria() {
+function actualizarTiposPermitidosEnFormulario() {
     const categoriaSelect = document.getElementById('categoria');
     const tipoSelect = document.getElementById('tipo');
     if (!categoriaSelect || !tipoSelect) return;
 
     const categoria = categoriaSelect.value || '';
-    let tipoDetectado = tipoPorCategoria[categoria] || tipoSelect.value || 'MERCADO';
-    const selectedIndex = categoriaSelect.selectedIndex;
-    if (selectedIndex >= 0) {
-        const selectedOption = categoriaSelect.options[selectedIndex];
-        if (selectedOption && selectedOption.dataset && selectedOption.dataset.tipo) {
-            tipoDetectado = selectedOption.dataset.tipo;
-        }
+    const permitidos = tiposPermitidosPorCategoria[categoria] || [];
+    const opciones = Array.from(tipoSelect.options);
+
+    opciones.forEach((opt) => {
+        const allowed = permitidos.length === 0 || permitidos.includes(opt.value);
+        opt.hidden = !allowed;
+        opt.disabled = !allowed;
+    });
+
+    if (permitidos.length > 0 && !permitidos.includes(tipoSelect.value)) {
+        tipoSelect.value = permitidos[0];
+    } else if (!tipoSelect.value && permitidos.length > 0) {
+        tipoSelect.value = permitidos[0];
     }
-    tipoSelect.value = tipoDetectado;
 }
 
 function obtenerCategoriasFormulario(permitirInactivas = false) {
@@ -1400,6 +1845,7 @@ function obtenerCategoriasFormulario(permitirInactivas = false) {
         key,
         label: categoriaLabels[key] || key,
         tipo: tipoPorCategoria[key] || 'RUTA',
+        tipos_permitidos: tiposPermitidosPorCategoria[key] || [tipoPorCategoria[key] || 'RUTA'],
         activo: 1
     }));
 }
@@ -1415,6 +1861,7 @@ function actualizarCategorias(categoriaSeleccionada = '', permitirInactivas = fa
         const option = document.createElement('option');
         option.value = cat.key;
         option.dataset.tipo = cat.tipo || (tipoPorCategoria[cat.key] || 'RUTA');
+        option.dataset.tipos = JSON.stringify(cat.tipos_permitidos || tiposPermitidosPorCategoria[cat.key] || [option.dataset.tipo]);
         option.textContent = cat.label || categoriaLabels[cat.key] || cat.key;
         if (categoriaSeleccionada && categoriaSeleccionada === cat.key) {
             option.selected = true;
@@ -1430,7 +1877,7 @@ function actualizarCategorias(categoriaSeleccionada = '', permitirInactivas = fa
         categoriaSelect.value = categoriaSeleccionada;
     }
 
-    sincronizarTipoDesdeCategoria();
+    actualizarTiposPermitidosEnFormulario();
 }
 
 // Funciones del Modal
@@ -1440,8 +1887,16 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
     const title = document.getElementById('modalTitle');
     const action = document.getElementById('formAction');
     const submitBtn = document.getElementById('submitBtnText');
+    const documentoLink = document.getElementById('documento_actual_link');
     
     form.reset();
+    if (documentoLink) {
+        documentoLink.classList.add('hidden');
+        documentoLink.removeAttribute('href');
+    }
+    document.querySelectorAll('#proveedorForm input[name="certificaciones[]"]').forEach((chk) => {
+        chk.checked = false;
+    });
     
     if (mode === 'create') {
         title.textContent = 'Nuevo Proveedor';
@@ -1484,6 +1939,22 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
                 document.getElementById('contacto').value = p.contacto || '';
                 document.getElementById('telefono').value = p.telefono || '';
                 document.getElementById('direccion').value = p.direccion || '';
+                const utmEste = document.getElementById('utm_este_x');
+                const utmNorte = document.getElementById('utm_norte_y');
+                const deforestacion = document.getElementById('seguridad_deforestacion');
+                const endemicos = document.getElementById('arboles_endemicos');
+                const haTotales = document.getElementById('hectareas_totales');
+                const haCcn51 = document.getElementById('hectareas_ccn51');
+                const haFino = document.getElementById('hectareas_fino_aroma');
+                const certOtras = document.getElementById('certificacion_otras');
+                if (utmEste) utmEste.value = p.utm_este_x || '';
+                if (utmNorte) utmNorte.value = p.utm_norte_y || '';
+                if (deforestacion) deforestacion.value = Number(p.seguridad_deforestacion) === 1 ? 'SI' : (Number(p.seguridad_deforestacion) === 0 ? 'NO' : '');
+                if (endemicos) endemicos.value = Number(p.arboles_endemicos) === 1 ? 'SI' : (Number(p.arboles_endemicos) === 0 ? 'NO' : '');
+                if (haTotales) haTotales.value = p.hectareas_totales || '';
+                if (haCcn51) haCcn51.value = p.hectareas_ccn51 || '';
+                if (haFino) haFino.value = p.hectareas_fino_aroma || '';
+                if (certOtras) certOtras.value = p.certificacion_otras || '';
                 const codigoIdInput = document.getElementById('codigo_identificacion');
                 if (codigoIdInput) {
                     codigoIdInput.value = p.codigo_identificacion || '';
@@ -1499,6 +1970,36 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
                     categoriaResuelta = categoriasTipo.length > 0 ? categoriasTipo[0] : '';
                 }
                 actualizarCategorias(categoriaResuelta, true);
+                if (document.getElementById('tipo')) {
+                    document.getElementById('tipo').value = p.tipo || document.getElementById('tipo').value;
+                }
+                actualizarTiposPermitidosEnFormulario();
+
+                let certificaciones = [];
+                if (p.certificaciones) {
+                    try {
+                        const parsed = JSON.parse(p.certificaciones);
+                        if (Array.isArray(parsed)) certificaciones = parsed;
+                    } catch (err) {
+                        certificaciones = String(p.certificaciones)
+                            .split(',')
+                            .map((v) => v.trim().toUpperCase())
+                            .filter(Boolean);
+                    }
+                }
+                document.querySelectorAll('#proveedorForm input[name="certificaciones[]"]').forEach((chk) => {
+                    chk.checked = certificaciones.includes(chk.value);
+                });
+
+                if (documentoLink) {
+                    if (p.documento_certificaciones) {
+                        documentoLink.href = `<?= rtrim(APP_URL, '/') ?>/${String(p.documento_certificaciones).replace(/^\\/+/, '')}`;
+                        documentoLink.classList.remove('hidden');
+                    } else {
+                        documentoLink.classList.add('hidden');
+                        documentoLink.removeAttribute('href');
+                    }
+                }
             } else {
                 showNotification(data.message, 'error');
                 return;
@@ -1516,6 +2017,13 @@ function closeProveedorModal() {
     modal.classList.remove('flex');
 }
 
+function marcarTiposCategoriaSeleccionados(tipos = []) {
+    const checks = document.querySelectorAll('#categoriaForm input[name="tipos_permitidos[]"]');
+    checks.forEach((chk) => {
+        chk.checked = Array.isArray(tipos) && tipos.includes(chk.value);
+    });
+}
+
 function openCategoriaModal(mode, id = null) {
     const modal = document.getElementById('categoriaModal');
     const form = document.getElementById('categoriaForm');
@@ -1525,11 +2033,13 @@ function openCategoriaModal(mode, id = null) {
 
     form.reset();
     document.getElementById('categoriaId').value = '';
+    marcarTiposCategoriaSeleccionados([]);
 
     if (mode === 'create') {
         title.textContent = 'Nueva Categoría/Tipo';
         action.value = 'create_category';
         submitBtn.textContent = 'Crear categoría';
+        marcarTiposCategoriaSeleccionados(['RUTA']);
     } else if (mode === 'edit' && id) {
         title.textContent = 'Editar Categoría/Tipo';
         action.value = 'update_category';
@@ -1551,7 +2061,17 @@ function openCategoriaModal(mode, id = null) {
                 document.getElementById('categoriaId').value = c.id;
                 document.getElementById('categoriaCodigo').value = c.codigo || '';
                 document.getElementById('categoriaNombre').value = c.nombre || '';
-                document.getElementById('categoriaTipo').value = c.tipo || 'RUTA';
+                let tipos = [];
+                if (c.tipos_permitidos) {
+                    tipos = String(c.tipos_permitidos)
+                        .split(',')
+                        .map((v) => v.trim().toUpperCase())
+                        .filter(Boolean);
+                }
+                if (tipos.length === 0 && c.tipo) {
+                    tipos = [String(c.tipo).toUpperCase()];
+                }
+                marcarTiposCategoriaSeleccionados(tipos);
             } else {
                 showNotification(data.message, 'error');
             }
@@ -1576,7 +2096,7 @@ document.getElementById('proveedorForm').addEventListener('submit', function(e) 
     
     fetch(proveedoresUrl, {
         method: 'POST',
-        body: new URLSearchParams(formData)
+        body: formData
     })
     .then(r => r.json())
     .then(data => {
@@ -1597,10 +2117,15 @@ document.getElementById('categoriaForm').addEventListener('submit', function(e) 
     e.preventDefault();
 
     const formData = new FormData(this);
+    const tiposSeleccionados = formData.getAll('tipos_permitidos[]');
+    if (!tiposSeleccionados || tiposSeleccionados.length === 0) {
+        showNotification('Seleccione al menos un tipo permitido para la categoría.', 'error');
+        return;
+    }
 
     fetch(proveedoresUrl, {
         method: 'POST',
-        body: new URLSearchParams(formData)
+        body: formData
     })
     .then(r => r.json())
     .then(data => {
@@ -1728,12 +2253,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     categoriaSelect.value = opcionesDisponibles[0];
                 }
             }
-            sincronizarTipoDesdeCategoria();
+            actualizarTiposPermitidosEnFormulario();
         });
         if (document.getElementById('categoria')) {
-            document.getElementById('categoria').addEventListener('change', sincronizarTipoDesdeCategoria);
+            document.getElementById('categoria').addEventListener('change', actualizarTiposPermitidosEnFormulario);
         }
         actualizarCategorias();
+    }
+
+    const certNoAplica = document.getElementById('cert_no_aplica');
+    if (certNoAplica) {
+        certNoAplica.addEventListener('change', function() {
+            if (!this.checked) return;
+            document.querySelectorAll('#proveedorForm input[name="certificaciones[]"]').forEach((chk) => {
+                if (chk !== this) chk.checked = false;
+            });
+            const otras = document.getElementById('certificacion_otras');
+            if (otras) otras.value = '';
+        });
+        document.querySelectorAll('#proveedorForm input[name="certificaciones[]"]').forEach((chk) => {
+            if (chk === certNoAplica) return;
+            chk.addEventListener('change', function() {
+                if (this.checked) certNoAplica.checked = false;
+            });
+        });
     }
 
     const codigoIdentInput = document.getElementById('codigo_identificacion');

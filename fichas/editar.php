@@ -45,7 +45,7 @@ $pesoRecibidoExpr = $hasLoteCol('peso_recibido_kg')
 // Compatibilidad de esquema para columnas de fichas (registro de pago)
 $colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
 $hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
-$columnasPagoFicha = ['fecha_pago', 'factura_compra', 'cantidad_comprada', 'forma_pago'];
+$columnasPagoFicha = ['fecha_pago', 'tipo_comprobante', 'factura_compra', 'cantidad_comprada', 'cantidad_comprada_unidad', 'forma_pago'];
 $faltanColumnasPago = array_values(array_filter(
     $columnasPagoFicha,
     static fn(string $col): bool => !$hasFichaCol($col)
@@ -74,6 +74,83 @@ $proveedores = $db->fetchAll("
     WHERE activo = 1{$filtroProveedorReal}
     ORDER BY nombre
 ");
+$whereRutas = in_array('es_categoria', $colsProveedores, true)
+    ? "AND (es_categoria = 1 OR UPPER(COALESCE(tipo, '')) = 'RUTA')"
+    : "AND UPPER(COALESCE(tipo, '')) = 'RUTA'";
+$rutasDisponibles = $db->fetchAll("
+    SELECT id, codigo, nombre
+    FROM proveedores
+    WHERE activo = 1 {$whereRutas}
+    ORDER BY nombre
+");
+
+$proveedoresPorId = [];
+$proveedoresPorNombre = [];
+$proveedoresPorCodigo = [];
+$proveedoresPorEtiqueta = [];
+foreach ($proveedores as $proveedorItem) {
+    $idProveedor = (int)($proveedorItem['id'] ?? 0);
+    if ($idProveedor <= 0) {
+        continue;
+    }
+    $nombreProveedor = trim((string)($proveedorItem['nombre'] ?? ''));
+    $codigoProveedor = trim((string)($proveedorItem['codigo'] ?? ''));
+    $proveedorInfo = [
+        'id' => $idProveedor,
+        'nombre' => $nombreProveedor,
+        'codigo' => $codigoProveedor,
+    ];
+    $proveedoresPorId[$idProveedor] = $proveedorInfo;
+    if ($nombreProveedor !== '') {
+        $proveedoresPorNombre[strtolower($nombreProveedor)] = $proveedorInfo;
+    }
+    if ($codigoProveedor !== '') {
+        $proveedoresPorCodigo[strtolower($codigoProveedor)] = $proveedorInfo;
+    }
+    if ($codigoProveedor !== '' && $nombreProveedor !== '') {
+        $proveedoresPorEtiqueta[strtolower($codigoProveedor . ' - ' . $nombreProveedor)] = $proveedorInfo;
+    }
+}
+
+$rutasPorNombre = [];
+foreach ($rutasDisponibles as $rutaItem) {
+    $nombreRuta = trim((string)($rutaItem['nombre'] ?? ''));
+    if ($nombreRuta === '') {
+        continue;
+    }
+    $rutasPorNombre[strtolower($nombreRuta)] = [
+        'id' => (int)($rutaItem['id'] ?? 0),
+        'codigo' => trim((string)($rutaItem['codigo'] ?? '')),
+        'nombre' => $nombreRuta,
+    ];
+}
+
+$parseProveedorRutaCompuesta = static function (string $valor): array {
+    $resultado = [
+        'proveedores' => [],
+        'ruta' => '',
+    ];
+    $texto = trim($valor);
+    if ($texto === '') {
+        return $resultado;
+    }
+
+    if (preg_match('/PROVEEDORES:\s*(.*?)\s*\|\s*RUTA:\s*(.*)$/i', $texto, $coincide)) {
+        $listaProveedores = trim((string)($coincide[1] ?? ''));
+        $ruta = trim((string)($coincide[2] ?? ''));
+        if ($listaProveedores !== '') {
+            $resultado['proveedores'] = array_values(array_filter(array_map(
+                static fn(string $nombre): string => trim($nombre),
+                explode(',', $listaProveedores)
+            ), static fn(string $nombre): bool => $nombre !== ''));
+        }
+        $resultado['ruta'] = $ruta;
+        return $resultado;
+    }
+
+    $resultado['proveedores'] = [$texto];
+    return $resultado;
+};
 
 // Obtener usuarios para responsable
 $usuarios = $db->fetchAll("SELECT id, nombre FROM usuarios WHERE activo = 1 ORDER BY nombre");
@@ -81,7 +158,7 @@ $usuarios = $db->fetchAll("SELECT id, nombre FROM usuarios WHERE activo = 1 ORDE
 // Obtener estados de fermentación
 $estadosFermentacion = $db->fetchAll("SELECT * FROM estados_fermentacion ORDER BY orden");
 
-// Escala de calificación aparente: 0-4 individual, luego rangos de 5% hasta 45%.
+// Escala de calificación aparente: 0-4 individual, luego rangos hasta >65%.
 $opcionesCalificacionHumedad = [
     0 => '0%',
     1 => '1%',
@@ -96,6 +173,11 @@ $opcionesCalificacionHumedad = [
     35 => '31-35%',
     40 => '36-40%',
     45 => '41-45%',
+    50 => '46-50%',
+    55 => '51-55%',
+    60 => '56-60%',
+    65 => '61-65%',
+    70 => '> 65%',
 ];
 
 // Procesar formulario
@@ -115,6 +197,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $codificacion = $esFormularioRecepcion
         ? trim((string)($ficha['codificacion'] ?? ''))
         : trim($_POST['codificacion'] ?? '');
+    $proveedor_id = intval($_POST['proveedor_id'] ?? 0);
+    $proveedor_ids = array_values(array_unique(array_filter(
+        array_map('intval', (array)($_POST['proveedor_ids'] ?? [])),
+        static fn(int $idProveedor): bool => $idProveedor > 0
+    )));
+    $ruta_entrega = trim((string)($_POST['ruta_entrega'] ?? ''));
+    if ($ruta_entrega === 'NO_APLICA') {
+        $ruta_entrega = 'NO APLICA';
+    }
     $proveedor_ruta = trim($_POST['proveedor_ruta'] ?? '');
     $tipo_entrega = trim($_POST['tipo_entrega'] ?? '');
     $fecha_entrada = $_POST['fecha_entrada'] ?? null;
@@ -122,7 +213,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $revision_olor_normal = trim($_POST['revision_olor_normal'] ?? '');
     $revision_ausencia_moho = trim($_POST['revision_ausencia_moho'] ?? '');
     $peso_bruto = is_numeric($_POST['peso_bruto'] ?? null) ? (float)$_POST['peso_bruto'] : null;
+    $tara_no_aplica = isset($_POST['tara_no_aplica']) && (string)$_POST['tara_no_aplica'] === '1';
     $tara_envase = is_numeric($_POST['tara_envase'] ?? null) ? (float)$_POST['tara_envase'] : null;
+    if ($tara_no_aplica) {
+        $tara_envase = null;
+    }
     $peso_final_registro = is_numeric($_POST['peso_final_registro'] ?? null) ? (float)$_POST['peso_final_registro'] : null;
     $unidad_peso = strtoupper(trim($_POST['unidad_peso'] ?? 'KG'));
     $calificacion_humedad = isset($_POST['calificacion_humedad']) && $_POST['calificacion_humedad'] !== '' ? (int)$_POST['calificacion_humedad'] : null;
@@ -137,12 +232,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fecha_pago = $esFormularioRecepcion
         ? trim((string)($ficha['fecha_pago'] ?? ''))
         : trim((string)($_POST['fecha_pago'] ?? ''));
+    $tipo_comprobante = $esFormularioRecepcion
+        ? strtoupper(trim((string)($ficha['tipo_comprobante'] ?? '')))
+        : strtoupper(trim((string)($_POST['tipo_comprobante'] ?? '')));
     $factura_compra = $esFormularioRecepcion
         ? trim((string)($ficha['factura_compra'] ?? ''))
         : trim((string)($_POST['factura_compra'] ?? ''));
     $cantidad_comprada = $esFormularioRecepcion
         ? (is_numeric($ficha['cantidad_comprada'] ?? null) ? (float)$ficha['cantidad_comprada'] : null)
         : (is_numeric($_POST['cantidad_comprada'] ?? null) ? (float)$_POST['cantidad_comprada'] : null);
+    $cantidad_comprada_unidad = $esFormularioRecepcion
+        ? strtoupper(trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')))
+        : strtoupper(trim((string)($_POST['cantidad_comprada_unidad'] ?? 'KG')));
     $forma_pago = $esFormularioRecepcion
         ? strtoupper(trim((string)($ficha['forma_pago'] ?? '')))
         : strtoupper(trim((string)($_POST['forma_pago'] ?? '')));
@@ -178,6 +279,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Debe seleccionar el tipo de entrega';
     }
 
+    if (!$error && $esFormularioRecepcion && $ruta_entrega !== '') {
+        $claveRuta = strtolower($ruta_entrega);
+        if ($claveRuta !== 'no aplica' && !isset($rutasPorNombre[$claveRuta])) {
+            $error = 'Debe seleccionar una ruta válida o indicar No aplica';
+        }
+    }
+
     if (!$error && !in_array($revision_limpieza, ['CUMPLE', 'NO_CUMPLE'], true)) {
         $error = 'Debe registrar la revisión visual de limpieza';
     }
@@ -194,12 +302,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Debe registrar un peso bruto válido';
     }
 
-    if (!$error && ($tara_envase === null || $tara_envase < 0)) {
+    if (!$error && !$tara_no_aplica && ($tara_envase === null || $tara_envase < 0)) {
         $error = 'Debe registrar una tara de envase válida';
     }
 
-    if (!$error && $peso_final_registro === null && $peso_bruto !== null && $tara_envase !== null) {
-        $peso_final_registro = $peso_bruto - $tara_envase;
+    if (!$error && $peso_final_registro === null && $peso_bruto !== null) {
+        if ($tara_envase !== null) {
+            $peso_final_registro = $peso_bruto - $tara_envase;
+        } else {
+            $peso_final_registro = $peso_bruto;
+        }
     }
 
     if (!$error && ($peso_final_registro === null || $peso_final_registro <= 0)) {
@@ -211,10 +323,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$error && ($calificacion_humedad === null || !array_key_exists($calificacion_humedad, $opcionesCalificacionHumedad))) {
-        $error = 'La calificación aparente debe ser 0-4 o en rangos de 5% hasta 45%';
+        $error = 'La calificación aparente debe ser 0-4 o en rangos de 5% hasta >65%';
     }
 
-    if (!$error && !in_array($calidad_registro, ['SECO', 'SEMISECO', 'BABA'], true)) {
+    if (!$error && !in_array($calidad_registro, ['SECO', 'SEMISECO', 'ESCURRIDO', 'BABA'], true)) {
         $error = 'Debe seleccionar la calidad del registro';
     }
 
@@ -226,11 +338,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Debe seleccionar la clasificación de compra';
     }
 
-    if (!$error && ($precio_base_dia === null || $precio_base_dia < 0)) {
+    if (!$error && !$esFormularioRecepcion && ($precio_base_dia === null || $precio_base_dia < 0)) {
         $error = 'Debe registrar un precio base válido';
     }
 
-    if (!$error && !in_array($calidad_asignada, ['APTO', 'APTO_DESCUENTO', 'NO_APTO'], true)) {
+    if (!$error && !$esFormularioRecepcion && !in_array($calidad_asignada, ['APTO', 'APTO_DESCUENTO', 'NO_APTO'], true)) {
         $error = 'Debe seleccionar la calidad asignada';
     }
 
@@ -246,6 +358,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'La cantidad comprada debe ser mayor a 0';
     }
 
+    if (!$error && !in_array($cantidad_comprada_unidad, ['LB', 'KG', 'QQ'], true)) {
+        $error = 'La unidad de cantidad comprada no es válida';
+    }
+
+    if (!$error && $tipo_comprobante !== '' && !in_array($tipo_comprobante, ['FACTURA', 'NOTA_COMPRA'], true)) {
+        $error = 'El tipo de comprobante no es válido';
+    }
+
     if (!$error && $precio_unitario_final === null && $precio_base_dia !== null) {
         $precio_unitario_final = $precio_base_dia + ($diferencial_usd ?? 0.0);
     }
@@ -259,13 +379,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($pesoFinalKg <= 0) {
             $error = 'El peso final convertido a kg debe ser mayor a 0';
         } else {
-            $cantidadParaCalculo = ($cantidad_comprada !== null && $cantidad_comprada > 0) ? $cantidad_comprada : $pesoFinalKg;
+            $cantidadParaCalculo = ($cantidad_comprada !== null && $cantidad_comprada > 0)
+                ? Helpers::pesoToKg($cantidad_comprada, $cantidad_comprada_unidad)
+                : $pesoFinalKg;
             $precio_total_pagar = $precio_unitario_final * $cantidadParaCalculo;
         }
     }
 
     $hayDatosPago = !$esFormularioRecepcion && (
         $fecha_pago !== ''
+        || $tipo_comprobante !== ''
         || $factura_compra !== ''
         || $cantidad_comprada !== null
         || $forma_pago !== ''
@@ -276,12 +399,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Faltan columnas en fichas_registro para guardar el registro de pago. Ejecute el patch_registro_pagos_fichas.sql';
         } elseif ($fecha_pago === '') {
             $error = 'Debe registrar la fecha de pago';
+        } elseif (!in_array($tipo_comprobante, ['FACTURA', 'NOTA_COMPRA'], true)) {
+            $error = 'Debe seleccionar el tipo de comprobante';
         } elseif ($factura_compra === '') {
             $error = 'Debe registrar la factura asignada a la compra';
         } elseif ($cantidad_comprada === null || $cantidad_comprada <= 0) {
             $error = 'Debe registrar la cantidad comprada';
+        } elseif (!in_array($cantidad_comprada_unidad, ['LB', 'KG', 'QQ'], true)) {
+            $error = 'Debe seleccionar una unidad válida para la cantidad comprada';
         } elseif (!in_array($forma_pago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)) {
             $error = 'Debe seleccionar la forma de pago';
+        }
+    }
+
+    if (!$error && $esFormularioRecepcion) {
+        $proveedoresSeleccionados = [];
+        foreach ($proveedor_ids as $idProveedorSeleccionado) {
+            if (isset($proveedoresPorId[$idProveedorSeleccionado])) {
+                $proveedoresSeleccionados[] = $proveedoresPorId[$idProveedorSeleccionado];
+            }
+        }
+
+        if (empty($proveedoresSeleccionados) && $proveedor_id > 0 && isset($proveedoresPorId[$proveedor_id])) {
+            $proveedoresSeleccionados[] = $proveedoresPorId[$proveedor_id];
+        }
+
+        if (empty($proveedoresSeleccionados) && $proveedor_ruta !== '') {
+            $parseadoAnterior = $parseProveedorRutaCompuesta($proveedor_ruta);
+            foreach ($parseadoAnterior['proveedores'] as $nombreProveedor) {
+                $claveProveedor = strtolower($nombreProveedor);
+                if (isset($proveedoresPorNombre[$claveProveedor])) {
+                    $proveedoresSeleccionados[] = $proveedoresPorNombre[$claveProveedor];
+                }
+            }
+            if ($ruta_entrega === '' && $parseadoAnterior['ruta'] !== '') {
+                $ruta_entrega = $parseadoAnterior['ruta'];
+            }
+        }
+
+        if (empty($proveedoresSeleccionados)) {
+            $error = 'Debe seleccionar al menos un proveedor válido';
+        } else {
+            $nombresSeleccionados = [];
+            foreach ($proveedoresSeleccionados as $provSel) {
+                $nombreSel = trim((string)($provSel['nombre'] ?? ''));
+                if ($nombreSel !== '' && !in_array($nombreSel, $nombresSeleccionados, true)) {
+                    $nombresSeleccionados[] = $nombreSel;
+                }
+            }
+            $textoProveedores = implode(', ', $nombresSeleccionados);
+            $rutaTexto = $ruta_entrega !== '' ? $ruta_entrega : 'NO APLICA';
+            $proveedor_ruta = 'PROVEEDORES: ' . $textoProveedores . ' | RUTA: ' . $rutaTexto;
+            $proveedor_id = (int)($proveedoresSeleccionados[0]['id'] ?? 0);
         }
     }
 
@@ -312,7 +481,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'presencia_defectos' => $presencia_defectos,
                 'clasificacion_compra' => $clasificacion_compra,
                 'precio_base_dia' => $precio_base_dia,
-                'calidad_asignada' => $calidad_asignada,
+                'calidad_asignada' => $calidad_asignada !== '' ? $calidad_asignada : null,
                 'diferencial_usd' => $diferencial_usd,
                 'precio_unitario_final' => $precio_unitario_final,
                 'precio_total_pagar' => $precio_total_pagar,
@@ -333,8 +502,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$esFormularioRecepcion && $hasFichaCol('fecha_pago')) {
                 $dataFicha['fecha_pago'] = $fecha_pago !== '' ? $fecha_pago : null;
             }
+            if (!$esFormularioRecepcion && $hasFichaCol('tipo_comprobante')) {
+                $dataFicha['tipo_comprobante'] = $tipo_comprobante !== '' ? $tipo_comprobante : null;
+            }
             if (!$esFormularioRecepcion && $hasFichaCol('factura_compra')) {
                 $dataFicha['factura_compra'] = $factura_compra !== '' ? $factura_compra : null;
+            }
+            if (!$esFormularioRecepcion && $hasFichaCol('cantidad_comprada_unidad')) {
+                $dataFicha['cantidad_comprada_unidad'] = in_array($cantidad_comprada_unidad, ['LB', 'KG', 'QQ'], true)
+                    ? $cantidad_comprada_unidad
+                    : 'KG';
             }
             if (!$esFormularioRecepcion && $hasFichaCol('cantidad_comprada')) {
                 $dataFicha['cantidad_comprada'] = $cantidad_comprada;
@@ -358,6 +535,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Usar datos del POST si hay error, sino usar datos de la DB
 $formData = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $ficha;
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $proveedorRutaFicha = trim((string)($ficha['proveedor_ruta'] ?? ''));
+    $parseadoProveedorRuta = $parseProveedorRutaCompuesta($proveedorRutaFicha);
+    $idsProveedores = [];
+    foreach ($parseadoProveedorRuta['proveedores'] as $nombreProveedor) {
+        $claveProveedor = strtolower($nombreProveedor);
+        if (isset($proveedoresPorNombre[$claveProveedor])) {
+            $idsProveedores[] = (int)$proveedoresPorNombre[$claveProveedor]['id'];
+        }
+    }
+    $formData['proveedor_ids'] = array_values(array_unique(array_filter($idsProveedores, static fn(int $idProv): bool => $idProv > 0)));
+    $formData['ruta_entrega'] = $parseadoProveedorRuta['ruta'] !== '' ? $parseadoProveedorRuta['ruta'] : 'NO_APLICA';
+    $formData['proveedor_id'] = !empty($formData['proveedor_ids']) ? (int)$formData['proveedor_ids'][0] : 0;
+    $formData['tara_no_aplica'] = ($ficha['tara_envase'] === null || $ficha['tara_envase'] === '') ? '1' : '0';
+}
+
+if (!isset($formData['cantidad_comprada_unidad']) || trim((string)$formData['cantidad_comprada_unidad']) === '') {
+    $formData['cantidad_comprada_unidad'] = (string)($ficha['cantidad_comprada_unidad'] ?? 'KG');
+}
+if (!isset($formData['tipo_comprobante']) || trim((string)$formData['tipo_comprobante']) === '') {
+    $formData['tipo_comprobante'] = (string)($ficha['tipo_comprobante'] ?? '');
+}
 
 $pageTitle = $esFormularioRecepcion ? "Editar Ficha de Recepción #{$id}" : "Editar Ficha #{$id}";
 ob_start();
@@ -449,9 +649,40 @@ ob_start();
                                placeholder="Tipo de producto"
                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
                     </div>
-                    
+
+                    <?php if ($esFormularioRecepcion): ?>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor / Ruta</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor(es) <span class="text-red-500">*</span></label>
+                        <?php
+                        $proveedorIdsSeleccionados = array_values(array_unique(array_filter(
+                            array_map('intval', (array)($formData['proveedor_ids'] ?? [])),
+                            static fn(int $idProveedor): bool => $idProveedor > 0
+                        )));
+                        $proveedorPrimario = $proveedorIdsSeleccionados[0] ?? (int)($formData['proveedor_id'] ?? 0);
+                        ?>
+                        <input type="hidden" name="proveedor_id" id="proveedor_id" value="<?= $proveedorPrimario > 0 ? $proveedorPrimario : '' ?>">
+                        <select name="proveedor_ids[]" id="proveedor_ids" multiple size="6"
+                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                            <?php foreach ($proveedores as $provItem): ?>
+                                <?php
+                                $idProv = (int)($provItem['id'] ?? 0);
+                                $nombreProv = trim((string)($provItem['nombre'] ?? ''));
+                                if ($idProv <= 0 || $nombreProv === '') {
+                                    continue;
+                                }
+                                $codigoProv = trim((string)($provItem['codigo'] ?? ''));
+                                $labelProv = ($codigoProv !== '' ? $codigoProv . ' - ' : '') . $nombreProv;
+                                ?>
+                                <option value="<?= $idProv ?>" data-id="<?= $idProv ?>" <?= in_array($idProv, $proveedorIdsSeleccionados, true) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($labelProv) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Puede seleccionar múltiples proveedores (Ctrl/Cmd + clic).</p>
+                    </div>
+                    <?php else: ?>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
                         <?php
                         $proveedorRutaActual = trim((string)($formData['proveedor_ruta'] ?? ''));
                         $nombresProveedores = [];
@@ -475,7 +706,7 @@ ob_start();
                                 $codigoProv = trim((string)($provItem['codigo'] ?? ''));
                                 $labelProv = ($codigoProv !== '' ? $codigoProv . ' - ' : '') . $nombreProv;
                                 ?>
-                                <option value="<?= htmlspecialchars($nombreProv) ?>" <?= $proveedorRutaActual === $nombreProv ? 'selected' : '' ?>>
+                                <option value="<?= htmlspecialchars($nombreProv) ?>" data-id="<?= (int)$provItem['id'] ?>" <?= $proveedorRutaActual === $nombreProv ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($labelProv) ?>
                                 </option>
                             <?php endforeach; ?>
@@ -486,7 +717,37 @@ ob_start();
                             <?php endif; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
                 </div>
+
+                <?php if ($esFormularioRecepcion): ?>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Ruta de entrega</label>
+                    <?php
+                    $rutaEntregaActual = trim((string)($formData['ruta_entrega'] ?? ''));
+                    if ($rutaEntregaActual === 'NO APLICA' || $rutaEntregaActual === '') {
+                        $rutaEntregaActual = 'NO_APLICA';
+                    }
+                    ?>
+                    <select name="ruta_entrega" id="ruta_entrega"
+                            class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                        <option value="NO_APLICA" <?= $rutaEntregaActual === 'NO_APLICA' ? 'selected' : '' ?>>No aplica</option>
+                        <?php foreach ($rutasDisponibles as $rutaItem): ?>
+                            <?php
+                            $nombreRuta = trim((string)($rutaItem['nombre'] ?? ''));
+                            if ($nombreRuta === '') {
+                                continue;
+                            }
+                            $codigoRuta = trim((string)($rutaItem['codigo'] ?? ''));
+                            $labelRuta = ($codigoRuta !== '' ? $codigoRuta . ' - ' : '') . $nombreRuta;
+                            ?>
+                            <option value="<?= htmlspecialchars($nombreRuta) ?>" <?= $rutaEntregaActual === $nombreRuta ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($labelRuta) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Fecha de Entrada</label>
@@ -541,8 +802,8 @@ ob_start();
                             <tbody class="divide-y divide-gray-100">
                                 <?php
                                 $revisiones = [
-                                    'revision_limpieza' => 'Limpieza',
-                                    'revision_olor_normal' => 'Olor normal',
+                                    'revision_limpieza' => 'Impurezas',
+                                    'revision_olor_normal' => 'Olor normal (sin olores extraños)',
                                     'revision_ausencia_moho' => 'Ausencia de moho visible',
                                 ];
                                 foreach ($revisiones as $name => $label):
@@ -576,8 +837,15 @@ ob_start();
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Tara de envase</label>
+                            <?php $taraNoAplicaActual = (string)($formData['tara_no_aplica'] ?? '') === '1'; ?>
+                            <label class="inline-flex items-center gap-2 text-xs text-gray-600 mb-2">
+                                <input type="checkbox" name="tara_no_aplica" id="tara_no_aplica" value="1" class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                       <?= $taraNoAplicaActual ? 'checked' : '' ?>>
+                                No aplica
+                            </label>
                             <input type="number" name="tara_envase" id="tara_envase" step="0.01" min="0"
-                                   value="<?= htmlspecialchars($formData['tara_envase'] ?? '') ?>"
+                                   value="<?= htmlspecialchars($taraNoAplicaActual ? '' : ($formData['tara_envase'] ?? '')) ?>"
+                                   <?= $taraNoAplicaActual ? 'disabled' : '' ?>
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                         </div>
                         <div>
@@ -610,7 +878,7 @@ ob_start();
                                     </option>
                                 <?php endforeach; ?>
                             </select>
-                            <p class="text-xs text-gray-500 mt-1">0-4 individual; luego rangos de 5% hasta 45%.</p>
+                            <p class="text-xs text-gray-500 mt-1">0-4 individual; luego rangos de 5% hasta &gt;65%.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Calidad</label>
@@ -619,6 +887,7 @@ ob_start();
                                 <option value="">Seleccione</option>
                                 <option value="SECO" <?= $calidadRegistro === 'SECO' ? 'selected' : '' ?>>Seco</option>
                                 <option value="SEMISECO" <?= $calidadRegistro === 'SEMISECO' ? 'selected' : '' ?>>Semiseco</option>
+                                <option value="ESCURRIDO" <?= $calidadRegistro === 'ESCURRIDO' ? 'selected' : '' ?>>Escurrido</option>
                                 <option value="BABA" <?= $calidadRegistro === 'BABA' ? 'selected' : '' ?>>Baba</option>
                             </select>
                         </div>
@@ -657,12 +926,6 @@ ob_start();
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Precio base del día (USD)</label>
-                            <input type="number" name="precio_base_dia" id="precio_base_dia" step="0.0001" min="0"
-                                   value="<?= htmlspecialchars($formData['precio_base_dia'] ?? '') ?>"
-                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                        </div>
-                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Calidad asignada</label>
                             <?php $calidadAsignada = $formData['calidad_asignada'] ?? ''; ?>
                             <select name="calidad_asignada" id="calidad_asignada" class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
@@ -671,6 +934,16 @@ ob_start();
                                 <option value="APTO_DESCUENTO" <?= $calidadAsignada === 'APTO_DESCUENTO' ? 'selected' : '' ?>>Apto con descuento</option>
                                 <option value="NO_APTO" <?= $calidadAsignada === 'NO_APTO' ? 'selected' : '' ?>>No apto</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <?php if (!$esFormularioRecepcion): ?>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Precio base del día (USD)</label>
+                            <input type="number" name="precio_base_dia" id="precio_base_dia" step="0.0001" min="0"
+                                   value="<?= htmlspecialchars($formData['precio_base_dia'] ?? '') ?>"
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Descuento o bonificación (USD)</label>
@@ -685,16 +958,19 @@ ob_start();
                                    value="<?= htmlspecialchars($formData['precio_unitario_final'] ?? '') ?>"
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                         </div>
-                        <div class="md:col-span-2">
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Precio total a pagar (USD)</label>
                             <input type="number" name="precio_total_pagar" id="precio_total_pagar" step="0.01" min="0"
                                    value="<?= htmlspecialchars($formData['precio_total_pagar'] ?? '') ?>"
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                            <p class="text-xs text-gray-500 mt-1">Cálculo: precio unitario final (USD/KG) x cantidad comprada. Si no se ingresa cantidad, se usa el peso final equivalente en kg.</p>
+                            <p class="text-xs text-gray-500 mt-1">Cálculo: precio unitario final (USD/KG) x cantidad convertida a KG.</p>
                             <p id="peso_equiv_kg" class="text-xs text-emerald-700 mt-1"></p>
                             <p id="cantidad_calculo" class="text-xs text-emerald-700"></p>
                         </div>
                     </div>
+                    <?php else: ?>
+                    <p class="text-xs text-gray-500 mt-4">El precio comercial se registra en la fase de pago.</p>
+                    <?php endif; ?>
                 </div>
 
                 <?php if (!$esFormularioRecepcion): ?>
@@ -716,17 +992,33 @@ ob_start();
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Factura asignada a la compra</label>
+                            <?php $tipoComprobanteActual = strtoupper((string)($formData['tipo_comprobante'] ?? '')); ?>
+                            <select name="tipo_comprobante"
+                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 mb-2">
+                                <option value="">Tipo de comprobante</option>
+                                <option value="FACTURA" <?= $tipoComprobanteActual === 'FACTURA' ? 'selected' : '' ?>>Factura</option>
+                                <option value="NOTA_COMPRA" <?= $tipoComprobanteActual === 'NOTA_COMPRA' ? 'selected' : '' ?>>Nota de compra</option>
+                            </select>
                             <input type="text" name="factura_compra"
                                    value="<?= htmlspecialchars($formData['factura_compra'] ?? '') ?>"
                                    placeholder="Nro. de factura o comprobante"
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad comprada (kg)</label>
-                            <input type="number" name="cantidad_comprada" id="cantidad_comprada" step="0.01" min="0"
-                                   value="<?= htmlspecialchars($formData['cantidad_comprada'] ?? '') ?>"
-                                   placeholder="Ejemplo: 100.00"
-                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad comprada</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <input type="number" name="cantidad_comprada" id="cantidad_comprada" step="0.01" min="0"
+                                       value="<?= htmlspecialchars($formData['cantidad_comprada'] ?? '') ?>"
+                                       placeholder="Ejemplo: 100.00"
+                                       class="col-span-2 w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                <?php $cantidadUnidadActual = strtoupper((string)($formData['cantidad_comprada_unidad'] ?? 'KG')); ?>
+                                <select name="cantidad_comprada_unidad" id="cantidad_comprada_unidad"
+                                        class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                                    <option value="LB" <?= $cantidadUnidadActual === 'LB' ? 'selected' : '' ?>>LB</option>
+                                    <option value="KG" <?= $cantidadUnidadActual === 'KG' ? 'selected' : '' ?>>KG</option>
+                                    <option value="QQ" <?= $cantidadUnidadActual === 'QQ' ? 'selected' : '' ?>>QQ</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Variedad de cacao</label>
@@ -889,6 +1181,9 @@ ob_start();
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const loteSelect = document.getElementById('lote_id');
+    const proveedorSelect = document.getElementById('proveedor_ruta');
+    const proveedoresMultiSelect = document.getElementById('proveedor_ids');
+
     if (loteSelect?.value) {
         sincronizarDatosLote(loteSelect);
     }
@@ -897,7 +1192,15 @@ document.addEventListener('DOMContentLoaded', function() {
         sincronizarDatosLote(this);
     });
 
+    proveedorSelect?.addEventListener('change', function() {
+        actualizarProveedorSeleccionado();
+    });
+    proveedoresMultiSelect?.addEventListener('change', function() {
+        actualizarProveedorSeleccionado();
+    });
+
     const pesoBrutoInput = document.getElementById('peso_bruto');
+    const taraNoAplicaCheckbox = document.getElementById('tara_no_aplica');
     const taraEnvaseInput = document.getElementById('tara_envase');
     const pesoFinalInput = document.getElementById('peso_final_registro');
     const precioBaseInput = document.getElementById('precio_base_dia');
@@ -906,6 +1209,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const precioTotalInput = document.getElementById('precio_total_pagar');
     const unidadPesoSelect = document.querySelector('select[name="unidad_peso"]');
     const cantidadCompradaInput = document.getElementById('cantidad_comprada');
+    const cantidadCompradaUnidad = document.getElementById('cantidad_comprada_unidad');
     const pesoEquivKg = document.getElementById('peso_equiv_kg');
     const cantidadCalculo = document.getElementById('cantidad_calculo');
     const clasificacionRadios = document.querySelectorAll('input[name="clasificacion_compra"]');
@@ -922,8 +1226,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function calcularPesoFinal() {
+        if (!pesoBrutoInput || !pesoFinalInput) {
+            return;
+        }
         const bruto = toNumber(pesoBrutoInput);
-        const tara = toNumber(taraEnvaseInput);
+        const taraNoAplica = !!taraNoAplicaCheckbox?.checked;
+        if (taraEnvaseInput) {
+            taraEnvaseInput.disabled = taraNoAplica;
+            if (taraNoAplica) {
+                taraEnvaseInput.value = '';
+            }
+        }
+        const tara = taraNoAplica ? 0 : toNumber(taraEnvaseInput);
         if (bruto > 0 && tara >= 0) {
             const final = bruto - tara;
             if (final >= 0) {
@@ -934,6 +1248,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function calcularPrecioUnitarioFinal() {
+        if (!precioBaseInput || !diferencialInput || !precioUnitarioInput) {
+            return;
+        }
         const base = toNumber(precioBaseInput);
         const diferencial = toNumber(diferencialInput);
         const unitario = base + diferencial;
@@ -946,23 +1263,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function calcularTotalPagar() {
+        if (!precioUnitarioInput || !precioTotalInput || !pesoFinalInput) {
+            return;
+        }
         const unitario = toNumber(precioUnitarioInput);
         const peso = toNumber(pesoFinalInput);
         const unidad = unidadPesoSelect?.value || 'KG';
         const pesoKg = pesoToKg(peso, unidad);
         const cantidadIngresada = parseFloat(cantidadCompradaInput?.value || '');
-        const cantidad = (!Number.isNaN(cantidadIngresada) && cantidadIngresada > 0) ? cantidadIngresada : pesoKg;
-        const total = unitario * cantidad;
+        const unidadCantidad = cantidadCompradaUnidad?.value || 'KG';
+        const usarCantidadIngresada = !Number.isNaN(cantidadIngresada) && cantidadIngresada > 0;
+        const cantidadKg = usarCantidadIngresada ? pesoToKg(cantidadIngresada, unidadCantidad) : pesoKg;
+        const total = unitario * cantidadKg;
         precioTotalInput.value = total.toFixed(2);
         if (pesoEquivKg) {
             pesoEquivKg.textContent = `Peso equivalente: ${pesoKg.toFixed(2)} kg`;
         }
         if (cantidadCalculo) {
-            cantidadCalculo.textContent = `Cantidad aplicada: ${cantidad.toFixed(2)} kg`;
+            cantidadCalculo.textContent = usarCantidadIngresada
+                ? `Cantidad aplicada: ${cantidadIngresada.toFixed(2)} ${unidadCantidad} (${cantidadKg.toFixed(2)} kg)`
+                : `Cantidad aplicada: ${cantidadKg.toFixed(2)} kg`;
         }
     }
 
     function sincronizarCalidad() {
+        if (!calidadAsignada) {
+            return;
+        }
         const seleccionado = Array.from(clasificacionRadios).find(r => r.checked)?.value;
         if (!seleccionado) return;
         if (seleccionado === 'APTO_BONIFICACION') {
@@ -975,6 +1302,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     pesoBrutoInput?.addEventListener('input', calcularPesoFinal);
+    taraNoAplicaCheckbox?.addEventListener('change', calcularPesoFinal);
     taraEnvaseInput?.addEventListener('input', calcularPesoFinal);
     pesoFinalInput?.addEventListener('input', calcularTotalPagar);
     precioBaseInput?.addEventListener('input', calcularPrecioUnitarioFinal);
@@ -982,14 +1310,44 @@ document.addEventListener('DOMContentLoaded', function() {
     precioUnitarioInput?.addEventListener('input', calcularTotalPagar);
     unidadPesoSelect?.addEventListener('change', calcularTotalPagar);
     cantidadCompradaInput?.addEventListener('input', calcularTotalPagar);
+    cantidadCompradaUnidad?.addEventListener('change', calcularTotalPagar);
     clasificacionRadios.forEach(r => r.addEventListener('change', sincronizarCalidad));
 
     calcularPesoFinal();
     calcularPrecioUnitarioFinal();
+    calcularTotalPagar();
     sincronizarCalidad();
+    actualizarProveedorSeleccionado();
 });
 
+function actualizarProveedorSeleccionado() {
+    const proveedorIdInput = document.getElementById('proveedor_id');
+    if (!proveedorIdInput) {
+        return;
+    }
+
+    const proveedorMultiple = document.getElementById('proveedor_ids');
+    if (proveedorMultiple && proveedorMultiple.tagName === 'SELECT') {
+        const seleccion = Array.from(proveedorMultiple.selectedOptions);
+        const primerProveedor = seleccion.length > 0 ? seleccion[0] : null;
+        proveedorIdInput.value = primerProveedor ? (primerProveedor.dataset?.id || primerProveedor.value || '') : '';
+        return;
+    }
+
+    const proveedorSimple = document.getElementById('proveedor_ruta');
+    if (proveedorSimple && proveedorSimple.tagName === 'SELECT') {
+        const option = proveedorSimple.options[proveedorSimple.selectedIndex];
+        proveedorIdInput.value = option?.dataset?.id || '';
+        return;
+    }
+
+    proveedorIdInput.value = '';
+}
+
 function sincronizarDatosLote(select) {
+    if (!select || select.tagName !== 'SELECT') {
+        return;
+    }
     const option = select.options[select.selectedIndex];
     const proveedor = option?.dataset?.proveedor || '';
     const variedad = option?.dataset?.variedad || '';
@@ -997,22 +1355,22 @@ function sincronizarDatosLote(select) {
     const proveedorPagoInput = document.getElementById('proveedor_pago');
     const variedadPagoInput = document.getElementById('variedad_pago');
 
-    if (proveedor && proveedorInput) {
-        if (proveedorInput.tagName === 'SELECT') {
-            const existeProveedor = Array.from(proveedorInput.options).some((opt) => opt.value === proveedor);
-            if (!existeProveedor) {
-                proveedorInput.add(new Option(`${proveedor} (actual)`, proveedor));
-            }
-            if (!proveedorInput.value) {
-                proveedorInput.value = proveedor;
-            }
-        } else if (!proveedorInput.value) {
+    if (proveedor && proveedorInput && proveedorInput.tagName === 'SELECT') {
+        const existeProveedor = Array.from(proveedorInput.options).some((opt) => opt.value === proveedor);
+        if (!existeProveedor) {
+            proveedorInput.add(new Option(`${proveedor} (actual)`, proveedor));
+        }
+        if (!proveedorInput.value) {
             proveedorInput.value = proveedor;
         }
+        actualizarProveedorSeleccionado();
+    } else if (proveedor && proveedorInput && proveedorInput.tagName !== 'SELECT' && !proveedorInput.value) {
+        proveedorInput.value = proveedor;
     }
 
     if (proveedorPagoInput) {
-        proveedorPagoInput.value = proveedor || proveedorInput?.value || '';
+        const proveedorTexto = proveedor || (proveedorInput?.value ?? '');
+        proveedorPagoInput.value = proveedorTexto;
     }
     if (variedadPagoInput) {
         variedadPagoInput.value = variedad || 'No especificada';

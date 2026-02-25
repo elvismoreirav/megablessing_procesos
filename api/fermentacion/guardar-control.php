@@ -36,6 +36,12 @@ $fkControlCol = $hasCtrlCol('fermentacion_id') ? 'fermentacion_id' : 'registro_f
 
 $tempAmCol = $hasCtrlCol('temperatura_am') ? 'temperatura_am' : ($hasCtrlCol('temp_masa') ? 'temp_masa' : null);
 $tempPmCol = $hasCtrlCol('temperatura_pm') ? 'temperatura_pm' : ($hasCtrlCol('temp_ambiente') ? 'temp_ambiente' : null);
+$temp20Col = $hasCtrlCol('temp_20h') ? 'temp_20h' : null;
+$temp22Col = $hasCtrlCol('temp_22h') ? 'temp_22h' : null;
+$temp24Col = $hasCtrlCol('temp_24h') ? 'temp_24h' : null;
+$temp02Col = $hasCtrlCol('temp_02h') ? 'temp_02h' : null;
+$temp04Col = $hasCtrlCol('temp_04h') ? 'temp_04h' : null;
+$colsNocturnasDisponibles = $temp20Col && $temp22Col && $temp24Col && $temp02Col && $temp04Col;
 $phAmCol = $hasCtrlCol('ph_am') ? 'ph_am' : ($hasCtrlCol('ph_pulpa') ? 'ph_pulpa' : null);
 $phPmCol = $hasCtrlCol('ph_pm') ? 'ph_pm' : ($hasCtrlCol('ph_cotiledon') ? 'ph_cotiledon' : null);
 $horaCol = $hasCtrlCol('hora_volteo') ? 'hora_volteo' : ($hasCtrlCol('hora') ? 'hora' : null);
@@ -63,6 +69,38 @@ try {
     foreach ($controles as $control) {
         $dia = intval($control['dia']);
         $fecha = $control['fecha'];
+
+        $tempAm = isset($control['temp_am']) && $control['temp_am'] !== '' ? floatval($control['temp_am']) : null;
+        $tempPm = isset($control['temp_pm']) && $control['temp_pm'] !== '' ? floatval($control['temp_pm']) : null;
+        $temp20h = isset($control['temp_20h']) && $control['temp_20h'] !== '' ? floatval($control['temp_20h']) : null;
+        $temp22h = isset($control['temp_22h']) && $control['temp_22h'] !== '' ? floatval($control['temp_22h']) : null;
+        $temp24h = isset($control['temp_24h']) && $control['temp_24h'] !== '' ? floatval($control['temp_24h']) : null;
+        $temp02h = isset($control['temp_02h']) && $control['temp_02h'] !== '' ? floatval($control['temp_02h']) : null;
+        $temp04h = isset($control['temp_04h']) && $control['temp_04h'] !== '' ? floatval($control['temp_04h']) : null;
+
+        $temperaturasControl = [
+            'AM' => $tempAm,
+            'PM' => $tempPm,
+            '20h' => $temp20h,
+            '22h' => $temp22h,
+            '24h' => $temp24h,
+            '02h' => $temp02h,
+            '04h' => $temp04h,
+        ];
+        if (!$colsNocturnasDisponibles && ($temp20h !== null || $temp22h !== null || $temp24h !== null || $temp02h !== null || $temp04h !== null)) {
+            Helpers::jsonResponse([
+                'success' => false,
+                'error' => 'Faltan columnas nocturnas en base de datos. Ejecute el patch_fermentacion_secado_etapas.sql para guardar estos campos.'
+            ]);
+        }
+        foreach ($temperaturasControl as $slot => $tempValor) {
+            if ($tempValor !== null && ($tempValor < 70 || $tempValor > 130)) {
+                Helpers::jsonResponse([
+                    'success' => false,
+                    'error' => "Temperatura fuera de rango en día {$dia} ({$slot}). Debe estar entre 70°C y 130°C."
+                ]);
+            }
+        }
         
         // Verificar si ya existe
         $existente = $db->fetch("
@@ -86,10 +124,25 @@ try {
             $datos['fecha'] = $fecha;
         }
         if ($tempAmCol) {
-            $datos[$tempAmCol] = !empty($control['temp_am']) ? floatval($control['temp_am']) : null;
+            $datos[$tempAmCol] = $tempAm;
         }
         if ($tempPmCol) {
-            $datos[$tempPmCol] = !empty($control['temp_pm']) ? floatval($control['temp_pm']) : null;
+            $datos[$tempPmCol] = $tempPm;
+        }
+        if ($temp20Col) {
+            $datos[$temp20Col] = $temp20h;
+        }
+        if ($temp22Col) {
+            $datos[$temp22Col] = $temp22h;
+        }
+        if ($temp24Col) {
+            $datos[$temp24Col] = $temp24h;
+        }
+        if ($temp02Col) {
+            $datos[$temp02Col] = $temp02h;
+        }
+        if ($temp04Col) {
+            $datos[$temp04Col] = $temp04h;
         }
         if ($phAmCol) {
             $datos[$phAmCol] = !empty($control['ph_am']) ? floatval($control['ph_am']) : null;
@@ -108,10 +161,15 @@ try {
         } else {
             // Insertar solo si hay datos
             $tieneData = ($volteoCol && !empty($datos[$volteoCol])) || ($obsCol && !empty($datos[$obsCol]));
-            if (!$tieneData && $tempAmCol && !empty($datos[$tempAmCol])) $tieneData = true;
-            if (!$tieneData && $tempPmCol && !empty($datos[$tempPmCol])) $tieneData = true;
-            if (!$tieneData && $phAmCol && !empty($datos[$phAmCol])) $tieneData = true;
-            if (!$tieneData && $phPmCol && !empty($datos[$phPmCol])) $tieneData = true;
+            if (!$tieneData && $tempAmCol && $datos[$tempAmCol] !== null) $tieneData = true;
+            if (!$tieneData && $tempPmCol && $datos[$tempPmCol] !== null) $tieneData = true;
+            if (!$tieneData && $temp20Col && $datos[$temp20Col] !== null) $tieneData = true;
+            if (!$tieneData && $temp22Col && $datos[$temp22Col] !== null) $tieneData = true;
+            if (!$tieneData && $temp24Col && $datos[$temp24Col] !== null) $tieneData = true;
+            if (!$tieneData && $temp02Col && $datos[$temp02Col] !== null) $tieneData = true;
+            if (!$tieneData && $temp04Col && $datos[$temp04Col] !== null) $tieneData = true;
+            if (!$tieneData && $phAmCol && $datos[$phAmCol] !== null) $tieneData = true;
+            if (!$tieneData && $phPmCol && $datos[$phPmCol] !== null) $tieneData = true;
             if (!$tieneData && $horaCol && !empty($datos[$horaCol])) $tieneData = true;
             
             if ($tieneData) {

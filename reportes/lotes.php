@@ -164,7 +164,7 @@ ob_start();
                     <option value="">Todos</option>
                     <option value="RECEPCION" <?= $estado === 'RECEPCION' ? 'selected' : '' ?>>Recepción</option>
                     <option value="CALIDAD" <?= $estado === 'CALIDAD' ? 'selected' : '' ?>>Verificación de Lote</option>
-                    <option value="PRE_SECADO" <?= $estado === 'PRE_SECADO' ? 'selected' : '' ?>>Pre-secado (Legado)</option>
+                    <option value="PRE_SECADO" <?= $estado === 'PRE_SECADO' ? 'selected' : '' ?>>Pre-secado</option>
                     <option value="FERMENTACION" <?= $estado === 'FERMENTACION' ? 'selected' : '' ?>>Fermentación</option>
                     <option value="SECADO" <?= $estado === 'SECADO' ? 'selected' : '' ?>>Secado</option>
                     <option value="CALIDAD_POST" <?= $estado === 'CALIDAD_POST' ? 'selected' : '' ?>>Prueba de Corte</option>
@@ -251,7 +251,7 @@ ob_start();
             $estadoLabels = [
                 'RECEPCION' => 'Recepción',
                 'CALIDAD' => 'Verificación de Lote',
-                'PRE_SECADO' => 'Pre-secado (Legado)',
+                'PRE_SECADO' => 'Pre-secado',
                 'FERMENTACION' => 'Fermentación',
                 'SECADO' => 'Secado',
                 'CALIDAD_POST' => 'Prueba de Corte',

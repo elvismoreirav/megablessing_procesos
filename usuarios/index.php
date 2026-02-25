@@ -253,9 +253,11 @@ if ($editId > 0) {
 $roleBadgeClass = static function (?string $rolNombre): string {
     $rol = strtolower(trim((string)$rolNombre));
     if (str_contains($rol, 'admin')) return 'bg-purple-100 text-purple-700';
+    if (str_contains($rol, 'recep')) return 'bg-emerald-100 text-emerald-700';
+    if (str_contains($rol, 'pago')) return 'bg-teal-100 text-teal-700';
     if (str_contains($rol, 'super')) return 'bg-blue-100 text-blue-700';
-    if (str_contains($rol, 'calidad')) return 'bg-emerald-100 text-emerald-700';
     if (str_contains($rol, 'oper')) return 'bg-amber-100 text-amber-700';
+    if (str_contains($rol, 'calidad')) return 'bg-cyan-100 text-cyan-700';
     return 'bg-gray-100 text-gray-700';
 };
 

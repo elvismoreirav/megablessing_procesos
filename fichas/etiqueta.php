@@ -90,7 +90,7 @@ ob_start();
 <div class="max-w-4xl mx-auto space-y-6 etiqueta-page">
     <div class="flex items-center justify-between print:hidden">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Imprimir Etiqueta (Etiquetado de registro)</h1>
+            <h1 class="text-2xl font-bold text-gray-900">Imprimir Etiqueta</h1>
             <p class="text-gray-600">Ficha #<?= (int)$ficha['id'] ?> · Lote <?= htmlspecialchars((string)($ficha['lote_codigo'] ?: 'Sin lote asignado')) ?></p>
         </div>
         <div class="flex items-center gap-3">

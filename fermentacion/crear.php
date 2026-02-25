@@ -302,7 +302,7 @@ ob_start();
                 <div class="form-group">
                     <label class="form-label">Temperatura Inicial (°C)</label>
                     <input type="number" name="temperatura_inicial" class="form-control"
-                           step="0.1" min="0" max="60"
+                           step="0.1" min="0" max="130"
                            value="<?= $_POST['temperatura_inicial'] ?? '' ?>">
                 </div>
                 
@@ -336,7 +336,8 @@ ob_start();
                     <ul class="text-sm text-warmgray space-y-1">
                         <li>• La fermentación típica dura entre 5-7 días</li>
                         <li>• Se recomienda realizar volteos cada 24-48 horas</li>
-                        <li>• La temperatura óptima está entre 45-50°C</li>
+                        <li>• El control diario de temperatura debe mantenerse entre 70°C y 130°C</li>
+                        <li>• Registre mediciones nocturnas cada 2 horas: 20h, 22h, 24h, 2h y 4h</li>
                         <li>• El pH debe mantenerse entre 4.5-5.5</li>
                     </ul>
                 </div>

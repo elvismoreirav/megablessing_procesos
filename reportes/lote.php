@@ -269,7 +269,7 @@ $diasProceso = $fechaInicio->diff($fechaFin)->days;
 $estadosProceso = [
     'RECEPCION' => ['icon' => '📥', 'label' => 'Recepción', 'color' => 'blue'],
     'CALIDAD' => ['icon' => '🔍', 'label' => 'Verificación de Lote', 'color' => 'indigo'],
-    'PRE_SECADO' => ['icon' => '🌤️', 'label' => 'Pre-secado (Legado)', 'color' => 'yellow'],
+    'PRE_SECADO' => ['icon' => '🌤️', 'label' => 'Pre-secado', 'color' => 'yellow'],
     'FERMENTACION' => ['icon' => '🔥', 'label' => 'Fermentación', 'color' => 'orange'],
     'SECADO' => ['icon' => '☀️', 'label' => 'Secado', 'color' => 'yellow'],
     'CALIDAD_POST' => ['icon' => '✂️', 'label' => 'Prueba Corte', 'color' => 'green'],

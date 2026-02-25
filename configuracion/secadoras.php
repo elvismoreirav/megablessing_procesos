@@ -234,6 +234,13 @@ ob_start();
         </div>
     </div>
 
+    <?php $faltantesSecadoras = max(0, 13 - (int)($stats['activos'] ?? 0)); ?>
+    <?php if ($faltantesSecadoras > 0): ?>
+    <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+        Faltan <strong><?= $faltantesSecadoras ?></strong> secadora(s) activa(s) para alcanzar la meta operativa de <strong>13 secadoras</strong>.
+    </div>
+    <?php endif; ?>
+
     <!-- Filtros y Acciones -->
     <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-6 mb-6">
         <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">

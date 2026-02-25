@@ -53,6 +53,7 @@ require_once BASE_PATH . '/core/Helpers.php';
 
 // DB
 $db = Database::getInstance();
+Auth::ensureRolesCatalog();
 
 /**
  * Redirect helper (varios módulos lo usan)
@@ -164,3 +165,49 @@ if (!function_exists('e')) {
         return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
     }
 }
+
+/**
+ * Guardas por módulo (alineadas con matriz de roles).
+ */
+function requireModuleAccess(string $module): void {
+    if (!Auth::hasModuleAccess($module)) {
+        setFlash('danger', 'No tiene permisos para acceder a este módulo.');
+        redirect('/dashboard.php');
+    }
+}
+
+function requireAnyModuleAccess(array $modules): void {
+    if (!Auth::hasAnyModuleAccess($modules)) {
+        setFlash('danger', 'No tiene permisos para acceder a este módulo.');
+        redirect('/dashboard.php');
+    }
+}
+
+/**
+ * Enforce centralizado por ruta para evitar bypass directo por URL.
+ */
+if (!function_exists('enforceRouteModuleAccess')) {
+    function enforceRouteModuleAccess(): void {
+        if (!Auth::check()) {
+            return;
+        }
+
+        if (Auth::canAccessRoute()) {
+            return;
+        }
+
+        $script = str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? ''));
+        $isApi = str_contains($script, '/api/');
+        if ($isApi) {
+            Helpers::jsonResponse([
+                'success' => false,
+                'error' => 'No tiene permisos para ejecutar esta acción.',
+            ], 403);
+        }
+
+        setFlash('danger', 'No tiene permisos para acceder a este módulo.');
+        redirect('/dashboard.php');
+    }
+}
+
+enforceRouteModuleAccess();

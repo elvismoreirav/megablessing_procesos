@@ -130,10 +130,11 @@ ob_start();
             <label class="block text-sm font-medium text-gray-700 mb-2">Codigo de lote (codificacion) <span class="text-red-500">*</span></label>
             <input type="text" name="codificacion" id="codificacion"
                    value="<?= htmlspecialchars((string)($formData['codificacion'] ?? '')) ?>"
-                   placeholder="Ejemplo: XX-DD-MM-AA-XX-X"
+                   placeholder="Ejemplo: ES-17-02-26-SC-A"
                    required
                    class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono tracking-wide uppercase">
-            <p class="text-xs text-gray-500 mt-2">Formato recomendado: XX-DD-MM-AA-XX-X</p>
+            <p class="text-xs text-gray-500 mt-2">Formato recomendado: CAT-DD-MM-YY-ESTADO[-LETRA].</p>
+            <p class="text-xs text-gray-500">Estados válidos: ES, SC, SM, BA. Si hay duplicados del mismo día/categoría, use sufijo A, B, C...</p>
         </div>
 
         <div class="flex items-center gap-3">

@@ -42,6 +42,7 @@ $labelsCert = [
     'COMERCIO_JUSTO' => 'Comercio Justo',
     'EUDR' => 'EUDR',
     'OTRAS' => 'Otras',
+    'NO_APLICA' => 'No aplica',
 ];
 
 $certificacionesRender = [];

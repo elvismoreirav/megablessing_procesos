@@ -15,6 +15,21 @@ $tablaCalidadSalidaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calida
 // Compatibilidad de esquema para prueba de corte
 $colsPrueba = array_column($db->fetchAll("SHOW COLUMNS FROM registros_prueba_corte"), 'Field');
 $hasPrCol = static fn(string $name): bool => in_array($name, $colsPrueba, true);
+$uploadDirRelPrueba = 'uploads/prueba-corte';
+$uploadDirAbsPrueba = __DIR__ . '/../' . $uploadDirRelPrueba;
+
+$appendFotosToObservaciones = static function (string $texto, array $fotos): string {
+    $textoLimpio = trim(preg_replace('/\[FOTOS_PRUEBA_CORTE\].*$/s', '', $texto));
+    if (empty($fotos)) {
+        return $textoLimpio;
+    }
+
+    $bloqueFotos = "[FOTOS_PRUEBA_CORTE]\n" . implode("\n", $fotos);
+    if ($textoLimpio === '') {
+        return $bloqueFotos;
+    }
+    return $textoLimpio . "\n\n" . $bloqueFotos;
+};
 
 $colFechaPrueba = $hasPrCol('fecha_prueba') ? 'fecha_prueba' : ($hasPrCol('fecha') ? 'fecha' : null);
 $colTotalGranos = $hasPrCol('total_granos') ? 'total_granos' : ($hasPrCol('granos_analizados') ? 'granos_analizados' : null);
@@ -108,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $humedad = floatval($_POST['humedad'] ?? 0);
     $observaciones = trim($_POST['observaciones'] ?? '');
     $calidad = $_POST['calidad_resultado'] ?? '';
+    $fotosPendientes = [];
     
     // Validaciones
     if (!$loteId) $errors[] = 'Debe seleccionar un lote';
@@ -141,13 +157,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Lote no válido para registrar prueba de corte.';
         }
     }
+
+    if (isset($_FILES['fotos_muestra']['name']) && is_array($_FILES['fotos_muestra']['name'])) {
+        $names = $_FILES['fotos_muestra']['name'];
+        $tmpNames = $_FILES['fotos_muestra']['tmp_name'] ?? [];
+        $sizes = $_FILES['fotos_muestra']['size'] ?? [];
+        $errorsUpload = $_FILES['fotos_muestra']['error'] ?? [];
+
+        foreach ($names as $index => $nombreOriginal) {
+            $err = (int)($errorsUpload[$index] ?? UPLOAD_ERR_NO_FILE);
+            if ($err === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+            if ($err !== UPLOAD_ERR_OK) {
+                $errors[] = 'No se pudo cargar una de las fotografías de la muestra.';
+                continue;
+            }
+
+            $tmpName = (string)($tmpNames[$index] ?? '');
+            if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+                $errors[] = 'Archivo de foto inválido.';
+                continue;
+            }
+
+            $size = (int)($sizes[$index] ?? 0);
+            if ($size > 8 * 1024 * 1024) {
+                $errors[] = 'Cada foto debe ser menor o igual a 8MB.';
+                continue;
+            }
+
+            $mime = mime_content_type($tmpName) ?: '';
+            if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+                $errors[] = 'Solo se permiten fotos en formato JPG, PNG o WEBP.';
+                continue;
+            }
+
+            $ext = match ($mime) {
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/webp' => 'webp',
+                default => ''
+            };
+            if ($ext === '') {
+                $errors[] = 'Formato de imagen no soportado.';
+                continue;
+            }
+
+            if (count($fotosPendientes) >= 6) {
+                $errors[] = 'Puede cargar máximo 6 fotos por prueba.';
+                continue;
+            }
+
+            $fotosPendientes[] = [
+                'tmp' => $tmpName,
+                'ext' => $ext,
+                'name' => (string)$nombreOriginal,
+            ];
+        }
+    }
     
     // Calcular porcentaje de fermentación
     $porcentajeFermentacion = $totalGranos > 0 ? (($granosFermentados + ($granosParciales * 0.5)) / $totalGranos) * 100 : 0;
     
     if (empty($errors)) {
+        $fotosGuardadasAbs = [];
         try {
             $db->beginTransaction();
+
+            $fotosRelativas = [];
+            if (!empty($fotosPendientes)) {
+                if (!is_dir($uploadDirAbsPrueba) && !mkdir($uploadDirAbsPrueba, 0775, true) && !is_dir($uploadDirAbsPrueba)) {
+                    throw new Exception('No se pudo crear el directorio para fotos de prueba de corte.');
+                }
+
+                foreach ($fotosPendientes as $fotoPendiente) {
+                    $filename = 'prueba-corte-' . date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $fotoPendiente['ext'];
+                    $destAbs = $uploadDirAbsPrueba . '/' . $filename;
+                    if (!move_uploaded_file($fotoPendiente['tmp'], $destAbs)) {
+                        throw new Exception('No se pudo guardar una fotografía de la muestra.');
+                    }
+                    $fotosGuardadasAbs[] = $destAbs;
+                    $fotosRelativas[] = $uploadDirRelPrueba . '/' . $filename;
+                }
+            }
+
+            $observacionesPersistir = $appendFotosToObservaciones($observaciones, $fotosRelativas);
 
             $loteBase = $db->fetch("
                 SELECT l.codigo, l.peso_inicial_kg, l.estado_proceso,
@@ -256,7 +350,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dataPrueba['decision_lote'] = $decisionLegacy;
             }
             if ($hasPrCol('observaciones')) {
-                $dataPrueba['observaciones'] = $observaciones !== '' ? $observaciones : null;
+                $dataPrueba['observaciones'] = $observacionesPersistir !== '' ? $observacionesPersistir : null;
             }
             if ($colAnalistaId) {
                 $dataPrueba[$colAnalistaId] = getCurrentUserId();
@@ -289,6 +383,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
         } catch (Exception $e) {
             $db->rollBack();
+            foreach ($fotosGuardadasAbs as $fotoAbs) {
+                if (is_file($fotoAbs)) {
+                    @unlink($fotoAbs);
+                }
+            }
             $errors[] = 'Error al guardar: ' . $e->getMessage();
         }
     }
@@ -313,7 +412,7 @@ ob_start();
     </div>
 <?php endif; ?>
 
-<form method="POST" class="max-w-5xl" id="pruebaForm">
+<form method="POST" enctype="multipart/form-data" class="max-w-5xl" id="pruebaForm">
     <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
     
     <!-- Selección de Lote -->
@@ -494,24 +593,18 @@ ob_start();
             <h3 class="card-title">Resultados</h3>
         </div>
         <div class="card-body">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="text-center p-4 bg-white rounded-lg shadow">
                     <p class="text-3xl font-bold text-primary" id="result_fermentacion">0%</p>
                     <p class="text-xs text-warmgray">% Fermentación</p>
-                    <p class="text-xs text-green-600 mt-1">Objetivo: ≥70%</p>
                 </div>
                 <div class="text-center p-4 bg-white rounded-lg shadow">
                     <p class="text-3xl font-bold text-red-600" id="result_defectos">0%</p>
                     <p class="text-xs text-warmgray">% Defectos</p>
-                    <p class="text-xs text-green-600 mt-1">Máximo: ≤5%</p>
                 </div>
                 <div class="text-center p-4 bg-white rounded-lg shadow">
                     <p class="text-3xl font-bold text-warmgray" id="result_conteo">0/100</p>
                     <p class="text-xs text-warmgray">Granos Contados</p>
-                </div>
-                <div class="text-center p-4 bg-white rounded-lg shadow">
-                    <p class="text-3xl font-bold" id="result_calidad_sugerida">-</p>
-                    <p class="text-xs text-warmgray">Calidad Sugerida</p>
                 </div>
             </div>
         </div>
@@ -530,7 +623,6 @@ ob_start();
                     <div class="p-4 border-2 rounded-lg text-center transition-all peer-checked:border-green-500 peer-checked:bg-green-50 hover:border-green-300">
                         <span class="text-2xl">🏆</span>
                         <p class="font-semibold text-green-600">PREMIUM</p>
-                        <p class="text-xs text-warmgray">≥80% ferm., ≤3% def.</p>
                     </div>
                 </label>
                 
@@ -540,7 +632,6 @@ ob_start();
                     <div class="p-4 border-2 rounded-lg text-center transition-all peer-checked:border-primary peer-checked:bg-olive/20 hover:border-olive">
                         <span class="text-2xl">✈️</span>
                         <p class="font-semibold text-primary">EXPORTACIÓN</p>
-                        <p class="text-xs text-warmgray">≥70% ferm., ≤5% def.</p>
                     </div>
                 </label>
                 
@@ -550,7 +641,6 @@ ob_start();
                     <div class="p-4 border-2 rounded-lg text-center transition-all peer-checked:border-gold peer-checked:bg-yellow-50 hover:border-yellow-300">
                         <span class="text-2xl">🏠</span>
                         <p class="font-semibold text-gold">NACIONAL</p>
-                        <p class="text-xs text-warmgray">≥60% ferm., ≤10% def.</p>
                     </div>
                 </label>
                 
@@ -560,9 +650,52 @@ ob_start();
                     <div class="p-4 border-2 rounded-lg text-center transition-all peer-checked:border-red-500 peer-checked:bg-red-50 hover:border-red-300">
                         <span class="text-2xl">❌</span>
                         <p class="font-semibold text-red-600">RECHAZADO</p>
-                        <p class="text-xs text-warmgray">&lt;60% ferm. o &gt;10% def.</p>
                     </div>
                 </label>
+            </div>
+            <p class="text-xs text-warmgray mt-3">La clasificación final es definida por el analista según la tabla de referencia y criterio técnico.</p>
+
+            <div class="mt-6 p-4 rounded-lg border border-gray-200 bg-gray-50">
+                <h4 class="text-sm font-semibold text-gray-800 mb-3">Tabla de referencia CCN51</h4>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-xs">
+                        <thead>
+                            <tr class="text-left text-gray-600 border-b border-gray-200">
+                                <th class="py-2 pr-4">Parámetro</th>
+                                <th class="py-2 pr-4">Rango referencial</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 text-gray-700">
+                            <tr>
+                                <td class="py-2 pr-4">Bien fermentados</td>
+                                <td class="py-2 pr-4">≥ 65%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Violetas</td>
+                                <td class="py-2 pr-4">≤ 15%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Pizarrosos</td>
+                                <td class="py-2 pr-4">≤ 3%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Mohosos</td>
+                                <td class="py-2 pr-4">≤ 3%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 pr-4">Germinados / Dañados</td>
+                                <td class="py-2 pr-4">≤ 3%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-warmgray mt-2">Referencia visual para apoyar la decisión manual del analista.</p>
+            </div>
+
+            <div class="form-group mt-6">
+                <label class="form-label">Fotos de la muestra (opcional)</label>
+                <input type="file" name="fotos_muestra[]" class="form-control" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple>
+                <p class="text-xs text-warmgray mt-1">Puede cargar hasta 6 fotos (JPG/PNG/WEBP, máximo 8MB por archivo).</p>
             </div>
             
             <div class="form-group mt-6">
@@ -606,34 +739,14 @@ function calcularPorcentajes() {
     
     // Actualizar displays
     document.getElementById('result_fermentacion').textContent = pctFermentacion.toFixed(1) + '%';
-    document.getElementById('result_fermentacion').className = 'text-3xl font-bold ' + 
-        (pctFermentacion >= 70 ? 'text-green-600' : (pctFermentacion >= 60 ? 'text-gold' : 'text-red-600'));
+    document.getElementById('result_fermentacion').className = 'text-3xl font-bold text-primary';
     
     document.getElementById('result_defectos').textContent = pctDefectos.toFixed(1) + '%';
-    document.getElementById('result_defectos').className = 'text-3xl font-bold ' + 
-        (pctDefectos <= 5 ? 'text-green-600' : (pctDefectos <= 10 ? 'text-gold' : 'text-red-600'));
+    document.getElementById('result_defectos').className = 'text-3xl font-bold text-red-600';
     
     document.getElementById('result_conteo').textContent = conteo + '/' + total;
     document.getElementById('result_conteo').className = 'text-3xl font-bold ' + 
         (conteo === total ? 'text-green-600' : 'text-warmgray');
-    
-    // Sugerir calidad
-    let calidadSugerida = 'RECHAZADO';
-    let colorCalidad = 'text-red-600';
-    
-    if (pctFermentacion >= 80 && pctDefectos <= 3) {
-        calidadSugerida = 'PREMIUM';
-        colorCalidad = 'text-green-600';
-    } else if (pctFermentacion >= 70 && pctDefectos <= 5) {
-        calidadSugerida = 'EXPORTACIÓN';
-        colorCalidad = 'text-primary';
-    } else if (pctFermentacion >= 60 && pctDefectos <= 10) {
-        calidadSugerida = 'NACIONAL';
-        colorCalidad = 'text-gold';
-    }
-    
-    document.getElementById('result_calidad_sugerida').textContent = calidadSugerida;
-    document.getElementById('result_calidad_sugerida').className = 'text-3xl font-bold ' + colorCalidad;
 }
 
 // Calcular al cargar

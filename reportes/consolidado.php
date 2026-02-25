@@ -682,7 +682,7 @@ ob_start();
                             $estadoLabels = [
                                 'RECEPCION' => 'Recepción',
                                 'CALIDAD' => 'Verificación de Lote',
-                                'PRE_SECADO' => 'Pre-secado (Legado)',
+                                'PRE_SECADO' => 'Pre-secado',
                                 'FERMENTACION' => 'Fermentación',
                                 'SECADO' => 'Secado',
                                 'CALIDAD_POST' => 'Prueba de Corte',

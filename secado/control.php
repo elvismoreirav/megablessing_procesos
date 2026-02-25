@@ -28,6 +28,7 @@ $pesoInicialExpr = $hasSecCol('peso_inicial')
         ? '(rs.qq_cargados * 45.3592)'
         : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
 $pesoFinalExpr = $hasSecCol('peso_final') ? 'rs.peso_final' : 'NULL';
+$etapaProcesoExpr = $hasSecCol('etapa_proceso') ? 'rs.etapa_proceso' : 'NULL';
 $observacionesExpr = $hasSecCol('observaciones')
     ? 'rs.observaciones'
     : ($hasSecCol('carga_observaciones')
@@ -61,8 +62,10 @@ $secado = $db->fetch("
            {$tipoSecadoExpr} as tipo_secado,
            {$pesoInicialExpr} as peso_inicial,
            {$pesoFinalExpr} as peso_final,
+           {$etapaProcesoExpr} as etapa_proceso,
+           (SELECT COUNT(*) FROM registros_secado rs2 WHERE rs2.lote_id = rs.lote_id AND rs2.id <= rs.id) as orden_etapa,
            {$observacionesExpr} as observaciones,
-           l.codigo as lote_codigo, l.id as lote_id,
+           l.codigo as lote_codigo, l.id as lote_id, l.estado_proceso as lote_estado,
            p.nombre as proveedor, p.codigo as proveedor_codigo,
            v.nombre as variedad,
            {$secadoraNombreExpr} as secadora, {$tipoSecadoraExpr} as tipo_secadora,
@@ -80,20 +83,45 @@ if (!$secado) {
     setFlash('error', 'Registro de secado no encontrado');
     redirect('/secado/index.php');
 }
+$etapaSecado = strtoupper(trim((string)($secado['etapa_proceso'] ?? '')));
+if (!in_array($etapaSecado, ['PRE_SECADO', 'SECADO_FINAL'], true)) {
+    $estadoLote = strtoupper(trim((string)($secado['lote_estado'] ?? '')));
+    $etapaSecado = (
+        ((int)($secado['orden_etapa'] ?? 1) > 1)
+        || in_array($estadoLote, ['SECADO', 'CALIDAD_POST', 'CALIDAD_SALIDA', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO'], true)
+    ) ? 'SECADO_FINAL' : 'PRE_SECADO';
+}
+$etapaSecadoLabel = $etapaSecado === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
 
-$registroPruebaCorte = $db->fetch(
-    "SELECT id FROM registros_prueba_corte WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
-    [$secado['lote_id']]
-);
 $secadoFinalizado = !empty($secado['fecha_fin'])
     || (!$hasSecCol('fecha_fin') && !empty($secado['humedad_final']));
-$rutaSiguientePrueba = $registroPruebaCorte
-    ? (APP_URL . '/prueba-corte/ver.php?id=' . (int)$registroPruebaCorte['id'])
-    : (APP_URL . '/prueba-corte/crear.php?lote_id=' . (int)$secado['lote_id']);
-$labelSiguientePrueba = $registroPruebaCorte ? 'Ver prueba de corte' : 'Iniciar Prueba de Corte';
-$descripcionSiguientePrueba = $secadoFinalizado
-    ? 'El secado está finalizado. Continúe con la prueba de corte.'
-    : 'Al finalizar el secado se habilitará automáticamente la prueba de corte.';
+if ($etapaSecado === 'PRE_SECADO') {
+    $registroFermentacion = $db->fetch(
+        "SELECT id FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+        [$secado['lote_id']]
+    );
+    $rutaSiguienteEtapa = $registroFermentacion
+        ? (APP_URL . '/fermentacion/control.php?id=' . (int)$registroFermentacion['id'])
+        : (APP_URL . '/fermentacion/crear.php?lote_id=' . (int)$secado['lote_id']);
+    $labelSiguienteEtapa = $registroFermentacion ? 'Ver fermentación' : 'Iniciar Fermentación';
+    $descripcionSiguienteEtapa = $secadoFinalizado
+        ? 'El pre-secado está finalizado. Continúe con la fermentación.'
+        : 'Al finalizar el pre-secado se habilitará automáticamente la fermentación.';
+    $tituloSiguienteEtapa = 'Proceso de Fermentación';
+} else {
+    $registroPruebaCorte = $db->fetch(
+        "SELECT id FROM registros_prueba_corte WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
+        [$secado['lote_id']]
+    );
+    $rutaSiguienteEtapa = $registroPruebaCorte
+        ? (APP_URL . '/prueba-corte/ver.php?id=' . (int)$registroPruebaCorte['id'])
+        : (APP_URL . '/prueba-corte/crear.php?lote_id=' . (int)$secado['lote_id']);
+    $labelSiguienteEtapa = $registroPruebaCorte ? 'Ver prueba de corte' : 'Iniciar Prueba de Corte';
+    $descripcionSiguienteEtapa = $secadoFinalizado
+        ? 'El secado final está terminado. Continúe con la prueba de corte.'
+        : 'Al finalizar el secado final se habilitará automáticamente la prueba de corte.';
+    $tituloSiguienteEtapa = 'Prueba de Corte';
+}
 
 // Obtener controles de temperatura existentes
 $colsControl = array_column($db->fetchAll("SHOW COLUMNS FROM secado_control_temperatura"), 'Field');
@@ -164,7 +192,7 @@ for ($i = 0; $i < 7; $i++) {
     ];
 }
 
-$pageTitle = 'Control de Secado';
+$pageTitle = 'Control de ' . $etapaSecadoLabel;
 $pageSubtitle = 'Lote: ' . $secado['lote_codigo'];
 
 // Estilos adicionales para Handsontable
@@ -210,6 +238,10 @@ ob_start();
             <div>
                 <p class="text-xs text-warmgray uppercase tracking-wide">Tipo Secado</p>
                 <p class="font-medium"><?= htmlspecialchars($secado['tipo_secado']) ?></p>
+            </div>
+            <div>
+                <p class="text-xs text-warmgray uppercase tracking-wide">Etapa</p>
+                <p class="font-medium"><?= htmlspecialchars($etapaSecadoLabel) ?></p>
             </div>
             <div>
                 <p class="text-xs text-warmgray uppercase tracking-wide">Secadora</p>
@@ -298,7 +330,7 @@ ob_start();
 <?php if (!$secado['fecha_fin']): ?>
 <div class="card mb-6">
     <div class="card-header">
-        <h3 class="card-title">Finalizar Secado</h3>
+        <h3 class="card-title">Finalizar <?= htmlspecialchars($etapaSecadoLabel) ?></h3>
     </div>
     <div class="card-body">
         <form id="finalizarForm" class="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -340,7 +372,7 @@ ob_start();
                 </svg>
             </div>
             <div>
-                <h4 class="font-semibold text-green-800">Secado Finalizado</h4>
+                <h4 class="font-semibold text-green-800"><?= htmlspecialchars($etapaSecadoLabel) ?> finalizado</h4>
                 <p class="text-sm text-green-700 mt-1">
                     Fecha: <?= Helpers::formatDate($secado['fecha_fin']) ?> |
                     Peso Final: <?= $secado['peso_final'] ? number_format($secado['peso_final'], 2) . ' Kg' : 'No registrado' ?> |
@@ -358,12 +390,12 @@ ob_start();
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
                 <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Siguiente paso</p>
-                <h4 class="text-lg font-semibold text-emerald-900">Prueba de Corte</h4>
-                <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($descripcionSiguientePrueba) ?></p>
+                <h4 class="text-lg font-semibold text-emerald-900"><?= htmlspecialchars($tituloSiguienteEtapa) ?></h4>
+                <p class="text-sm text-emerald-800 mt-1"><?= htmlspecialchars($descripcionSiguienteEtapa) ?></p>
             </div>
-            <a href="<?= $secadoFinalizado ? $rutaSiguientePrueba : '#' ?>"
+            <a href="<?= $secadoFinalizado ? $rutaSiguienteEtapa : '#' ?>"
                class="btn <?= $secadoFinalizado ? 'btn-primary' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
-                <?= htmlspecialchars($labelSiguientePrueba) ?>
+                <?= htmlspecialchars($labelSiguienteEtapa) ?>
             </a>
         </div>
     </div>
@@ -405,7 +437,8 @@ ob_start();
 <script src="https://cdn.jsdelivr.net/npm/handsontable@12.1.3/dist/handsontable.full.min.js"></script>
 <script>
 const secadoId = <?= $id ?>;
-const esFinalizado = <?= $secado['fecha_fin'] ? 'true' : 'false' ?>;
+const esFinalizado = <?= $secadoFinalizado ? 'true' : 'false' ?>;
+const etapaSecado = <?= json_encode($etapaSecado) ?>;
 const horasControl = <?= json_encode($horasControl) ?>;
 
 // Datos iniciales
@@ -556,8 +589,10 @@ async function finalizarSecado() {
     }
     
     const confirmed = await App.confirm(
-        '¿Está seguro de finalizar el secado? Esta acción no se puede deshacer.',
-        'Finalizar secado'
+        etapaSecado === 'PRE_SECADO'
+            ? '¿Está seguro de finalizar el pre-secado? Esta acción no se puede deshacer.'
+            : '¿Está seguro de finalizar el secado final? Esta acción no se puede deshacer.',
+        etapaSecado === 'PRE_SECADO' ? 'Finalizar pre-secado' : 'Finalizar secado'
     );
     if (!confirmed) {
         return;
@@ -575,8 +610,8 @@ async function finalizarSecado() {
         });
         
         if (response.success) {
-            const redirectUrl = response.redirect || '<?= APP_URL ?>/prueba-corte/crear.php?lote_id=<?= (int)$secado['lote_id'] ?>';
-            App.toast('Secado finalizado. Redirigiendo a prueba de corte...', 'success');
+            const redirectUrl = response.redirect || '<?= APP_URL ?>/lotes/ver.php?id=<?= (int)$secado['lote_id'] ?>';
+            App.toast(response.message || 'Registro finalizado. Redirigiendo...', 'success');
             setTimeout(() => window.location.href = redirectUrl, 900);
         } else {
             App.toast(response.error || 'Error al finalizar', 'error');

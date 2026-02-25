@@ -31,7 +31,7 @@ $vistaConfig = [
         'descripcion' => 'Registro y verificación visual inicial del lote.'
     ],
     'pagos' => [
-        'titulo' => 'Registro de Pagos (Ficha de pagos)',
+        'titulo' => 'Registro de Pagos',
         'descripcion' => 'Registro y consulta de pagos relacionados a cada ficha de recepción.'
     ],
     'codificacion' => [
@@ -39,7 +39,7 @@ $vistaConfig = [
         'descripcion' => 'Fichas pendientes por codificación para trazabilidad.'
     ],
     'etiqueta' => [
-        'titulo' => 'Imprimir Etiqueta (Etiquetado de registro)',
+        'titulo' => 'Imprimir Etiqueta',
         'descripcion' => 'Fichas con codificación disponibles para impresión de etiqueta.'
     ],
 ];

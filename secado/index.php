@@ -19,6 +19,9 @@ $fechaFinExpr = $hasSecCol('fecha_fin') ? 'rs.fecha_fin' : 'NULL';
 $campoCierre = $hasSecCol('fecha_fin')
     ? 'rs.fecha_fin'
     : ($hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL');
+$etapaSecadoExpr = $hasSecCol('etapa_proceso')
+    ? "rs.etapa_proceso"
+    : "NULL";
 
 // Filtros
 $filtroEstado = $_GET['estado'] ?? '';
@@ -60,7 +63,9 @@ $registros = $db->fetchAll("
     SELECT rs.*, 
            {$fechaInicioExpr} as fecha_inicio,
            {$fechaFinExpr} as fecha_fin,
-           l.codigo as lote_codigo,
+           {$etapaSecadoExpr} as etapa_proceso,
+           (SELECT COUNT(*) FROM registros_secado rs2 WHERE rs2.lote_id = rs.lote_id AND rs2.id <= rs.id) as orden_etapa,
+           l.codigo as lote_codigo, l.estado_proceso as lote_estado,
            p.nombre as proveedor,
            s.nombre as secadora,
            u.nombre as responsable
@@ -76,12 +81,22 @@ $registros = $db->fetchAll("
 
 // Lotes listos para secado
 $lotesParaSecado = $db->fetchAll("
-    SELECT l.id, l.codigo, p.nombre as proveedor
+    SELECT l.id, l.codigo, p.nombre as proveedor, l.estado_proceso
     FROM lotes l
     JOIN proveedores p ON l.proveedor_id = p.id
     WHERE l.estado_proceso IN ('PRE_SECADO', 'SECADO')
     AND EXISTS (SELECT 1 FROM fichas_registro fr WHERE fr.lote_id = l.id)
-    AND NOT EXISTS (SELECT 1 FROM registros_secado rs WHERE rs.lote_id = l.id)
+    AND (
+        (
+            l.estado_proceso = 'PRE_SECADO'
+            AND (SELECT COUNT(*) FROM registros_secado rs WHERE rs.lote_id = l.id) = 0
+        )
+        OR
+        (
+            l.estado_proceso = 'SECADO'
+            AND (SELECT COUNT(*) FROM registros_secado rs WHERE rs.lote_id = l.id) < 2
+        )
+    )
     ORDER BY l.fecha_entrada DESC
 ");
 
@@ -131,7 +146,11 @@ ob_start();
             <select id="lote_select" class="form-control form-select w-56">
                 <option value="">Seleccionar lote...</option>
                 <?php foreach ($lotesParaSecado as $lote): ?>
-                    <option value="<?= $lote['id'] ?>"><?= htmlspecialchars($lote['codigo']) ?> - <?= htmlspecialchars($lote['proveedor']) ?></option>
+                    <?php $etapaLote = ($lote['estado_proceso'] ?? '') === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL'; ?>
+                    <option value="<?= $lote['id'] ?>" data-etapa="<?= htmlspecialchars($etapaLote) ?>">
+                        <?= $etapaLote === 'PRE_SECADO' ? '[Pre-secado] ' : '[Secado final] ' ?>
+                        <?= htmlspecialchars($lote['codigo']) ?> - <?= htmlspecialchars($lote['proveedor']) ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
             <button onclick="iniciarSecado()" class="btn btn-primary">
@@ -151,6 +170,7 @@ ob_start();
             <thead>
                 <tr>
                     <th>Lote</th>
+                    <th>Etapa</th>
                     <th>Proveedor</th>
                     <th>Secadora</th>
                     <th>Fecha Inicio</th>
@@ -164,7 +184,7 @@ ob_start();
             <tbody>
                 <?php if (empty($registros)): ?>
                     <tr>
-                        <td colspan="9" class="text-center py-12">
+                        <td colspan="10" class="text-center py-12">
                             <div class="text-warmgray">
                                 <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
@@ -175,12 +195,31 @@ ob_start();
                     </tr>
                 <?php else: ?>
                     <?php foreach ($registros as $reg): ?>
+                        <?php
+                            $etapaRegistro = strtoupper(trim((string)($reg['etapa_proceso'] ?? '')));
+                            if (!in_array($etapaRegistro, ['PRE_SECADO', 'SECADO_FINAL'], true)) {
+                                $estadoLote = strtoupper(trim((string)($reg['lote_estado'] ?? '')));
+                                $etapaRegistro = (
+                                    ((int)($reg['orden_etapa'] ?? 1) > 1)
+                                    || in_array($estadoLote, ['SECADO', 'CALIDAD_POST', 'CALIDAD_SALIDA', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO'], true)
+                                ) ? 'SECADO_FINAL' : 'PRE_SECADO';
+                            }
+                            $etapaLabel = $etapaRegistro === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
+                            $etapaClass = $etapaRegistro === 'PRE_SECADO'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-purple-100 text-purple-700';
+                        ?>
                         <tr>
                             <td>
                                 <a href="<?= APP_URL ?>/lotes/ver.php?id=<?= $reg['lote_id'] ?>" 
                                    class="font-medium text-primary hover:underline">
                                     <?= htmlspecialchars($reg['lote_codigo']) ?>
                                 </a>
+                            </td>
+                            <td>
+                                <span class="inline-flex px-2 py-1 rounded-full text-xs font-semibold <?= $etapaClass ?>">
+                                    <?= htmlspecialchars($etapaLabel) ?>
+                                </span>
                             </td>
                             <td><?= htmlspecialchars($reg['proveedor']) ?></td>
                             <td><?= $reg['secadora'] ? htmlspecialchars($reg['secadora']) : '<span class="text-warmgray">-</span>' ?></td>
@@ -252,12 +291,14 @@ ob_start();
 
 <script>
 function iniciarSecado() {
-    const loteId = document.getElementById('lote_select').value;
+    const select = document.getElementById('lote_select');
+    const loteId = select.value;
     if (!loteId) {
         App.toast('Seleccione un lote', 'warning');
         return;
     }
-    window.location.href = '<?= APP_URL ?>/secado/crear.php?lote_id=' + loteId;
+    const etapa = select.options[select.selectedIndex]?.dataset?.etapa || '';
+    window.location.href = '<?= APP_URL ?>/secado/crear.php?lote_id=' + loteId + '&etapa=' + encodeURIComponent(etapa);
 }
 </script>
 

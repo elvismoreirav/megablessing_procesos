@@ -62,8 +62,19 @@ CREATE TABLE IF NOT EXISTS `proveedores` (
     `cedula_ruc` VARCHAR(20),
     `tipo` ENUM('MERCADO','BODEGA','RUTA','PRODUCTOR') NOT NULL,
     `categoria` VARCHAR(100),
+    `tipos_permitidos` VARCHAR(120),
     `es_categoria` TINYINT(1) NOT NULL DEFAULT 0,
     `direccion` TEXT,
+    `utm_este_x` VARCHAR(50),
+    `utm_norte_y` VARCHAR(50),
+    `seguridad_deforestacion` TINYINT(1),
+    `arboles_endemicos` TINYINT(1),
+    `hectareas_totales` DECIMAL(10,2),
+    `hectareas_ccn51` DECIMAL(10,2),
+    `hectareas_fino_aroma` DECIMAL(10,2),
+    `certificaciones` TEXT,
+    `certificacion_otras` VARCHAR(255),
+    `documento_certificaciones` VARCHAR(255),
     `telefono` VARCHAR(50),
     `email` VARCHAR(120),
     `contacto` VARCHAR(100),
@@ -204,7 +215,7 @@ CREATE TABLE IF NOT EXISTS `fichas_registro` (
     `peso_final_registro` DECIMAL(10,2),
     `unidad_peso` ENUM('LB','KG','QQ') DEFAULT 'KG',
     `calificacion_humedad` TINYINT,
-    `calidad_registro` ENUM('SECO','SEMISECO','BABA'),
+    `calidad_registro` ENUM('SECO','SEMISECO','ESCURRIDO','BABA'),
     `presencia_defectos` DECIMAL(5,2),
     `clasificacion_compra` ENUM('APTO','APTO_DESCUENTO','NO_APTO','APTO_BONIFICACION'),
     `precio_base_dia` DECIMAL(10,4),
@@ -213,7 +224,9 @@ CREATE TABLE IF NOT EXISTS `fichas_registro` (
     `precio_unitario_final` DECIMAL(10,4),
     `precio_total_pagar` DECIMAL(12,2),
     `fecha_pago` DATE,
+    `tipo_comprobante` ENUM('FACTURA','NOTA_COMPRA'),
     `factura_compra` VARCHAR(80),
+    `cantidad_comprada_unidad` ENUM('LB','KG','QQ') DEFAULT 'KG',
     `cantidad_comprada` DECIMAL(10,2),
     `forma_pago` ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS'),
     `fermentacion_estado` VARCHAR(50),
@@ -271,6 +284,11 @@ CREATE TABLE IF NOT EXISTS `fermentacion_control_diario` (
     `volteo` TINYINT(1) DEFAULT 0,
     `temp_masa` DECIMAL(5,2),
     `temp_ambiente` DECIMAL(5,2),
+    `temp_20h` DECIMAL(5,2),
+    `temp_22h` DECIMAL(5,2),
+    `temp_24h` DECIMAL(5,2),
+    `temp_02h` DECIMAL(5,2),
+    `temp_04h` DECIMAL(5,2),
     `ph_pulpa` DECIMAL(4,2),
     `ph_cotiledon` DECIMAL(4,2),
     `olor` VARCHAR(100),
@@ -295,6 +313,7 @@ CREATE TABLE IF NOT EXISTS `registros_secado` (
     `responsable_id` INT,
     `variedad` VARCHAR(100),
     `estado` VARCHAR(50),
+    `etapa_proceso` ENUM('PRE_SECADO','SECADO_FINAL') NULL,
     `cantidad_total_qq` DECIMAL(10,2),
     -- Revisión inicial
     `limpieza_area` TINYINT(1) DEFAULT 0,
@@ -473,11 +492,12 @@ CREATE TABLE IF NOT EXISTS `lotes_historial` (
 
 -- Roles por defecto
 INSERT INTO `roles` (`nombre`, `descripcion`, `permisos`) VALUES
-('Administrador', 'Acceso total al sistema', '{"all": true}'),
-('Supervisor', 'Supervisión de procesos y reportes', '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "reportes": true}'),
-('Operador', 'Registro de datos en procesos', '{"lotes": ["view", "create", "edit"], "fermentacion": ["view", "create", "edit"], "secado": ["view", "create", "edit"]}'),
-('Calidad', 'Control de calidad y pruebas', '{"prueba_corte": true, "lotes": ["view"], "reportes": ["view"]}'),
-('Consulta', 'Solo visualización', '{"view_only": true}');
+('Administrador', 'Acceso total al sistema.', '{"all": true}'),
+('Recepción', 'Gestiona ficha de recepción, codificación e impresión de etiqueta.', '{"recepcion": true, "codificacion": true, "etiqueta": true}'),
+('Operaciones', 'Gestiona procesos de centro de acopio y planta.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true}'),
+('Pagos', 'Gestiona registro de pagos y acceso a proveedores.', '{"pagos": true, "codificacion": true, "etiqueta": true, "proveedores": true}'),
+('Supervisor Planta', 'Acceso a todos los módulos, excepto registro de pagos.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}'),
+('Supervisor Centro de Acopio', 'Acceso a todos los módulos, excepto registro de pagos.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}');
 
 -- Usuario administrador por defecto (password: admin123)
 INSERT INTO `usuarios` (`nombre`, `email`, `password`, `rol_id`) VALUES
@@ -514,7 +534,16 @@ INSERT INTO `secadoras` (`numero`, `nombre`, `capacidad_qq`, `tipo`) VALUES
 ('SEC-01', 'Secadora Industrial 1', 100, 'INDUSTRIAL'),
 ('SEC-02', 'Secadora Industrial 2', 100, 'INDUSTRIAL'),
 ('SEC-03', 'Secadora Industrial 3', 100, 'INDUSTRIAL'),
-('SEC-04', 'Secadora Industrial 4', 100, 'INDUSTRIAL');
+('SEC-04', 'Secadora Industrial 4', 100, 'INDUSTRIAL'),
+('SEC-05', 'Secadora Industrial 5', 100, 'INDUSTRIAL'),
+('SEC-06', 'Secadora Industrial 6', 100, 'INDUSTRIAL'),
+('SEC-07', 'Secadora Industrial 7', 100, 'INDUSTRIAL'),
+('SEC-08', 'Secadora Industrial 8', 100, 'INDUSTRIAL'),
+('SEC-09', 'Secadora Industrial 9', 100, 'INDUSTRIAL'),
+('SEC-10', 'Secadora Industrial 10', 100, 'INDUSTRIAL'),
+('SEC-11', 'Secadora Industrial 11', 100, 'INDUSTRIAL'),
+('SEC-12', 'Secadora Industrial 12', 100, 'INDUSTRIAL'),
+('SEC-13', 'Secadora Industrial 13', 100, 'INDUSTRIAL');
 
 -- Cajones de fermentación
 INSERT INTO `cajones_fermentacion` (`numero`, `capacidad_kg`, `material`) VALUES
@@ -547,8 +576,8 @@ INSERT INTO `indicadores` (`etapa_proceso`, `nombre`, `meta`, `formula`, `frecue
 INSERT INTO `parametros_proceso` (`categoria`, `clave`, `valor`, `tipo`, `descripcion`) VALUES
 ('FERMENTACION', 'dias_minimos', '5', 'NUMBER', 'Días mínimos de fermentación'),
 ('FERMENTACION', 'dias_maximos', '7', 'NUMBER', 'Días máximos de fermentación'),
-('FERMENTACION', 'temp_min', '40', 'NUMBER', 'Temperatura mínima esperada (°C)'),
-('FERMENTACION', 'temp_max', '52', 'NUMBER', 'Temperatura máxima esperada (°C)'),
+('FERMENTACION', 'temp_min', '70', 'NUMBER', 'Temperatura mínima esperada (°C)'),
+('FERMENTACION', 'temp_max', '130', 'NUMBER', 'Temperatura máxima esperada (°C)'),
 ('FERMENTACION', 'ph_min', '3.5', 'NUMBER', 'pH mínimo esperado'),
 ('FERMENTACION', 'ph_max', '5.5', 'NUMBER', 'pH máximo esperado'),
 ('SECADO', 'humedad_objetivo', '7', 'NUMBER', 'Humedad objetivo final (%)'),

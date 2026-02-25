@@ -51,16 +51,16 @@ $flujoEstados = [
         'label' => 'Verificación de Lote',
         'icon' => 'clipboard-check',
         'color' => 'indigo',
-        'siguiente' => 'FERMENTACION',
-        'accion' => 'Iniciar Fermentación',
-        'crear_registro' => 'fermentacion'
+        'siguiente' => 'PRE_SECADO',
+        'accion' => 'Iniciar Pre-secado',
+        'crear_registro' => 'secado_pre'
     ],
     'PRE_SECADO' => [
-        'label' => 'Pre-secado (Legado)',
+        'label' => 'Pre-secado',
         'icon' => 'sun',
         'color' => 'yellow',
         'siguiente' => 'FERMENTACION',
-        'accion' => 'Iniciar Fermentación (Legado)',
+        'accion' => 'Iniciar Fermentación',
         'crear_registro' => 'fermentacion'
     ],
     'FERMENTACION' => [
@@ -142,9 +142,21 @@ if (!$infoEstadoActual) {
 }
 
 // Verificar si hay registros existentes
+$colsRegistroSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasRegSecCol = static fn(string $name): bool => in_array($name, $colsRegistroSecado, true);
 $fichaRegistro = $db->fetch("SELECT id FROM fichas_registro WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
 $registroFermentacion = $db->fetch("SELECT * FROM registros_fermentacion WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
-$registroSecado = $db->fetch("SELECT * FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1", [$id]);
+$registrosSecado = $db->fetchAll("SELECT * FROM registros_secado WHERE lote_id = ? ORDER BY id ASC", [$id]);
+$totalRegistrosSecado = count($registrosSecado);
+$registroPreSecado = $totalRegistrosSecado > 0 ? $registrosSecado[0] : null;
+$registroSecadoFinal = null;
+if ($totalRegistrosSecado >= 2) {
+    $registroSecadoFinal = $registrosSecado[$totalRegistrosSecado - 1];
+} elseif ($totalRegistrosSecado === 1 && in_array($estadoActual, ['SECADO', 'CALIDAD_POST', 'CALIDAD_SALIDA', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO'], true)) {
+    // Compatibilidad con registros históricos donde solo existía una ficha de secado.
+    $registroSecadoFinal = $registrosSecado[0];
+}
+$registroSecado = $registroSecadoFinal ?? ($totalRegistrosSecado > 0 ? $registrosSecado[$totalRegistrosSecado - 1] : null);
 $colsPruebaCorte = array_column($db->fetchAll("SHOW COLUMNS FROM registros_prueba_corte"), 'Field');
 $hasTipoPrueba = in_array('tipo_prueba', $colsPruebaCorte, true);
 $sqlPrueba = $hasTipoPrueba
@@ -157,6 +169,19 @@ $registroCalidadSalida = $tablaCalidadSalidaExiste
     : null;
 $registroFermentacionId = (int)($registroFermentacion['id'] ?? 0);
 $registroSecadoId = (int)($registroSecado['id'] ?? 0);
+$isSecadoFinalizado = static function (?array $registro) use ($hasRegSecCol): bool {
+    if (!$registro) {
+        return false;
+    }
+    if ($hasRegSecCol('fecha_fin')) {
+        return !empty($registro['fecha_fin']);
+    }
+    if ($hasRegSecCol('humedad_final')) {
+        return isset($registro['humedad_final']) && $registro['humedad_final'] !== null && $registro['humedad_final'] !== '';
+    }
+    return false;
+};
+$preSecadoFinalizado = $isSecadoFinalizado($registroPreSecado);
 
 // Verificar si el proceso actual está finalizado (para mostrar advertencia)
 $procesoActualFinalizado = true;
@@ -177,13 +202,16 @@ if ($estadoActual === 'FERMENTACION' && $registroFermentacion) {
     $mensajeBloqueo = 'Debe registrar primero la fermentación antes de avanzar.';
 }
 
-if ($estadoActual === 'PRE_SECADO' && !$registroSecado) {
+if ($estadoActual === 'PRE_SECADO' && !$registroPreSecado) {
     $procesoActualFinalizado = false;
     $mensajeBloqueo = 'Debe registrar el pre-secado antes de iniciar fermentación.';
+} elseif ($estadoActual === 'PRE_SECADO' && !$preSecadoFinalizado) {
+    $procesoActualFinalizado = false;
+    $mensajeBloqueo = 'Debe finalizar la ficha de pre-secado antes de iniciar fermentación.';
 }
 
-if ($estadoActual === 'SECADO' && $registroSecado) {
-    if (empty($registroSecado['humedad_final']) || $registroSecado['humedad_final'] > 8) {
+if ($estadoActual === 'SECADO' && $registroSecadoFinal) {
+    if (empty($registroSecadoFinal['humedad_final']) || $registroSecadoFinal['humedad_final'] > 8) {
         $procesoActualFinalizado = false;
         $mensajeBloqueo = 'Debe completar el secado (humedad final ≤ 8%) antes de avanzar.';
     }
@@ -236,6 +264,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
             // Crear registro según el siguiente estado
             if (isset($infoEstadoActual['crear_registro'])) {
                 switch ($infoEstadoActual['crear_registro']) {
+                    case 'secado_pre':
+                        if (!$registroPreSecado) {
+                            $dataPreSecado = [
+                                'lote_id' => $id,
+                                'fecha' => date('Y-m-d'),
+                                'responsable_id' => Auth::user()['id'],
+                                'variedad' => $lote['variedad_nombre'],
+                                'humedad_inicial' => $lote['humedad_inicial']
+                            ];
+                            if ($hasRegSecCol('etapa_proceso')) {
+                                $dataPreSecado['etapa_proceso'] = 'PRE_SECADO';
+                            }
+                            $registroSecadoId = (int)$db->insert('registros_secado', $dataPreSecado);
+                        } else {
+                            $registroSecadoId = (int)$registroPreSecado['id'];
+                        }
+                        break;
+
                     case 'fermentacion':
                         // Verificar si ya existe
                         if (!$registroFermentacion) {
@@ -252,17 +298,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
                         break;
                         
                     case 'secado':
-                        // Verificar si ya existe
-                        if (!$registroSecado) {
-                            $registroSecadoId = (int)$db->insert('registros_secado', [
+                        // Permitir una ficha adicional para secado final (segunda ficha del flujo)
+                        if (!$registroSecadoFinal) {
+                            $dataSecadoFinal = [
                                 'lote_id' => $id,
                                 'fecha' => date('Y-m-d'),
                                 'responsable_id' => Auth::user()['id'],
                                 'variedad' => $lote['variedad_nombre'],
                                 'humedad_inicial' => $registroFermentacion['humedad_final'] ?? $lote['humedad_inicial']
-                            ]);
+                            ];
+                            if ($hasRegSecCol('etapa_proceso')) {
+                                $dataSecadoFinal['etapa_proceso'] = 'SECADO_FINAL';
+                            }
+                            $registroSecadoId = (int)$db->insert('registros_secado', $dataSecadoFinal);
                         } else {
-                            $registroSecadoId = (int)$registroSecado['id'];
+                            $registroSecadoId = (int)$registroSecadoFinal['id'];
                         }
                         break;
                         
@@ -304,9 +354,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['avanzar'])) {
             
             setFlash('success', 'Lote avanzado correctamente a: ' . $flujoEstados[$siguienteEstado]['label']);
             
-            // Redirigir según el nuevo estado
-            switch ($siguienteEstado) {
+                // Redirigir según el nuevo estado
+                switch ($siguienteEstado) {
                 case 'PRE_SECADO':
+                    if ($registroSecadoId > 0) {
+                        redirect('/secado/control.php?id=' . $registroSecadoId);
+                    }
                     redirect('/secado/crear.php?lote_id=' . $id);
                     break;
                 case 'FERMENTACION':
@@ -504,8 +557,8 @@ ob_start();
                         <i class="fas fa-external-link-alt mr-2"></i>Ir a Control de Fermentación
                     </a>
                     <?php elseif ($estadoActual === 'PRE_SECADO'): ?>
-                    <a href="/secado/crear.php?lote_id=<?= $id ?>" class="mt-4 inline-flex items-center text-amber-600 hover:text-amber-700">
-                        <i class="fas fa-external-link-alt mr-2"></i>Registrar Pre-secado
+                    <a href="<?= $registroPreSecado ? '/secado/control.php?id=' . (int)$registroPreSecado['id'] : '/secado/crear.php?lote_id=' . $id ?>" class="mt-4 inline-flex items-center text-amber-600 hover:text-amber-700">
+                        <i class="fas fa-external-link-alt mr-2"></i><?= $registroPreSecado ? 'Ir a Control de Pre-secado' : 'Registrar Pre-secado' ?>
                     </a>
                     <?php elseif ($estadoActual === 'SECADO' && $registroSecado): ?>
                     <a href="/secado/control.php?id=<?= (int)$registroSecado['id'] ?>" class="mt-4 inline-flex items-center text-yellow-600 hover:text-yellow-700">

@@ -37,12 +37,13 @@ if ($fichaId > 0) {
                l.codigo as lote_codigo,
                l.fecha_entrada as lote_fecha_entrada,
                l.estado_proceso as lote_estado,
-               p.nombre as proveedor_nombre,
-               p.tipo as proveedor_tipo,
+               l.peso_inicial_kg,
+               l.peso_actual_kg,
+               s.nombre as secadora_nombre,
                v.nombre as variedad_nombre
         FROM fichas_registro f
         INNER JOIN lotes l ON f.lote_id = l.id
-        LEFT JOIN proveedores p ON l.proveedor_id = p.id
+        LEFT JOIN secadoras s ON l.secadora_id = s.id
         LEFT JOIN variedades v ON l.variedad_id = v.id
         WHERE f.id = ?
     ", [$fichaId]);
@@ -72,12 +73,13 @@ if ($fichaId > 0) {
                l.codigo as lote_codigo,
                l.fecha_entrada as lote_fecha_entrada,
                l.estado_proceso as lote_estado,
-               p.nombre as proveedor_nombre,
-               p.tipo as proveedor_tipo,
+               l.peso_inicial_kg,
+               l.peso_actual_kg,
+               s.nombre as secadora_nombre,
                v.nombre as variedad_nombre
         FROM fichas_registro f
         INNER JOIN lotes l ON f.lote_id = l.id
-        LEFT JOIN proveedores p ON l.proveedor_id = p.id
+        LEFT JOIN secadoras s ON l.secadora_id = s.id
         LEFT JOIN variedades v ON l.variedad_id = v.id
         WHERE f.lote_id = ?
         ORDER BY f.id DESC
@@ -99,6 +101,11 @@ $calificacionMap = [
     35 => '31-35%',
     40 => '36-40%',
     45 => '41-45%',
+    50 => '46-50%',
+    55 => '51-55%',
+    60 => '56-60%',
+    65 => '61-65%',
+    70 => '> 65%',
 ];
 
 ?>
@@ -199,6 +206,16 @@ $calificacionMap = [
             }
             $calificacionRaw = isset($registro['calificacion_humedad']) ? (int)$registro['calificacion_humedad'] : null;
             $calificacionTxt = $calificacionRaw === null ? '—' : ($calificacionMap[$calificacionRaw] ?? ($calificacionRaw . '%'));
+            $mermaTxt = '—';
+            $pesoInicialMerma = isset($registro['peso_inicial_kg']) ? (float)$registro['peso_inicial_kg'] : 0.0;
+            $pesoActualMerma = isset($registro['peso_actual_kg']) ? (float)$registro['peso_actual_kg'] : 0.0;
+            if ($pesoInicialMerma > 0) {
+                $mermaCalc = (($pesoInicialMerma - $pesoActualMerma) / $pesoInicialMerma) * 100;
+                if ($mermaCalc < 0) {
+                    $mermaCalc = 0;
+                }
+                $mermaTxt = number_format($mermaCalc, 2) . '%';
+            }
             ?>
             <h1 class="title">Ficha de Lote: <?= htmlspecialchars($codigoVisual) ?></h1>
             <p class="subtitle">Lote base: <?= htmlspecialchars((string)$registro['lote_codigo']) ?> · Ficha #<?= (int)$registro['ficha_id'] ?></p>
@@ -206,12 +223,12 @@ $calificacionMap = [
             <div class="warning">Informacion comercial restringida: este visor no muestra precios ni valores de compra.</div>
 
             <div class="grid">
-                <div class="item"><div class="label">Proveedor</div><div class="value"><?= htmlspecialchars((string)($registro['proveedor_nombre'] ?? '—')) ?></div></div>
-                <div class="item"><div class="label">Tipo de proveedor</div><div class="value"><?= htmlspecialchars((string)($registro['proveedor_tipo'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Variedad</div><div class="value"><?= htmlspecialchars((string)($registro['variedad_nombre'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Producto</div><div class="value"><?= htmlspecialchars((string)($registro['producto'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Fecha de entrada</div><div class="value"><?= !empty($registro['lote_fecha_entrada']) ? date('d/m/Y', strtotime($registro['lote_fecha_entrada'])) : '—' ?></div></div>
                 <div class="item"><div class="label">Estado del lote</div><div class="value"><?= htmlspecialchars((string)($registro['lote_estado'] ?? '—')) ?></div></div>
+                <div class="item"><div class="label">Secadora</div><div class="value"><?= htmlspecialchars((string)($registro['secadora_nombre'] ?? '—')) ?></div></div>
+                <div class="item"><div class="label">Merma acumulada</div><div class="value"><?= htmlspecialchars($mermaTxt) ?></div></div>
                 <div class="item"><div class="label">Tipo de entrega</div><div class="value"><?= htmlspecialchars((string)($registro['tipo_entrega'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Calificacion aparente</div><div class="value"><?= htmlspecialchars((string)$calificacionTxt) ?></div></div>
                 <div class="item"><div class="label">Calidad del registro</div><div class="value"><?= htmlspecialchars((string)($registro['calidad_registro'] ?? '—')) ?></div></div>
@@ -220,7 +237,7 @@ $calificacionMap = [
                 <div class="item"><div class="label">Tara de envase</div><div class="value"><?= isset($registro['tara_envase']) ? number_format((float)$registro['tara_envase'], 2) . ' ' . htmlspecialchars((string)($registro['unidad_peso'] ?? 'KG')) : '—' ?></div></div>
                 <div class="item"><div class="label">Peso final</div><div class="value"><?= isset($registro['peso_final_registro']) ? number_format((float)$registro['peso_final_registro'], 2) . ' ' . htmlspecialchars((string)($registro['unidad_peso'] ?? 'KG')) : '—' ?></div></div>
                 <div class="item"><div class="label">Defectos visibles</div><div class="value"><?= isset($registro['presencia_defectos']) ? number_format((float)$registro['presencia_defectos'], 2) . '%' : '—' ?></div></div>
-                <div class="item"><div class="label">Revision de limpieza</div><div class="value"><?= htmlspecialchars((string)($registro['revision_limpieza'] ?? '—')) ?></div></div>
+                <div class="item"><div class="label">Revision de impurezas</div><div class="value"><?= htmlspecialchars((string)($registro['revision_limpieza'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Revision de olor normal</div><div class="value"><?= htmlspecialchars((string)($registro['revision_olor_normal'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Revision de ausencia de moho</div><div class="value"><?= htmlspecialchars((string)($registro['revision_ausencia_moho'] ?? '—')) ?></div></div>
                 <div class="item"><div class="label">Estado de fermentacion</div><div class="value"><?= htmlspecialchars((string)($registro['fermentacion_estado'] ?? '—')) ?></div></div>

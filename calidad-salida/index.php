@@ -156,6 +156,7 @@ ob_start();
                             'COMERCIO_JUSTO' => 'Comercio Justo',
                             'EUDR' => 'EUDR',
                             'OTRAS' => 'Otras',
+                            'NO_APLICA' => 'No aplica',
                         ];
                         $certificaciones = [];
                         if (!empty($reg['certificaciones'])) {

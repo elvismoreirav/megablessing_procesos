@@ -93,6 +93,182 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- tipos_permitidos
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN tipos_permitidos VARCHAR(120) NULL AFTER categoria',
+        'SELECT ''tipos_permitidos ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'tipos_permitidos'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- utm_este_x
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN utm_este_x VARCHAR(50) NULL AFTER direccion',
+        'SELECT ''utm_este_x ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'utm_este_x'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- utm_norte_y
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN utm_norte_y VARCHAR(50) NULL AFTER utm_este_x',
+        'SELECT ''utm_norte_y ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'utm_norte_y'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- seguridad_deforestacion
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN seguridad_deforestacion TINYINT(1) NULL AFTER utm_norte_y',
+        'SELECT ''seguridad_deforestacion ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'seguridad_deforestacion'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- arboles_endemicos
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN arboles_endemicos TINYINT(1) NULL AFTER seguridad_deforestacion',
+        'SELECT ''arboles_endemicos ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'arboles_endemicos'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- hectareas_totales
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN hectareas_totales DECIMAL(10,2) NULL AFTER arboles_endemicos',
+        'SELECT ''hectareas_totales ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'hectareas_totales'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- hectareas_ccn51
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN hectareas_ccn51 DECIMAL(10,2) NULL AFTER hectareas_totales',
+        'SELECT ''hectareas_ccn51 ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'hectareas_ccn51'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- hectareas_fino_aroma
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN hectareas_fino_aroma DECIMAL(10,2) NULL AFTER hectareas_ccn51',
+        'SELECT ''hectareas_fino_aroma ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'hectareas_fino_aroma'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- certificaciones
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN certificaciones TEXT NULL AFTER hectareas_fino_aroma',
+        'SELECT ''certificaciones ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'certificaciones'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- certificacion_otras
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN certificacion_otras VARCHAR(255) NULL AFTER certificaciones',
+        'SELECT ''certificacion_otras ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'certificacion_otras'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- documento_certificaciones
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE proveedores ADD COLUMN documento_certificaciones VARCHAR(255) NULL AFTER certificacion_otras',
+        'SELECT ''documento_certificaciones ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'proveedores'
+      AND COLUMN_NAME = 'documento_certificaciones'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- Sugerencia de categorias por defecto para registros existentes
 UPDATE proveedores
 SET categoria = CASE
@@ -111,3 +287,9 @@ WHERE categoria IS NULL OR categoria = '';
 UPDATE proveedores
 SET es_categoria = 1
 WHERE UPPER(codigo) IN ('M','B','ES','FM','VP');
+
+-- Completar tipos_permitidos para categorias existentes
+UPDATE proveedores
+SET tipos_permitidos = UPPER(tipo)
+WHERE es_categoria = 1
+  AND (tipos_permitidos IS NULL OR TRIM(tipos_permitidos) = '');

@@ -27,7 +27,7 @@ if ($usaRolDirecto) {
     ");
 } else {
     $usuariosPorRol = $db->fetchAll("
-        SELECT LOWER(REPLACE(COALESCE(r.nombre, 'consulta'), ' ', '')) as rol, COUNT(*) as count
+        SELECT LOWER(COALESCE(r.nombre, 'consulta')) as rol, COUNT(*) as count
         FROM usuarios u
         LEFT JOIN roles r ON u.rol_id = r.id
         WHERE u.activo = 1
@@ -35,79 +35,101 @@ if ($usaRolDirecto) {
     ");
 }
 
+$normalizeRoleKey = static function (string $value): string {
+    $normalize = function_exists('mb_strtolower')
+        ? mb_strtolower(trim($value), 'UTF-8')
+        : strtolower(trim($value));
+    $normalize = strtr($normalize, [
+        'á' => 'a',
+        'é' => 'e',
+        'í' => 'i',
+        'ó' => 'o',
+        'ú' => 'u',
+        'ü' => 'u',
+    ]);
+    $normalize = preg_replace('/\s+/', '_', $normalize);
+    return preg_replace('/[^a-z0-9_]/', '', (string)$normalize);
+};
+
 $countsByRol = [];
 foreach ($usuariosPorRol as $row) {
-    $rolKey = strtolower((string)$row['rol']);
-    if ($rolKey === 'administrador') {
-        $rolKey = 'admin';
+    $rolKey = $normalizeRoleKey((string)$row['rol']);
+    if ($rolKey === '') {
+        continue;
     }
-    $countsByRol[$rolKey] = $row['count'];
+    $countsByRol[$rolKey] = (int)$row['count'];
 }
 
-// Definición de roles y permisos
+// Definición de roles y permisos (alineada a correcciones del aplicativo).
 $rolesDefinition = [
-    'admin' => [
+    'administrador' => [
         'nombre' => 'Administrador',
-        'descripcion' => 'Acceso total al sistema. Puede gestionar todos los módulos, usuarios, configuraciones y realizar respaldos.',
+        'descripcion' => 'Acceso total al sistema.',
         'color' => 'purple',
         'icono' => 'fa-user-shield',
         'permisos' => [
-            'Gestionar lotes (crear, editar, eliminar)',
-            'Registrar fermentación y secado',
-            'Realizar pruebas de corte',
-            'Ver todos los reportes',
-            'Exportar datos',
-            'Gestionar usuarios',
-            'Configurar catálogos',
-            'Modificar parámetros del sistema',
-            'Crear y restaurar respaldos',
-            'Acceso a todas las secciones',
+            'Acceso completo a todos los módulos',
+            'Gestión de usuarios y configuración',
+            'Visualización y edición total',
         ]
     ],
-    'supervisor' => [
-        'nombre' => 'Supervisor',
-        'descripcion' => 'Supervisa los procesos y tiene acceso a reportes. No puede modificar configuraciones del sistema.',
+    'recepcion' => [
+        'nombre' => 'Recepción',
+        'descripcion' => 'Gestiona ficha de recepción, codificación e impresión de etiqueta.',
+        'color' => 'emerald',
+        'icono' => 'fa-truck-loading',
+        'permisos' => [
+            'Recepción',
+            'Codificación de lote',
+            'Imprimir etiqueta',
+        ]
+    ],
+    'operaciones' => [
+        'nombre' => 'Operaciones',
+        'descripcion' => 'Acceso a módulos de centro de acopio y procesos de planta.',
+        'color' => 'amber',
+        'icono' => 'fa-industry',
+        'permisos' => [
+            'Recepción',
+            'Codificación de lote',
+            'Imprimir etiqueta',
+            'Verificación de lote',
+            'Fermentación',
+            'Secado',
+            'Prueba de corte',
+            'Calidad de salida',
+        ]
+    ],
+    'pagos' => [
+        'nombre' => 'Pagos',
+        'descripcion' => 'Acceso a pagos, codificación, etiqueta y proveedores.',
+        'color' => 'teal',
+        'icono' => 'fa-money-bill-wave',
+        'permisos' => [
+            'Registro de pagos',
+            'Codificación de lote',
+            'Imprimir etiqueta',
+            'Configuración: Proveedores',
+        ]
+    ],
+    'supervisor_planta' => [
+        'nombre' => 'Supervisor Planta',
+        'descripcion' => 'Acceso a todos los módulos, excepto registro de pagos.',
         'color' => 'blue',
         'icono' => 'fa-user-tie',
         'permisos' => [
-            'Gestionar lotes (crear, editar)',
-            'Registrar fermentación y secado',
-            'Realizar pruebas de corte',
-            'Ver todos los reportes',
-            'Exportar datos',
-            'Ver catálogos (solo lectura)',
-            'No puede gestionar usuarios',
-            'No puede modificar configuraciones',
+            'Todos los módulos',
+            'No puede acceder a Registro de pagos',
         ]
     ],
-    'operador' => [
-        'nombre' => 'Operador',
-        'descripcion' => 'Registra datos de los procesos diarios. Acceso limitado a reportes.',
-        'color' => 'green',
-        'icono' => 'fa-user',
+    'supervisor_centro_de_acopio' => [
+        'nombre' => 'Supervisor Centro de Acopio',
+        'descripcion' => 'Acceso a todos los módulos, excepto registro de pagos.',
+        'color' => 'indigo',
+        'icono' => 'fa-warehouse',
         'permisos' => [
-            'Crear y editar lotes propios',
-            'Registrar datos de fermentación',
-            'Registrar datos de secado',
-            'Realizar pruebas de corte',
-            'Ver reportes básicos',
-            'No puede eliminar lotes',
-            'No puede acceder a configuración',
-        ]
-    ],
-    'consulta' => [
-        'nombre' => 'Consulta',
-        'descripcion' => 'Solo puede visualizar información. No puede realizar modificaciones.',
-        'color' => 'gray',
-        'icono' => 'fa-eye',
-        'permisos' => [
-            'Ver lotes (solo lectura)',
-            'Ver procesos de fermentación',
-            'Ver procesos de secado',
-            'Ver pruebas de corte',
-            'Ver reportes',
-            'No puede crear ni editar datos',
-            'No puede exportar datos',
+            'Todos los módulos',
+            'No puede acceder a Registro de pagos',
         ]
     ],
 ];
@@ -148,6 +170,10 @@ ob_start();
                 'purple' => ['bg' => 'bg-purple-500', 'light' => 'from-purple-50 to-indigo-50', 'border' => 'border-purple-200', 'text' => 'text-purple-700', 'badge' => 'bg-purple-100'],
                 'blue' => ['bg' => 'bg-blue-500', 'light' => 'from-blue-50 to-cyan-50', 'border' => 'border-blue-200', 'text' => 'text-blue-700', 'badge' => 'bg-blue-100'],
                 'green' => ['bg' => 'bg-green-500', 'light' => 'from-green-50 to-emerald-50', 'border' => 'border-green-200', 'text' => 'text-green-700', 'badge' => 'bg-green-100'],
+                'emerald' => ['bg' => 'bg-emerald-500', 'light' => 'from-emerald-50 to-teal-50', 'border' => 'border-emerald-200', 'text' => 'text-emerald-700', 'badge' => 'bg-emerald-100'],
+                'amber' => ['bg' => 'bg-amber-500', 'light' => 'from-amber-50 to-orange-50', 'border' => 'border-amber-200', 'text' => 'text-amber-700', 'badge' => 'bg-amber-100'],
+                'teal' => ['bg' => 'bg-teal-500', 'light' => 'from-teal-50 to-cyan-50', 'border' => 'border-teal-200', 'text' => 'text-teal-700', 'badge' => 'bg-teal-100'],
+                'indigo' => ['bg' => 'bg-indigo-500', 'light' => 'from-indigo-50 to-violet-50', 'border' => 'border-indigo-200', 'text' => 'text-indigo-700', 'badge' => 'bg-indigo-100'],
                 'gray' => ['bg' => 'bg-gray-500', 'light' => 'from-gray-50 to-slate-50', 'border' => 'border-gray-200', 'text' => 'text-gray-700', 'badge' => 'bg-gray-100'],
             ];
             $colors = $colorClasses[$rol['color']];
@@ -204,29 +230,28 @@ ob_start();
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Módulo / Acción</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Admin</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-blue-600 uppercase">Supervisor</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-green-600 uppercase">Operador</th>
-                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase">Consulta</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-purple-600 uppercase">Administrador</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-emerald-600 uppercase">Recepción</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-amber-600 uppercase">Operaciones</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-teal-600 uppercase">Pagos</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-blue-600 uppercase">Sup. Planta</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-indigo-600 uppercase">Sup. C. Acopio</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <?php
                     $permisoMatrix = [
-                        'Lotes - Ver' => [true, true, true, true],
-                        'Lotes - Crear' => [true, true, true, false],
-                        'Lotes - Editar' => [true, true, true, false],
-                        'Lotes - Eliminar' => [true, false, false, false],
-                        'Fermentación - Registrar' => [true, true, true, false],
-                        'Secado - Registrar' => [true, true, true, false],
-                        'Prueba de Corte - Realizar' => [true, true, true, false],
-                        'Reportes - Ver' => [true, true, true, true],
-                        'Reportes - Exportar' => [true, true, false, false],
-                        'Catálogos - Ver' => [true, true, true, false],
-                        'Catálogos - Editar' => [true, false, false, false],
-                        'Usuarios - Gestionar' => [true, false, false, false],
-                        'Configuración - Acceder' => [true, false, false, false],
-                        'Respaldos - Gestionar' => [true, false, false, false],
+                        'Ficha de recepción' => [true, true, true, false, true, true],
+                        'Imprimir etiqueta' => [true, true, true, true, true, true],
+                        'Codificación de lote' => [true, true, true, true, true, true],
+                        'Registro de pagos' => [true, false, false, true, false, false],
+                        'Configuración - Proveedores' => [true, false, false, true, true, true],
+                        'Verificación de lote' => [true, false, true, false, true, true],
+                        'Fermentación y secado' => [true, false, true, false, true, true],
+                        'Prueba de corte / Calidad salida' => [true, false, true, false, true, true],
+                        'Reportes e indicadores' => [true, false, false, false, true, true],
+                        'Configuración operativa' => [true, false, false, false, true, true],
+                        'Usuarios y roles' => [true, false, false, false, true, true],
                     ];
                     foreach ($permisoMatrix as $permiso => $roles):
                     ?>

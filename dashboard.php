@@ -386,20 +386,21 @@ ob_start();
     <div class="card-body">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
-                <h4 class="font-semibold text-emerald-800 mb-3">Procesos Centro de Acopio</h4>
+                <h4 class="font-semibold text-emerald-800 mb-3">Procesos de Recepción</h4>
                 <ol class="space-y-2 text-sm text-emerald-900">
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="hover:underline"> Recepción (Ficha de Recepción)</a></li>
-                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="hover:underline">Registro de Pagos (Ficha de pagos)</a></li>
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="hover:underline">Registro de Pagos</a></li>
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="hover:underline">Codificación de Lote</a></li>
-                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="hover:underline">Imprimir Etiqueta (Etiquetado de registro)</a></li>
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="hover:underline">Imprimir Etiqueta</a></li>
                 </ol>
             </div>
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-5">
-                <h4 class="font-semibold text-blue-800 mb-3">Procesos Planta</h4>
+                <h4 class="font-semibold text-blue-800 mb-3">Procesos Post-cosecha</h4>
                 <ol class="space-y-2 text-sm text-blue-900">
                     <li><a href="<?= APP_URL ?>/lotes/index.php" class="hover:underline">Verificación de Lote</a></li>
+                    <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">Pre-secado (Ficha de pre-secado)</a></li>
                     <li><a href="<?= APP_URL ?>/fermentacion/index.php" class="hover:underline">Fermentación (Ficha de fermentación)</a></li>
-                    <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">Secado (Ficha de secado)</a></li>
+                    <li><a href="<?= APP_URL ?>/secado/index.php" class="hover:underline">Secado final (Ficha de secado)</a></li>
                     <li><a href="<?= APP_URL ?>/prueba-corte/index.php" class="hover:underline">Prueba de Corte (Ficha de prueba de corte)</a></li>
                     <li><a href="<?= APP_URL ?>/calidad-salida/index.php" class="hover:underline">Calidad de salida</a></li>
                 </ol>
@@ -675,7 +676,7 @@ new Chart(ctxDia, {
 const estadoLabels = {
   'RECEPCION': 'Recepción',
   'CALIDAD': 'Verificación de Lote',
-  'PRE_SECADO': 'Pre-Secado (Legado)',
+  'PRE_SECADO': 'Pre-Secado',
   'FERMENTACION': 'Fermentación',
   'SECADO': 'Secado',
   'CALIDAD_POST': 'Prueba de Corte',

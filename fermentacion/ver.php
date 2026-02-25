@@ -108,6 +108,11 @@ $tempAmExpr = $hasCtrlCol('temperatura_am')
 $tempPmExpr = $hasCtrlCol('temperatura_pm')
     ? 'temperatura_pm'
     : ($hasCtrlCol('temp_pm') ? 'temp_pm' : ($hasCtrlCol('temp_ambiente') ? 'temp_ambiente' : 'NULL'));
+$temp20Expr = $hasCtrlCol('temp_20h') ? 'temp_20h' : 'NULL';
+$temp22Expr = $hasCtrlCol('temp_22h') ? 'temp_22h' : 'NULL';
+$temp24Expr = $hasCtrlCol('temp_24h') ? 'temp_24h' : 'NULL';
+$temp02Expr = $hasCtrlCol('temp_02h') ? 'temp_02h' : 'NULL';
+$temp04Expr = $hasCtrlCol('temp_04h') ? 'temp_04h' : 'NULL';
 $phAmExpr = $hasCtrlCol('ph_am') ? 'ph_am' : ($hasCtrlCol('ph_pulpa') ? 'ph_pulpa' : 'NULL');
 $phPmExpr = $hasCtrlCol('ph_pm') ? 'ph_pm' : ($hasCtrlCol('ph_cotiledon') ? 'ph_cotiledon' : 'NULL');
 $horaCtrlExpr = $hasCtrlCol('hora_volteo') ? 'hora_volteo' : ($hasCtrlCol('hora') ? 'hora' : 'NULL');
@@ -118,6 +123,11 @@ $controlDiario = $db->fetchAll("
            {$fechaCtrlExpr} as fecha,
            {$tempAmExpr} as temp_am,
            {$tempPmExpr} as temp_pm,
+           {$temp20Expr} as temp_20h,
+           {$temp22Expr} as temp_22h,
+           {$temp24Expr} as temp_24h,
+           {$temp02Expr} as temp_02h,
+           {$temp04Expr} as temp_04h,
            {$phAmExpr} as ph_am,
            {$phPmExpr} as ph_pm,
            volteo,
@@ -143,6 +153,11 @@ if (!empty($controlDiario)) {
     foreach ($controlDiario as $dia) {
         if ($dia['temp_am']) $temps[] = $dia['temp_am'];
         if ($dia['temp_pm']) $temps[] = $dia['temp_pm'];
+        if ($dia['temp_20h']) $temps[] = $dia['temp_20h'];
+        if ($dia['temp_22h']) $temps[] = $dia['temp_22h'];
+        if ($dia['temp_24h']) $temps[] = $dia['temp_24h'];
+        if ($dia['temp_02h']) $temps[] = $dia['temp_02h'];
+        if ($dia['temp_04h']) $temps[] = $dia['temp_04h'];
         if ($dia['ph_am']) $phs[] = $dia['ph_am'];
         if ($dia['ph_pm']) $phs[] = $dia['ph_pm'];
     }
@@ -209,11 +224,11 @@ ob_start();
         <p class="text-xs text-warmgray">Volteos Realizados</p>
     </div>
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= $stats['temp_promedio'] >= 45 ? 'text-green-600' : 'text-gold' ?>"><?= number_format($stats['temp_promedio'], 1) ?>°C</p>
+        <p class="text-3xl font-bold <?= ($stats['temp_promedio'] >= 70 && $stats['temp_promedio'] <= 130) ? 'text-green-600' : 'text-gold' ?>"><?= number_format($stats['temp_promedio'], 1) ?>°C</p>
         <p class="text-xs text-warmgray">Temp. Promedio</p>
     </div>
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= $stats['temp_max'] > 50 ? 'text-red-600' : 'text-green-600' ?>"><?= number_format($stats['temp_max'], 1) ?>°C</p>
+        <p class="text-3xl font-bold <?= $stats['temp_max'] > 130 ? 'text-red-600' : 'text-green-600' ?>"><?= number_format($stats['temp_max'], 1) ?>°C</p>
         <p class="text-xs text-warmgray">Temp. Máxima</p>
     </div>
     <div class="card p-4 text-center">
@@ -343,6 +358,11 @@ ob_start();
                         <tr>
                             <th class="text-center">Día</th>
                             <th class="text-center">Fecha</th>
+                            <th class="text-center">20h</th>
+                            <th class="text-center">22h</th>
+                            <th class="text-center">24h</th>
+                            <th class="text-center">02h</th>
+                            <th class="text-center">04h</th>
                             <th class="text-center">Temp AM</th>
                             <th class="text-center">Temp PM</th>
                             <th class="text-center">pH AM</th>
@@ -355,7 +375,7 @@ ob_start();
                     <tbody>
                         <?php if (empty($controlDiario)): ?>
                             <tr>
-                                <td colspan="9" class="text-center py-8 text-warmgray">
+                                <td colspan="14" class="text-center py-8 text-warmgray">
                                     No hay registros de control diario
                                 </td>
                             </tr>
@@ -364,9 +384,35 @@ ob_start();
                             <tr>
                                 <td class="text-center font-medium"><?= $dia['dia'] ?></td>
                                 <td class="text-center"><?= $dia['fecha'] ? Helpers::formatDate($dia['fecha']) : '-' ?></td>
+                                <?php
+                                    $slotsNocturnos = ['temp_20h', 'temp_22h', 'temp_24h', 'temp_02h', 'temp_04h'];
+                                ?>
+                                <?php foreach ($slotsNocturnos as $slotTemp): ?>
+                                <td class="text-center">
+                                    <?php if ($dia[$slotTemp]): ?>
+                                        <?php
+                                            $tempSlot = (float)$dia[$slotTemp];
+                                            $slotClass = $tempSlot > 130
+                                                ? 'bg-red-100 text-red-600'
+                                                : ($tempSlot < 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
+                                        ?>
+                                        <span class="px-2 py-1 rounded <?= $slotClass ?>">
+                                            <?= number_format($tempSlot, 1) ?>°C
+                                        </span>
+                                    <?php else: ?>
+                                        -
+                                    <?php endif; ?>
+                                </td>
+                                <?php endforeach; ?>
                                 <td class="text-center">
                                     <?php if ($dia['temp_am']): ?>
-                                        <span class="px-2 py-1 rounded <?= $dia['temp_am'] > 50 ? 'bg-red-100 text-red-600' : ($dia['temp_am'] >= 45 ? 'bg-green-100 text-green-600' : 'bg-gray-100') ?>">
+                                        <?php
+                                            $tempAm = (float)$dia['temp_am'];
+                                            $tempAmClass = $tempAm > 130
+                                                ? 'bg-red-100 text-red-600'
+                                                : ($tempAm < 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
+                                        ?>
+                                        <span class="px-2 py-1 rounded <?= $tempAmClass ?>">
                                             <?= number_format($dia['temp_am'], 1) ?>°C
                                         </span>
                                     <?php else: ?>
@@ -375,7 +421,13 @@ ob_start();
                                 </td>
                                 <td class="text-center">
                                     <?php if ($dia['temp_pm']): ?>
-                                        <span class="px-2 py-1 rounded <?= $dia['temp_pm'] > 50 ? 'bg-red-100 text-red-600' : ($dia['temp_pm'] >= 45 ? 'bg-green-100 text-green-600' : 'bg-gray-100') ?>">
+                                        <?php
+                                            $tempPm = (float)$dia['temp_pm'];
+                                            $tempPmClass = $tempPm > 130
+                                                ? 'bg-red-100 text-red-600'
+                                                : ($tempPm < 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
+                                        ?>
+                                        <span class="px-2 py-1 rounded <?= $tempPmClass ?>">
                                             <?= number_format($dia['temp_pm'], 1) ?>°C
                                         </span>
                                     <?php else: ?>
@@ -423,8 +475,24 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const data = <?= json_encode($controlDiario) ?>;
     const labels = data.map(d => 'Día ' + d.dia);
-    const tempAM = data.map(d => d.temp_am);
-    const tempPM = data.map(d => d.temp_pm);
+    const tempPromedio = data.map(d => {
+        const valores = [
+            d.temp_20h,
+            d.temp_22h,
+            d.temp_24h,
+            d.temp_02h,
+            d.temp_04h,
+            d.temp_am,
+            d.temp_pm
+        ].filter(v => v !== null && v !== '' && !Number.isNaN(Number(v)));
+        if (!valores.length) {
+            return null;
+        }
+        const suma = valores.reduce((acc, v) => acc + Number(v), 0);
+        return suma / valores.length;
+    });
+    const lineaMin = labels.map(() => 70);
+    const lineaMax = labels.map(() => 130);
     
     new Chart(ctx, {
         type: 'line',
@@ -432,20 +500,30 @@ document.addEventListener('DOMContentLoaded', function() {
             labels: labels,
             datasets: [
                 {
-                    label: 'Temperatura AM',
-                    data: tempAM,
+                    label: 'Temp. promedio diaria',
+                    data: tempPromedio,
                     borderColor: '#1e4d39',
                     backgroundColor: 'rgba(30, 77, 57, 0.1)',
                     tension: 0.3,
                     fill: true
                 },
                 {
-                    label: 'Temperatura PM',
-                    data: tempPM,
-                    borderColor: '#D6C29A',
-                    backgroundColor: 'rgba(214, 194, 154, 0.1)',
-                    tension: 0.3,
-                    fill: true
+                    label: 'Mínimo objetivo (70°C)',
+                    data: lineaMin,
+                    borderColor: 'rgba(250, 173, 20, 0.8)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: false,
+                    borderDash: [4, 4]
+                },
+                {
+                    label: 'Máximo objetivo (130°C)',
+                    data: lineaMax,
+                    borderColor: 'rgba(239, 68, 68, 0.8)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: false,
+                    borderDash: [4, 4]
                 }
             ]
         },
@@ -454,29 +532,13 @@ document.addEventListener('DOMContentLoaded', function() {
             plugins: {
                 legend: {
                     position: 'top'
-                },
-                annotation: {
-                    annotations: {
-                        line1: {
-                            type: 'line',
-                            yMin: 50,
-                            yMax: 50,
-                            borderColor: 'rgb(239, 68, 68)',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            label: {
-                                content: 'Máx. 50°C',
-                                enabled: true
-                            }
-                        }
-                    }
                 }
             },
             scales: {
                 y: {
                     beginAtZero: false,
-                    min: 30,
-                    max: 60,
+                    min: 60,
+                    max: 140,
                     title: {
                         display: true,
                         text: 'Temperatura (°C)'

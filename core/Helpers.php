@@ -141,9 +141,9 @@ class Helpers {
     
     /**
      * Generar código de lote
-     * Formato: CAT-DD-MM-YY-ESTADO-FER
-     * - ESTADO sale de estados_producto.codigo (si llega ID lo resuelve)
-     * - FER: NF si no hay fermentación previa, o código de estados_fermentacion.codigo (si llega ID lo resuelve)
+     * Formato: CAT-DD-MM-YY-ESTADO[-LETRA]
+     * - ESTADO: ES, SC, SM, BA
+     * - Si ya existe un lote con la misma base en el mismo día/categoría, se agrega sufijo alfabético.
      */
     public static function generateLoteCode($proveedorCodigo, $fecha, $estadoProducto, $estadoFermentacion = null) {
         $db = Database::getInstance();
@@ -167,24 +167,53 @@ class Helpers {
         }
         $estadoCode = strtoupper(trim((string)$estadoCode));
         $estadoCode = preg_replace('/[^A-Z0-9]/', '', $estadoCode);
-        if ($estadoCode === '') $estadoCode = 'EC'; // fallback
-
-        // FER: si no hay fermentación previa -> NF
-        if (empty($estadoFermentacion)) {
-            $ferCode = 'NF';
-        } else {
-            // si llega ID -> buscar codigo en estados_fermentacion
-            $ferCode = $estadoFermentacion;
-            if (is_numeric($estadoFermentacion)) {
-                $row = $db->fetch("SELECT codigo FROM estados_fermentacion WHERE id = ?", [(int)$estadoFermentacion]);
-                $ferCode = $row['codigo'] ?? 'F';
-            }
-            $ferCode = strtoupper(trim((string)$ferCode));
-            $ferCode = preg_replace('/[^A-Z0-9]/', '', $ferCode);
-            if ($ferCode === '') $ferCode = 'F';
+        if ($estadoCode === 'SS') {
+            $estadoCode = 'SM';
+        } elseif ($estadoCode === 'SECO') {
+            $estadoCode = 'SC';
+        } elseif ($estadoCode === 'SEMISECO') {
+            $estadoCode = 'SM';
+        } elseif ($estadoCode === 'BABA') {
+            $estadoCode = 'BA';
+        }
+        if (!in_array($estadoCode, ['ES', 'SC', 'SM', 'BA'], true)) {
+            $estadoCode = 'SC';
         }
 
-        return "{$prov}-{$dia}-{$mes}-{$anio}-{$estadoCode}-{$ferCode}";
+        $baseCode = "{$prov}-{$dia}-{$mes}-{$anio}-{$estadoCode}";
+
+        // Resolver sufijo alfabético para evitar colisiones en la misma base.
+        $like = $baseCode . '%';
+        $rows = $db->fetchAll(
+            "SELECT codigo FROM lotes WHERE codigo LIKE ?",
+            [$like]
+        );
+
+        $used = [];
+        $baseUsed = false;
+        foreach ($rows as $r) {
+            $code = strtoupper(trim((string)($r['codigo'] ?? '')));
+            if ($code === $baseCode) {
+                $baseUsed = true;
+                continue;
+            }
+            if (preg_match('/^' . preg_quote($baseCode, '/') . '-([A-Z])$/', $code, $m)) {
+                $used[$m[1]] = true;
+            }
+        }
+
+        if (!$baseUsed && empty($used)) {
+            return $baseCode;
+        }
+
+        foreach (range('A', 'Z') as $letter) {
+            if (!isset($used[$letter])) {
+                return $baseCode . '-' . $letter;
+            }
+        }
+
+        // Fallback si se agotaron letras simples.
+        return $baseCode . '-Z';
     }
 
     
@@ -285,7 +314,7 @@ class Helpers {
         $badges = [
             'RECEPCION' => ['color' => 'bg-blue-100 text-blue-800', 'label' => 'Recepción'],
             'CALIDAD' => ['color' => 'bg-indigo-100 text-indigo-800', 'label' => 'Verificación de Lote'],
-            'PRE_SECADO' => ['color' => 'bg-yellow-100 text-yellow-800', 'label' => 'Pre-Secado (Legado)'],
+            'PRE_SECADO' => ['color' => 'bg-yellow-100 text-yellow-800', 'label' => 'Pre-Secado'],
             'FERMENTACION' => ['color' => 'bg-orange-100 text-orange-800', 'label' => 'Fermentación'],
             'SECADO' => ['color' => 'bg-red-100 text-red-800', 'label' => 'Secado'],
             'CALIDAD_POST' => ['color' => 'bg-green-100 text-green-800', 'label' => 'Prueba de Corte'],

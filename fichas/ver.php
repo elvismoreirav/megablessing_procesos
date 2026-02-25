@@ -87,6 +87,11 @@ $etiquetasCalificacionHumedad = [
     35 => '31-35%',
     40 => '36-40%',
     45 => '41-45%',
+    50 => '46-50%',
+    55 => '51-55%',
+    60 => '56-60%',
+    65 => '61-65%',
+    70 => '> 65%',
 ];
 $valorCalificacion = isset($ficha['calificacion_humedad']) ? (int)$ficha['calificacion_humedad'] : null;
 $calificacionHumedadTexto = $valorCalificacion === null
@@ -169,14 +174,18 @@ if ($tablaCalidadSalida && $tieneLoteAsociado) {
 }
 
 $fechaPago = $hasFichaCol('fecha_pago') ? ($ficha['fecha_pago'] ?? null) : null;
+$tipoComprobante = $hasFichaCol('tipo_comprobante') ? trim((string)($ficha['tipo_comprobante'] ?? '')) : '';
 $facturaCompra = $hasFichaCol('factura_compra') ? trim((string)($ficha['factura_compra'] ?? '')) : '';
+$cantidadCompradaUnidad = $hasFichaCol('cantidad_comprada_unidad') ? trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')) : 'KG';
 $cantidadComprada = $hasFichaCol('cantidad_comprada') ? ($ficha['cantidad_comprada'] ?? null) : null;
 $formaPago = $hasFichaCol('forma_pago') ? trim((string)($ficha['forma_pago'] ?? '')) : '';
 
 $tienePago = false;
-if ($hasFichaCol('fecha_pago') && $hasFichaCol('factura_compra') && $hasFichaCol('cantidad_comprada') && $hasFichaCol('forma_pago')) {
+if ($hasFichaCol('fecha_pago') && $hasFichaCol('tipo_comprobante') && $hasFichaCol('factura_compra') && $hasFichaCol('cantidad_comprada_unidad') && $hasFichaCol('cantidad_comprada') && $hasFichaCol('forma_pago')) {
     $tienePago = !empty($fechaPago)
+        && $tipoComprobante !== ''
         && $facturaCompra !== ''
+        && $cantidadCompradaUnidad !== ''
         && $cantidadComprada !== null
         && (float)$cantidadComprada > 0
         && $formaPago !== '';
@@ -325,8 +334,8 @@ ob_start();
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <?php
                             $revisionItems = [
-                                'Limpieza' => $ficha['revision_limpieza'] ?? null,
-                                'Olor normal' => $ficha['revision_olor_normal'] ?? null,
+                                'Impurezas' => $ficha['revision_limpieza'] ?? null,
+                                'Olor normal (sin olores extraños)' => $ficha['revision_olor_normal'] ?? null,
                                 'Ausencia de moho visible' => $ficha['revision_ausencia_moho'] ?? null,
                             ];
                             foreach ($revisionItems as $label => $valor):
@@ -419,7 +428,13 @@ ob_start();
                             <div>
                                 <dt class="text-sm text-gray-500">Cantidad comprada</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?= ($cantidadComprada !== null && is_numeric($cantidadComprada)) ? number_format((float)$cantidadComprada, 2) . ' kg' : '—' ?>
+                                    <?= ($cantidadComprada !== null && is_numeric($cantidadComprada)) ? number_format((float)$cantidadComprada, 2) . ' ' . htmlspecialchars($cantidadCompradaUnidad !== '' ? $cantidadCompradaUnidad : 'KG') : '—' ?>
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm text-gray-500">Tipo de comprobante</dt>
+                                <dd class="font-medium text-gray-900">
+                                    <?= $tipoComprobante !== '' ? htmlspecialchars(str_replace('_', ' ', $tipoComprobante)) : '—' ?>
                                 </dd>
                             </div>
                             <div>
@@ -646,7 +661,7 @@ ob_start();
                         'RECEPCION' => 'Recepción',
                         'RECIBIDO' => 'Recepción',
                         'CALIDAD' => 'Verificación de Lote',
-                        'PRE_SECADO' => 'Pre-secado (Legado)',
+                        'PRE_SECADO' => 'Pre-secado',
                         'FERMENTACION' => 'Fermentación',
                         'SECADO' => 'Secado',
                         'CALIDAD_POST' => 'Prueba de Corte',
@@ -691,14 +706,14 @@ ob_start();
                 <h3 class="font-semibold text-gray-900 mb-4">Acciones Rápidas</h3>
                 <div class="space-y-4">
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">1. Procesos Centro de Acopio</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">1. Procesos de Recepción</p>
                         <div class="space-y-2">
                             <a href="<?= APP_URL ?>/fichas/ver.php?id=<?= (int)$id ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
                                 <span class="text-gray-700">a. Recepción (Ficha de Recepción)</span>
                                 <span class="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">Completado</span>
                             </a>
                             <a href="<?= $rutaPago ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                                <span class="text-gray-700">b. Registro de Pagos (Ficha de pagos)</span>
+                                <span class="text-gray-700">b. Registro de Pagos</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tienePago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tienePago ? 'Registrado' : 'Pendiente' ?>
                                 </span>
@@ -710,14 +725,14 @@ ob_start();
                                 </span>
                             </a>
                             <a href="<?= $rutaEtiqueta ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                                <span class="text-gray-700">i. Imprimir Etiqueta (Etiquetado de registro)</span>
+                                <span class="text-gray-700">i. Imprimir Etiqueta</span>
                                 <span class="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">Disponible</span>
                             </a>
                         </div>
                     </div>
 
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">2. Procesos Planta</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">2. Procesos Post-cosecha</p>
                         <div class="space-y-2">
                             <a href="<?= $tieneLoteAsociado ? APP_URL . '/lotes/editar.php?id=' . (int)$ficha['lote_id'] : '#' ?>" class="flex items-center gap-3 p-3 rounded-lg transition-colors <?= $tieneLoteAsociado ? 'hover:bg-blue-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
                                 <i class="fas fa-clipboard-check text-blue-600 w-5"></i>

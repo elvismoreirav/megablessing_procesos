@@ -78,6 +78,7 @@ $opcionesCertificaciones = [
     'COMERCIO_JUSTO' => 'Comercio Justo',
     'EUDR' => 'EUDR',
     'OTRAS' => 'Otras',
+    'NO_APLICA' => 'No aplica',
 ];
 
 $fetchLoteInfo = static function (Database $db, int $loteId) {
@@ -137,6 +138,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tablaExiste) {
     }
 
     $certificacionesSeleccionadas = array_values(array_intersect(array_keys($opcionesCertificaciones), $certificacionesInput));
+    if (in_array('NO_APLICA', $certificacionesSeleccionadas, true)) {
+        $certificacionesSeleccionadas = ['NO_APLICA'];
+        $otraCertificacion = '';
+    }
     if (empty($certificacionesSeleccionadas)) {
         $errors[] = 'Seleccione al menos una certificación del lote.';
     }
@@ -154,12 +159,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tablaExiste) {
             $gradoCalidad = 'NO_APLICA';
         }
 
-        if (!$variedadEsCCN51 && !$variedadEsFinoAroma) {
+        if (!in_array('NO_APLICA', $certificacionesSeleccionadas, true) && !$variedadEsCCN51 && !$variedadEsFinoAroma) {
             $errors[] = 'Las certificaciones aplican para lotes CCN51 o Fino de Aroma.';
         }
     }
 
-    if (in_array('OTRAS', $certificacionesSeleccionadas, true) && $otraCertificacion === '') {
+    if (!in_array('NO_APLICA', $certificacionesSeleccionadas, true) && in_array('OTRAS', $certificacionesSeleccionadas, true) && $otraCertificacion === '') {
         $errors[] = 'Si selecciona "Otras", detalle la certificación adicional.';
     }
 
@@ -415,7 +420,7 @@ ob_start();
                         </label>
                     <?php endforeach; ?>
                 </div>
-                <p class="text-xs text-warmgray mt-2">Puede seleccionar una o varias certificaciones.</p>
+                <p class="text-xs text-warmgray mt-2">Puede seleccionar una o varias certificaciones, o marcar "No aplica".</p>
             </div>
 
             <div class="form-group" id="otra_certificacion_group" style="display: none;">
@@ -464,10 +469,21 @@ ob_start();
 function toggleOtraCertificacion() {
     const checks = Array.from(document.querySelectorAll('input[name="certificaciones[]"]'));
     const otra = checks.find((el) => el.value === 'OTRAS');
+    const noAplica = checks.find((el) => el.value === 'NO_APLICA');
     const group = document.getElementById('otra_certificacion_group');
     if (!group || !otra) return;
 
-    group.style.display = otra.checked ? 'block' : 'none';
+    if (noAplica?.checked) {
+        checks.forEach((el) => {
+            if (el.value !== 'NO_APLICA') {
+                el.checked = false;
+            }
+        });
+    } else if (checks.some((el) => el.checked && el.value !== 'NO_APLICA') && noAplica) {
+        noAplica.checked = false;
+    }
+
+    group.style.display = otra.checked && !noAplica?.checked ? 'block' : 'none';
 }
 
 document.addEventListener('DOMContentLoaded', toggleOtraCertificacion);
