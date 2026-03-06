@@ -16,6 +16,7 @@ if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
 
 $pageTitle = 'Configuración del Sistema';
 $db = Database::getInstance();
+Helpers::ensureCajonesFermentacionCatalog((int)(Helpers::getParametros('GENERAL')['cajones_fermentacion_objetivo'] ?? 6));
 $tableExists = static function (string $table) use ($db): bool {
     return (bool)$db->fetchOne("SHOW TABLES LIKE ?", [$table]);
 };

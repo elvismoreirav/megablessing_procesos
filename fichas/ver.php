@@ -173,25 +173,32 @@ if ($tablaCalidadSalida && $tieneLoteAsociado) {
     ", [$ficha['lote_id']]);
 }
 
-$fechaPago = $hasFichaCol('fecha_pago') ? ($ficha['fecha_pago'] ?? null) : null;
-$tipoComprobante = $hasFichaCol('tipo_comprobante') ? trim((string)($ficha['tipo_comprobante'] ?? '')) : '';
-$facturaCompra = $hasFichaCol('factura_compra') ? trim((string)($ficha['factura_compra'] ?? '')) : '';
-$cantidadCompradaUnidad = $hasFichaCol('cantidad_comprada_unidad') ? trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')) : 'KG';
-$cantidadComprada = $hasFichaCol('cantidad_comprada') ? ($ficha['cantidad_comprada'] ?? null) : null;
-$formaPago = $hasFichaCol('forma_pago') ? trim((string)($ficha['forma_pago'] ?? '')) : '';
-
-$tienePago = false;
-if ($hasFichaCol('fecha_pago') && $hasFichaCol('tipo_comprobante') && $hasFichaCol('factura_compra') && $hasFichaCol('cantidad_comprada_unidad') && $hasFichaCol('cantidad_comprada') && $hasFichaCol('forma_pago')) {
-    $tienePago = !empty($fechaPago)
-        && $tipoComprobante !== ''
-        && $facturaCompra !== ''
-        && $cantidadCompradaUnidad !== ''
-        && $cantidadComprada !== null
-        && (float)$cantidadComprada > 0
-        && $formaPago !== '';
-} else {
-    $tienePago = isset($ficha['precio_total_pagar']) && $ficha['precio_total_pagar'] !== null;
-}
+$detallesPago = Helpers::getFichaPagoDetalles($id, $ficha);
+$detallesPagoMostrar = array_values(array_filter($detallesPago, static function (array $detalle): bool {
+    $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : 0.0;
+    $precioTotal = isset($detalle['precio_total_pagar']) ? (float)$detalle['precio_total_pagar'] : 0.0;
+    return trim((string)($detalle['fecha_pago'] ?? '')) !== ''
+        || trim((string)($detalle['factura_compra'] ?? '')) !== ''
+        || $cantidad > 0
+        || $precioTotal > 0;
+}));
+$resumenPago = Helpers::getFichaPagoResumen($detallesPagoMostrar);
+$fechaPago = $resumenPago['fecha_pago'] ?? ($hasFichaCol('fecha_pago') ? ($ficha['fecha_pago'] ?? null) : null);
+$tipoComprobante = trim((string)($resumenPago['tipo_comprobante'] ?? ($hasFichaCol('tipo_comprobante') ? ($ficha['tipo_comprobante'] ?? '') : '')));
+$facturaCompra = trim((string)($resumenPago['factura_compra'] ?? ($hasFichaCol('factura_compra') ? ($ficha['factura_compra'] ?? '') : '')));
+$cantidadCompradaUnidad = $resumenPago['cantidad_comprada'] !== null
+    ? 'KG'
+    : ($hasFichaCol('cantidad_comprada_unidad') ? trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')) : 'KG');
+$cantidadComprada = $resumenPago['cantidad_comprada'] ?? ($hasFichaCol('cantidad_comprada') ? ($ficha['cantidad_comprada'] ?? null) : null);
+$formaPago = trim((string)($resumenPago['forma_pago'] ?? ($hasFichaCol('forma_pago') ? ($ficha['forma_pago'] ?? '') : '')));
+$precioBasePago = $resumenPago['precio_base_dia'] ?? (isset($ficha['precio_base_dia']) ? (float)$ficha['precio_base_dia'] : null);
+$diferencialPago = $resumenPago['diferencial_usd'] ?? (isset($ficha['diferencial_usd']) ? (float)$ficha['diferencial_usd'] : null);
+$precioUnitarioPago = $resumenPago['precio_unitario_final'] ?? (isset($ficha['precio_unitario_final']) ? (float)$ficha['precio_unitario_final'] : null);
+$precioTotalPago = ($resumenPago['detalle_count'] ?? 0) > 0
+    ? (float)($resumenPago['precio_total_pagar'] ?? 0)
+    : (isset($ficha['precio_total_pagar']) ? (float)$ficha['precio_total_pagar'] : null);
+$detallePagoMultiple = count($detallesPagoMostrar) > 1;
+$tienePago = Helpers::fichaTienePagoRegistrado($ficha, $detallesPagoMostrar);
 $tieneCodificacion = trim((string)($ficha['codificacion'] ?? '')) !== '';
 $rutaPago = APP_URL . '/fichas/pago.php?id=' . (int)$id;
 $rutaCodificacion = APP_URL . '/fichas/codificacion.php?id=' . (int)$id;
@@ -404,25 +411,43 @@ ob_start();
                             <div>
                                 <dt class="text-sm text-gray-500">Precio base día</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?= isset($ficha['precio_base_dia']) ? '$ ' . number_format((float)$ficha['precio_base_dia'], 4) : '—' ?>
+                                    <?php if ($precioBasePago !== null): ?>
+                                        $ <?= number_format((float)$precioBasePago, 4) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                             <div>
                                 <dt class="text-sm text-gray-500">Diferencial</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?= isset($ficha['diferencial_usd']) ? '$ ' . number_format((float)$ficha['diferencial_usd'], 4) : '—' ?>
+                                    <?php if ($diferencialPago !== null): ?>
+                                        $ <?= number_format((float)$diferencialPago, 4) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                             <div>
                                 <dt class="text-sm text-gray-500">Precio unitario final</dt>
                                 <dd class="font-semibold text-emerald-700">
-                                    <?= isset($ficha['precio_unitario_final']) ? '$ ' . number_format((float)$ficha['precio_unitario_final'], 4) . ' /kg' : '—' ?>
+                                    <?php if ($precioUnitarioPago !== null): ?>
+                                        $ <?= number_format((float)$precioUnitarioPago, 4) ?> /kg
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500 font-medium">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                             <div>
                                 <dt class="text-sm text-gray-500">Precio total a pagar</dt>
                                 <dd class="font-bold text-emerald-700">
-                                    <?= isset($ficha['precio_total_pagar']) ? '$ ' . number_format((float)$ficha['precio_total_pagar'], 2) : '—' ?>
+                                    <?= $precioTotalPago !== null ? '$ ' . number_format((float)$precioTotalPago, 2) : '—' ?>
                                 </dd>
                             </div>
                             <div>
@@ -434,7 +459,13 @@ ob_start();
                             <div>
                                 <dt class="text-sm text-gray-500">Tipo de comprobante</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?= $tipoComprobante !== '' ? htmlspecialchars(str_replace('_', ' ', $tipoComprobante)) : '—' ?>
+                                    <?php if ($tipoComprobante !== ''): ?>
+                                        <?= htmlspecialchars(str_replace('_', ' ', $tipoComprobante)) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                             <div>
@@ -446,16 +477,91 @@ ob_start();
                             <div>
                                 <dt class="text-sm text-gray-500">Factura asignada</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?= $facturaCompra !== '' ? htmlspecialchars($facturaCompra) : '—' ?>
+                                    <?php if ($facturaCompra !== ''): ?>
+                                        <?= htmlspecialchars($facturaCompra) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                             <div>
                                 <dt class="text-sm text-gray-500">Forma de pago</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?= $formaPago !== '' ? htmlspecialchars(ucfirst(strtolower($formaPago))) : '—' ?>
+                                    <?php if ($formaPago !== ''): ?>
+                                        <?= htmlspecialchars(ucfirst(strtolower($formaPago))) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                         </dl>
+
+                        <?php if (!empty($detallesPagoMostrar)): ?>
+                        <div class="mt-6">
+                            <h4 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Detalle de pago por proveedor</h4>
+                            <div class="overflow-x-auto">
+                                <table class="w-full border border-gray-200 rounded-lg overflow-hidden">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Proveedor</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Fecha</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Comprobante</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Factura</th>
+                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cantidad</th>
+                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Equiv. KG</th>
+                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Unitario</th>
+                                            <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Forma de pago</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <?php foreach ($detallesPagoMostrar as $detallePago): ?>
+                                        <?php
+                                        $cantidadDetalle = isset($detallePago['cantidad_comprada']) ? (float)$detallePago['cantidad_comprada'] : null;
+                                        $cantidadDetalleUnidad = strtoupper(trim((string)($detallePago['cantidad_comprada_unidad'] ?? 'KG')));
+                                        $cantidadDetalleKg = isset($detallePago['cantidad_comprada_kg']) && $detallePago['cantidad_comprada_kg'] !== null
+                                            ? (float)$detallePago['cantidad_comprada_kg']
+                                            : (($cantidadDetalle !== null && $cantidadDetalle > 0) ? Helpers::pesoToKg($cantidadDetalle, $cantidadDetalleUnidad) : null);
+                                        $precioDetalle = isset($detallePago['precio_total_pagar']) ? (float)$detallePago['precio_total_pagar'] : null;
+                                        $precioUnitarioDetalle = isset($detallePago['precio_unitario_final']) ? (float)$detallePago['precio_unitario_final'] : null;
+                                        ?>
+                                        <tr>
+                                            <td class="px-3 py-2 text-sm text-gray-800"><?= htmlspecialchars((string)($detallePago['proveedor_nombre'] ?? '—')) ?></td>
+                                            <td class="px-3 py-2 text-sm text-gray-700">
+                                                <?= !empty($detallePago['fecha_pago']) ? date('d/m/Y', strtotime((string)$detallePago['fecha_pago'])) : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-gray-700">
+                                                <?= !empty($detallePago['tipo_comprobante']) ? htmlspecialchars(str_replace('_', ' ', (string)$detallePago['tipo_comprobante'])) : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-gray-700">
+                                                <?= !empty($detallePago['factura_compra']) ? htmlspecialchars((string)$detallePago['factura_compra']) : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-right text-gray-700">
+                                                <?= $cantidadDetalle !== null ? number_format($cantidadDetalle, 2) . ' ' . htmlspecialchars($cantidadDetalleUnidad) : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-right text-gray-700">
+                                                <?= $cantidadDetalleKg !== null ? number_format($cantidadDetalleKg, 2) . ' kg' : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-right text-gray-700">
+                                                <?= $precioUnitarioDetalle !== null ? '$ ' . number_format($precioUnitarioDetalle, 4) : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-right font-semibold text-emerald-700">
+                                                <?= $precioDetalle !== null ? '$ ' . number_format($precioDetalle, 2) : '—' ?>
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-gray-700">
+                                                <?= !empty($detallePago['forma_pago']) ? htmlspecialchars(ucfirst(strtolower((string)$detallePago['forma_pago']))) : '—' ?>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

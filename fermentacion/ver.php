@@ -172,9 +172,17 @@ if (!empty($controlDiario)) {
 
 // Estado
 $finalizado = !empty($fermentacion['fecha_fin']);
+$pesoInicialKg = isset($fermentacion['peso_inicial']) && $fermentacion['peso_inicial'] !== null
+    ? (float)$fermentacion['peso_inicial']
+    : null;
+$pesoFinalKg = isset($fermentacion['peso_final']) && $fermentacion['peso_final'] !== null
+    ? (float)$fermentacion['peso_final']
+    : null;
 
 $pageTitle = 'Fermentación: ' . $fermentacion['lote_codigo'];
 $pageSubtitle = 'Detalle del proceso de fermentación';
+$franjaDiurnaAmLabel = '08h-12h';
+$franjaDiurnaPmLabel = '12h-18h';
 
 ob_start();
 ?>
@@ -297,12 +305,12 @@ ob_start();
                 <?php endif; ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Peso Inicial</span>
-                    <span class="font-medium"><?= $fermentacion['peso_inicial'] ? number_format($fermentacion['peso_inicial'], 2) . ' kg' : 'N/R' ?></span>
+                    <span class="font-medium"><?= $pesoInicialKg !== null ? Helpers::formatPesoVisual($pesoInicialKg, ['QQ', 'LB']) : 'N/R' ?></span>
                 </div>
                 <?php if ($finalizado && $fermentacion['peso_final']): ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Peso Final</span>
-                    <span class="font-medium"><?= number_format($fermentacion['peso_final'], 2) ?> kg</span>
+                    <span class="font-medium"><?= $pesoFinalKg !== null ? Helpers::formatPesoVisual($pesoFinalKg, ['QQ', 'LB']) : 'N/R' ?></span>
                 </div>
                 <?php 
                     $perdida = (($fermentacion['peso_inicial'] - $fermentacion['peso_final']) / $fermentacion['peso_inicial']) * 100;
@@ -350,7 +358,12 @@ ob_start();
     <div class="lg:col-span-2">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Control Diario de Fermentación</h3>
+                <div>
+                    <h3 class="card-title">Control Diario de Fermentación</h3>
+                    <p class="text-sm text-warmgray mt-1">
+                        Franja diurna visible: <?= htmlspecialchars($franjaDiurnaAmLabel) ?> y <?= htmlspecialchars($franjaDiurnaPmLabel) ?>. Franja nocturna: 20h, 22h, 24h, 02h y 04h.
+                    </p>
+                </div>
             </div>
             <div class="table-container">
                 <table class="table">
@@ -363,10 +376,10 @@ ob_start();
                             <th class="text-center">24h</th>
                             <th class="text-center">02h</th>
                             <th class="text-center">04h</th>
-                            <th class="text-center">Temp AM</th>
-                            <th class="text-center">Temp PM</th>
-                            <th class="text-center">pH AM</th>
-                            <th class="text-center">pH PM</th>
+                            <th class="text-center"><?= htmlspecialchars($franjaDiurnaAmLabel) ?></th>
+                            <th class="text-center"><?= htmlspecialchars($franjaDiurnaPmLabel) ?></th>
+                            <th class="text-center">pH <?= htmlspecialchars($franjaDiurnaAmLabel) ?></th>
+                            <th class="text-center">pH <?= htmlspecialchars($franjaDiurnaPmLabel) ?></th>
                             <th class="text-center">Volteo</th>
                             <th class="text-center">Hora</th>
                             <th>Observaciones</th>

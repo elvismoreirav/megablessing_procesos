@@ -10,9 +10,9 @@ class Helpers {
     /**
      * Resolver prefijo de proveedor para código de lote.
      * Prioridad:
-     * 1) Código de la categoría semilla (M, B, ES, FM, VP)
+     * 1) Código de la categoría semilla (M, CA, ES, FM, VP)
      * 2) Mapeo por categoría textual
-     * 3) Mapeo por tipo (MERCADO, BODEGA, RUTA, PRODUCTOR)
+     * 3) Mapeo por tipo (MERCADO, CENTRO DE ACOPIO, RUTA, PRODUCTOR)
      */
     public static function resolveProveedorLotePrefix($proveedorRef) {
         $db = Database::getInstance();
@@ -34,17 +34,19 @@ class Helpers {
             return preg_replace('/[^A-Z0-9]/', '', $code);
         };
 
-        $codigosCategoriaValidos = ['M', 'B', 'ES', 'FM', 'VP'];
+        $codigosCategoriaValidos = ['M', 'CA', 'ES', 'FM', 'VP'];
         $categoriaMap = [
             'MERCADO' => 'M',
-            'BODEGA' => 'B',
+            'BODEGA' => 'CA',
+            'CENTRO DE ACOPIO' => 'CA',
             'ESMERALDAS' => 'ES',
             'FLOR DE MANABI' => 'FM',
             'VIA PEDERNALES' => 'VP',
         ];
         $tipoMap = [
             'MERCADO' => 'M',
-            'BODEGA' => 'B',
+            'BODEGA' => 'CA',
+            'CENTRO DE ACOPIO' => 'CA',
             'RUTA' => 'RT',
             'PRODUCTOR' => 'PR',
         ];
@@ -71,6 +73,9 @@ class Helpers {
             $rawCode = $sanitizeCode($raw);
             $rawNorm = $normalize($raw);
 
+            if ($rawCode === 'B') {
+                return 'CA';
+            }
             if (in_array($rawCode, $codigosCategoriaValidos, true)) {
                 return $rawCode;
             }
@@ -115,6 +120,9 @@ class Helpers {
                     $catRow = null;
                 }
                 $catCode = $sanitizeCode((string)($catRow['codigo'] ?? ''));
+                if ($catCode === 'B') {
+                    return 'CA';
+                }
                 if (in_array($catCode, $codigosCategoriaValidos, true)) {
                     return $catCode;
                 }
@@ -131,6 +139,9 @@ class Helpers {
             }
 
             $code = $sanitizeCode((string)($row['codigo'] ?? ''));
+            if ($code === 'B') {
+                return 'CA';
+            }
             if (in_array($code, $codigosCategoriaValidos, true)) {
                 return $code;
             }
@@ -254,6 +265,13 @@ class Helpers {
     public static function kgToQQ($kg) {
         return $kg / 45.36;
     }
+
+    /**
+     * Convertir kg a libras
+     */
+    public static function kgToLb($kg) {
+        return $kg / 0.45359237;
+    }
     
     /**
      * Convertir quintales a kg
@@ -281,6 +299,96 @@ class Helpers {
             'QQ' => self::qqToKg($valor),
             default => $valor,
         };
+    }
+
+    /**
+     * Convertir kg a la unidad solicitada (LB/KG/QQ).
+     */
+    public static function kgToPeso($kg, $unidad = 'KG') {
+        $valor = floatval($kg);
+        $unidad = strtoupper(trim((string)$unidad));
+
+        return match ($unidad) {
+            'LB' => self::kgToLb($valor),
+            'QQ' => self::kgToQQ($valor),
+            default => $valor,
+        };
+    }
+
+    /**
+     * Formatear un peso almacenado en KG usando una o varias unidades visibles.
+     */
+    public static function formatPesoVisual($kg, array $unidades = ['QQ', 'LB'], int $decimales = 2, string $separador = ' · ') {
+        if ($kg === null || $kg === '' || !is_numeric($kg)) {
+            return '';
+        }
+
+        $valorKg = floatval($kg);
+        $partes = [];
+
+        foreach ($unidades as $unidad) {
+            $unidadNormalizada = strtoupper(trim((string)$unidad));
+            if (!in_array($unidadNormalizada, ['KG', 'LB', 'QQ'], true)) {
+                continue;
+            }
+
+            $valorConvertido = self::kgToPeso($valorKg, $unidadNormalizada);
+            $partes[] = number_format($valorConvertido, $decimales) . ' ' . $unidadNormalizada;
+        }
+
+        return implode($separador, $partes);
+    }
+
+    /**
+     * Formatea el tipo de empaque usando un texto legible para la UI.
+     */
+    public static function formatTipoEmpaque($tipoEmpaque, $pesoSaco = null): string {
+        $tipo = strtoupper(trim((string)$tipoEmpaque));
+        $peso = ($pesoSaco !== null && $pesoSaco !== '' && is_numeric($pesoSaco))
+            ? (float)$pesoSaco
+            : null;
+
+        return match ($tipo) {
+            'SACO_ESTANDAR', 'SACO_50', 'SACO_69' => 'Saco estándar' . ($peso !== null ? ' ' . number_format($peso, 0) . ' kg' : ''),
+            'SACO_46' => 'Saco 46 kg (Exportación)',
+            'SACO_25' => 'Saco 25 kg',
+            'BIG_BAG' => 'Big Bag 1000 kg',
+            'OTRO' => 'Otro',
+            default => trim((string)$tipoEmpaque) !== '' ? trim((string)$tipoEmpaque) : 'N/R',
+        };
+    }
+
+    /**
+     * Descompone el texto "PROVEEDORES: ... | RUTA: ..." en partes utilizables.
+     */
+    public static function parseProveedorRutaCompuesta($texto): array {
+        $texto = trim((string)$texto);
+        if ($texto === '') {
+            return [
+                'proveedores' => [],
+                'ruta' => '',
+            ];
+        }
+
+        $resultado = [
+            'proveedores' => [],
+            'ruta' => '',
+        ];
+
+        if (preg_match('/^PROVEEDORES:\s*(.*?)\s*\|\s*RUTA:\s*(.+)$/iu', $texto, $coincidencias)) {
+            $resultado['ruta'] = trim((string)($coincidencias[2] ?? ''));
+            $bloqueProveedores = trim((string)($coincidencias[1] ?? ''));
+            if ($bloqueProveedores !== '') {
+                $resultado['proveedores'] = array_values(array_filter(array_map(
+                    static fn(string $item): string => trim($item),
+                    preg_split('/\s*,\s*/', $bloqueProveedores) ?: []
+                )));
+            }
+            return $resultado;
+        }
+
+        $resultado['proveedores'] = [$texto];
+        return $resultado;
     }
     
     /**
@@ -439,6 +547,603 @@ class Helpers {
             $cache[$cacheKey] = self::getTableColumns($table);
         }
         return in_array($column, $cache[$cacheKey], true);
+    }
+
+    /**
+     * Asegura el catálogo base de cajones de fermentación.
+     */
+    public static function ensureCajonesFermentacionCatalog(int $objetivoBase = 6): bool {
+        $db = Database::getInstance();
+
+        try {
+            $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'cajones_fermentacion'");
+            if (!$tablaExiste) {
+                $db->query("
+                    CREATE TABLE IF NOT EXISTS cajones_fermentacion (
+                        id INT PRIMARY KEY AUTO_INCREMENT,
+                        numero VARCHAR(20) NOT NULL UNIQUE,
+                        capacidad_kg DECIMAL(10,2) NULL,
+                        material VARCHAR(50) NULL,
+                        ubicacion VARCHAR(100) NULL,
+                        activo TINYINT(1) DEFAULT 1,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                ");
+            }
+
+            $cols = self::getTableColumns('cajones_fermentacion');
+            $hasCol = static fn(string $name): bool => in_array($name, $cols, true);
+
+            $alterQueries = [];
+            if (!$hasCol('numero')) $alterQueries[] = "ALTER TABLE cajones_fermentacion ADD COLUMN numero VARCHAR(20) NULL";
+            if (!$hasCol('capacidad_kg')) $alterQueries[] = "ALTER TABLE cajones_fermentacion ADD COLUMN capacidad_kg DECIMAL(10,2) NULL AFTER numero";
+            if (!$hasCol('material')) $alterQueries[] = "ALTER TABLE cajones_fermentacion ADD COLUMN material VARCHAR(50) NULL AFTER capacidad_kg";
+            if (!$hasCol('ubicacion')) $alterQueries[] = "ALTER TABLE cajones_fermentacion ADD COLUMN ubicacion VARCHAR(100) NULL AFTER material";
+            if (!$hasCol('activo')) $alterQueries[] = "ALTER TABLE cajones_fermentacion ADD COLUMN activo TINYINT(1) DEFAULT 1 AFTER ubicacion";
+            if (!$hasCol('created_at')) $alterQueries[] = "ALTER TABLE cajones_fermentacion ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+
+            foreach ($alterQueries as $sql) {
+                try {
+                    $db->query($sql);
+                } catch (Throwable $e) {
+                    // Continuar con el esquema disponible.
+                }
+            }
+
+            $cols = self::getTableColumns('cajones_fermentacion');
+            $hasCol = static fn(string $name): bool => in_array($name, $cols, true);
+            if (!$hasCol('numero')) {
+                return false;
+            }
+
+            $hasNombreCol = $hasCol('nombre');
+            $objetivoBase = max(0, $objetivoBase);
+
+            for ($i = 1; $i <= $objetivoBase; $i++) {
+                $numero = sprintf('CAJ-%02d', $i);
+                $registro = $db->fetchOne(
+                    "SELECT id" . ($hasNombreCol ? ", nombre" : "") . "
+                     FROM cajones_fermentacion
+                     WHERE numero = ?
+                     LIMIT 1",
+                    [$numero]
+                );
+
+                if (!$registro) {
+                    $dataInsert = [
+                        'numero' => $numero,
+                        'capacidad_kg' => 500,
+                        'material' => 'Madera',
+                    ];
+                    if ($hasCol('ubicacion')) {
+                        $dataInsert['ubicacion'] = null;
+                    }
+                    if ($hasCol('activo')) {
+                        $dataInsert['activo'] = 1;
+                    }
+                    if ($hasNombreCol) {
+                        $dataInsert['nombre'] = 'Cajón ' . $i;
+                    }
+                    $db->insert('cajones_fermentacion', $dataInsert);
+                    continue;
+                }
+
+                if ($hasNombreCol) {
+                    $nombreActual = trim((string)($registro['nombre'] ?? ''));
+                    if ($nombreActual === '') {
+                        $db->update(
+                            'cajones_fermentacion',
+                            ['nombre' => 'Cajón ' . $i],
+                            'id = :where_id',
+                            ['where_id' => (int)$registro['id']]
+                        );
+                    }
+                }
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Obtiene el catálogo de cajones de fermentación con etiqueta visible segura.
+     */
+    public static function getCajonesFermentacionCatalog(bool $soloActivos = true): array {
+        $db = Database::getInstance();
+        self::ensureCajonesFermentacionCatalog();
+
+        $cols = self::getTableColumns('cajones_fermentacion');
+        $hasCol = static fn(string $name): bool => in_array($name, $cols, true);
+        if (empty($cols) || !$hasCol('id')) {
+            return [];
+        }
+
+        $exprNumero = $hasCol('numero') ? "NULLIF(TRIM(numero), '')" : 'NULL';
+        $exprNombre = $hasCol('nombre') ? "NULLIF(TRIM(nombre), '')" : 'NULL';
+        $exprCapacidad = $hasCol('capacidad_kg')
+            ? 'capacidad_kg'
+            : ($hasCol('capacidad') ? 'capacidad' : 'NULL');
+        $where = ($soloActivos && $hasCol('activo')) ? 'WHERE activo = 1' : '';
+        $orderBy = $hasCol('numero')
+            ? 'ORDER BY numero ASC'
+            : ($hasCol('nombre') ? 'ORDER BY nombre ASC' : 'ORDER BY id ASC');
+
+        if ($hasCol('numero') && $hasCol('nombre')) {
+            $exprEtiqueta = "CASE
+                WHEN {$exprNumero} IS NOT NULL AND {$exprNombre} IS NOT NULL AND UPPER({$exprNumero}) <> UPPER({$exprNombre})
+                    THEN CONCAT({$exprNumero}, ' - ', {$exprNombre})
+                ELSE COALESCE({$exprNumero}, {$exprNombre}, CONCAT('Cajón #', id))
+            END";
+        } elseif ($hasCol('numero')) {
+            $exprEtiqueta = "COALESCE({$exprNumero}, CONCAT('Cajón #', id))";
+        } elseif ($hasCol('nombre')) {
+            $exprEtiqueta = "COALESCE({$exprNombre}, CONCAT('Cajón #', id))";
+        } else {
+            $exprEtiqueta = "CONCAT('Cajón #', id)";
+        }
+
+        $exprNumeroLabel = $hasCol('numero')
+            ? "COALESCE({$exprNumero}, CONCAT('CAJ-', LPAD(id, 2, '0')))"
+            : "CONCAT('CAJ-', LPAD(id, 2, '0'))";
+
+        try {
+            return $db->fetchAll("
+                SELECT id,
+                       {$exprEtiqueta} as nombre,
+                       {$exprNumeroLabel} as numero,
+                       {$exprCapacidad} as capacidad_kg
+                FROM cajones_fermentacion
+                {$where}
+                {$orderBy}
+            ");
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Asegura la tabla de detalle de pagos por proveedor para fichas.
+     */
+    public static function ensureFichaPagoDetalleTable(): bool {
+        $db = Database::getInstance();
+
+        try {
+            $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'fichas_pago_detalle'");
+            if (!$tablaExiste) {
+                $db->query("
+                    CREATE TABLE IF NOT EXISTS fichas_pago_detalle (
+                        id INT PRIMARY KEY AUTO_INCREMENT,
+                        ficha_id INT NOT NULL,
+                        proveedor_id INT NULL,
+                        proveedor_nombre VARCHAR(150) NOT NULL,
+                        fecha_pago DATE NOT NULL,
+                        tipo_comprobante ENUM('FACTURA','NOTA_COMPRA') NOT NULL,
+                        factura_compra VARCHAR(80) NOT NULL,
+                        cantidad_comprada_unidad ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG',
+                        cantidad_comprada DECIMAL(10,2) NOT NULL,
+                        cantidad_comprada_kg DECIMAL(10,4) NOT NULL,
+                        forma_pago ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS') NOT NULL,
+                        precio_base_dia DECIMAL(10,4) NOT NULL,
+                        diferencial_usd DECIMAL(10,4) DEFAULT 0,
+                        precio_unitario_final DECIMAL(10,4) NOT NULL,
+                        precio_total_pagar DECIMAL(12,2) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_ficha_pago_detalle_ficha (ficha_id),
+                        INDEX idx_ficha_pago_detalle_proveedor (proveedor_id),
+                        CONSTRAINT fk_ficha_pago_detalle_ficha FOREIGN KEY (ficha_id) REFERENCES fichas_registro(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_ficha_pago_detalle_proveedor FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                ");
+            }
+
+            $cols = self::getTableColumns('fichas_pago_detalle');
+            $hasCol = static fn(string $name): bool => in_array($name, $cols, true);
+
+            $alterQueries = [];
+            if (!$hasCol('proveedor_id')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN proveedor_id INT NULL AFTER ficha_id";
+            if (!$hasCol('proveedor_nombre')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN proveedor_nombre VARCHAR(150) NOT NULL AFTER proveedor_id";
+            if (!$hasCol('fecha_pago')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN fecha_pago DATE NOT NULL AFTER proveedor_nombre";
+            if (!$hasCol('tipo_comprobante')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN tipo_comprobante ENUM('FACTURA','NOTA_COMPRA') NOT NULL AFTER fecha_pago";
+            if (!$hasCol('factura_compra')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN factura_compra VARCHAR(80) NOT NULL AFTER tipo_comprobante";
+            if (!$hasCol('cantidad_comprada_unidad')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN cantidad_comprada_unidad ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG' AFTER factura_compra";
+            if (!$hasCol('cantidad_comprada')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN cantidad_comprada DECIMAL(10,2) NOT NULL AFTER cantidad_comprada_unidad";
+            if (!$hasCol('cantidad_comprada_kg')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN cantidad_comprada_kg DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER cantidad_comprada";
+            if (!$hasCol('forma_pago')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN forma_pago ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS') NOT NULL AFTER cantidad_comprada_kg";
+            if (!$hasCol('precio_base_dia')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN precio_base_dia DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER forma_pago";
+            if (!$hasCol('diferencial_usd')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN diferencial_usd DECIMAL(10,4) DEFAULT 0 AFTER precio_base_dia";
+            if (!$hasCol('precio_unitario_final')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN precio_unitario_final DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER diferencial_usd";
+            if (!$hasCol('precio_total_pagar')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN precio_total_pagar DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER precio_unitario_final";
+            if (!$hasCol('created_at')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+            if (!$hasCol('updated_at')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP";
+
+            foreach ($alterQueries as $sql) {
+                try {
+                    $db->query($sql);
+                } catch (Throwable $e) {
+                    // Continuar con lo disponible para no bloquear la operación.
+                }
+            }
+
+            return (bool)$db->fetch("SHOW TABLES LIKE 'fichas_pago_detalle'");
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Construye la lista de proveedores participantes de una ficha.
+     */
+    public static function getFichaPagoParticipantes(array $ficha, array $proveedoresCatalogo = []): array {
+        $toLower = static function (string $value): string {
+            $value = trim($value);
+            if ($value === '') {
+                return '';
+            }
+            return function_exists('mb_strtolower')
+                ? mb_strtolower($value, 'UTF-8')
+                : strtolower($value);
+        };
+
+        $catalogoPorNombre = [];
+        $catalogoPorCodigo = [];
+        $catalogoPorEtiqueta = [];
+        foreach ($proveedoresCatalogo as $proveedor) {
+            $idProveedor = (int)($proveedor['id'] ?? 0);
+            $nombreProveedor = trim((string)($proveedor['nombre'] ?? ''));
+            $codigoProveedor = trim((string)($proveedor['codigo'] ?? ''));
+            if ($nombreProveedor !== '') {
+                $catalogoPorNombre[$toLower($nombreProveedor)] = [
+                    'id' => $idProveedor,
+                    'nombre' => $nombreProveedor,
+                    'codigo' => $codigoProveedor,
+                ];
+            }
+            if ($codigoProveedor !== '') {
+                $catalogoPorCodigo[$toLower($codigoProveedor)] = [
+                    'id' => $idProveedor,
+                    'nombre' => $nombreProveedor !== '' ? $nombreProveedor : $codigoProveedor,
+                    'codigo' => $codigoProveedor,
+                ];
+            }
+            if ($codigoProveedor !== '' && $nombreProveedor !== '') {
+                $catalogoPorEtiqueta[$toLower($codigoProveedor . ' - ' . $nombreProveedor)] = [
+                    'id' => $idProveedor,
+                    'nombre' => $nombreProveedor,
+                    'codigo' => $codigoProveedor,
+                ];
+            }
+        }
+
+        $participantesTexto = self::parseProveedorRutaCompuesta((string)($ficha['proveedor_ruta'] ?? ''));
+        $nombres = $participantesTexto['proveedores'] ?? [];
+        $proveedorNombre = trim((string)($ficha['proveedor_nombre'] ?? ''));
+        if ($proveedorNombre !== '' && !in_array($proveedorNombre, $nombres, true)) {
+            $nombres[] = $proveedorNombre;
+        }
+        if (empty($nombres)) {
+            $textoSimple = trim((string)($ficha['proveedor_ruta'] ?? ''));
+            if ($textoSimple !== '') {
+                $nombres[] = $textoSimple;
+            }
+        }
+
+        $participantes = [];
+        $vistos = [];
+        foreach ($nombres as $nombreRaw) {
+            $nombreRaw = trim((string)$nombreRaw);
+            if ($nombreRaw === '') {
+                continue;
+            }
+            $clave = $toLower($nombreRaw);
+            $proveedorCatalogo = $catalogoPorNombre[$clave]
+                ?? $catalogoPorCodigo[$clave]
+                ?? $catalogoPorEtiqueta[$clave]
+                ?? null;
+            $nombreFinal = trim((string)($proveedorCatalogo['nombre'] ?? $nombreRaw));
+            $claveFinal = $toLower($nombreFinal);
+            if ($claveFinal === '' || isset($vistos[$claveFinal])) {
+                continue;
+            }
+            $vistos[$claveFinal] = true;
+            $participantes[] = [
+                'proveedor_id' => (int)($proveedorCatalogo['id'] ?? 0),
+                'proveedor_nombre' => $nombreFinal,
+            ];
+        }
+
+        if (empty($participantes)) {
+            $nombreFallback = $proveedorNombre !== '' ? $proveedorNombre : trim((string)($ficha['proveedor_ruta'] ?? ''));
+            $participantes[] = [
+                'proveedor_id' => (int)($ficha['proveedor_id'] ?? ($ficha['lote_proveedor_id'] ?? 0)),
+                'proveedor_nombre' => $nombreFallback !== '' ? $nombreFallback : 'Proveedor',
+            ];
+        }
+
+        return $participantes;
+    }
+
+    /**
+     * Obtiene los pagos detallados de una ficha, con compatibilidad hacia registros antiguos.
+     */
+    public static function getFichaPagoDetalles(int $fichaId, ?array $ficha = null, array $proveedoresCatalogo = []): array {
+        $db = Database::getInstance();
+        $detalles = [];
+
+        if (self::ensureFichaPagoDetalleTable()) {
+            try {
+                $detalles = $db->fetchAll(
+                    "SELECT *
+                     FROM fichas_pago_detalle
+                     WHERE ficha_id = ?
+                     ORDER BY id ASC",
+                    [$fichaId]
+                );
+            } catch (Throwable $e) {
+                $detalles = [];
+            }
+        }
+
+        if (!empty($detalles)) {
+            return array_map(static function (array $detalle) use ($fichaId): array {
+                $unidad = strtoupper(trim((string)($detalle['cantidad_comprada_unidad'] ?? 'KG')));
+                $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : null;
+                $cantidadKg = isset($detalle['cantidad_comprada_kg']) ? (float)$detalle['cantidad_comprada_kg'] : null;
+                if (($cantidadKg === null || $cantidadKg <= 0) && $cantidad !== null && $cantidad > 0) {
+                    $cantidadKg = self::pesoToKg($cantidad, $unidad);
+                }
+
+                return [
+                    'id' => (int)($detalle['id'] ?? 0),
+                    'ficha_id' => (int)($detalle['ficha_id'] ?? $fichaId),
+                    'proveedor_id' => (int)($detalle['proveedor_id'] ?? 0),
+                    'proveedor_nombre' => trim((string)($detalle['proveedor_nombre'] ?? 'Proveedor')),
+                    'fecha_pago' => trim((string)($detalle['fecha_pago'] ?? '')),
+                    'tipo_comprobante' => strtoupper(trim((string)($detalle['tipo_comprobante'] ?? ''))),
+                    'factura_compra' => trim((string)($detalle['factura_compra'] ?? '')),
+                    'cantidad_comprada_unidad' => in_array($unidad, ['LB', 'KG', 'QQ'], true) ? $unidad : 'KG',
+                    'cantidad_comprada' => $cantidad,
+                    'cantidad_comprada_kg' => $cantidadKg,
+                    'forma_pago' => strtoupper(trim((string)($detalle['forma_pago'] ?? ''))),
+                    'precio_base_dia' => isset($detalle['precio_base_dia']) ? (float)$detalle['precio_base_dia'] : null,
+                    'diferencial_usd' => isset($detalle['diferencial_usd']) ? (float)$detalle['diferencial_usd'] : 0.0,
+                    'precio_unitario_final' => isset($detalle['precio_unitario_final']) ? (float)$detalle['precio_unitario_final'] : null,
+                    'precio_total_pagar' => isset($detalle['precio_total_pagar']) ? (float)$detalle['precio_total_pagar'] : null,
+                ];
+            }, $detalles);
+        }
+
+        if ($ficha === null) {
+            $ficha = $db->fetchOne(
+                "SELECT f.*,
+                        l.proveedor_id as lote_proveedor_id,
+                        p.nombre as proveedor_nombre
+                 FROM fichas_registro f
+                 LEFT JOIN lotes l ON f.lote_id = l.id
+                 LEFT JOIN proveedores p ON l.proveedor_id = p.id
+                 WHERE f.id = ?",
+                [$fichaId]
+            ) ?: [];
+        }
+
+        $participantes = self::getFichaPagoParticipantes($ficha, $proveedoresCatalogo);
+        $cantidadParticipantes = count($participantes);
+        $fechaPagoBase = trim((string)($ficha['fecha_pago'] ?? ''));
+        $tipoComprobanteBase = strtoupper(trim((string)($ficha['tipo_comprobante'] ?? '')));
+        $facturaBase = trim((string)($ficha['factura_compra'] ?? ''));
+        $cantidadUnidadBase = strtoupper(trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')));
+        $cantidadBase = isset($ficha['cantidad_comprada']) && $ficha['cantidad_comprada'] !== null
+            ? (float)$ficha['cantidad_comprada']
+            : null;
+        $cantidadBaseKg = $cantidadBase !== null && $cantidadBase > 0
+            ? self::pesoToKg($cantidadBase, $cantidadUnidadBase)
+            : null;
+        $formaPagoBase = strtoupper(trim((string)($ficha['forma_pago'] ?? '')));
+        $precioBaseDia = isset($ficha['precio_base_dia']) && $ficha['precio_base_dia'] !== null
+            ? (float)$ficha['precio_base_dia']
+            : null;
+        $diferencialBase = isset($ficha['diferencial_usd']) && $ficha['diferencial_usd'] !== null
+            ? (float)$ficha['diferencial_usd']
+            : 0.0;
+        $precioUnitarioBase = isset($ficha['precio_unitario_final']) && $ficha['precio_unitario_final'] !== null
+            ? (float)$ficha['precio_unitario_final']
+            : null;
+        $precioTotalBase = isset($ficha['precio_total_pagar']) && $ficha['precio_total_pagar'] !== null
+            ? (float)$ficha['precio_total_pagar']
+            : null;
+
+        $resultado = [];
+        foreach ($participantes as $indice => $participante) {
+            $esUnicoParticipante = $cantidadParticipantes === 1;
+            $resultado[] = [
+                'id' => 0,
+                'ficha_id' => $fichaId,
+                'proveedor_id' => (int)($participante['proveedor_id'] ?? 0),
+                'proveedor_nombre' => trim((string)($participante['proveedor_nombre'] ?? 'Proveedor')),
+                'fecha_pago' => $fechaPagoBase,
+                'tipo_comprobante' => $tipoComprobanteBase,
+                'factura_compra' => $esUnicoParticipante ? $facturaBase : '',
+                'cantidad_comprada_unidad' => in_array($cantidadUnidadBase, ['LB', 'KG', 'QQ'], true) ? $cantidadUnidadBase : 'KG',
+                'cantidad_comprada' => $esUnicoParticipante ? $cantidadBase : null,
+                'cantidad_comprada_kg' => $esUnicoParticipante ? $cantidadBaseKg : null,
+                'forma_pago' => $formaPagoBase,
+                'precio_base_dia' => $precioBaseDia,
+                'diferencial_usd' => $diferencialBase,
+                'precio_unitario_final' => $precioUnitarioBase,
+                'precio_total_pagar' => $esUnicoParticipante ? $precioTotalBase : null,
+            ];
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Resume pagos detallados para mantener compatibilidad con la ficha principal.
+     */
+    public static function getFichaPagoResumen(array $detalles): array {
+        $resumen = [
+            'detalle_count' => 0,
+            'cantidad_total_kg' => 0.0,
+            'precio_total_pagar' => 0.0,
+            'fecha_pago' => null,
+            'tipo_comprobante' => null,
+            'factura_compra' => null,
+            'cantidad_comprada_unidad' => 'KG',
+            'cantidad_comprada' => null,
+            'forma_pago' => null,
+            'precio_base_dia' => null,
+            'diferencial_usd' => null,
+            'precio_unitario_final' => null,
+            'proveedores' => [],
+        ];
+
+        if (empty($detalles)) {
+            return $resumen;
+        }
+
+        $primerDetalle = null;
+        $tipos = [];
+        $formas = [];
+        $preciosBase = [];
+        $diferenciales = [];
+        $preciosUnitarios = [];
+        $ultimaFecha = null;
+
+        foreach ($detalles as $detalle) {
+            $fechaPago = trim((string)($detalle['fecha_pago'] ?? ''));
+            $tipoComprobante = strtoupper(trim((string)($detalle['tipo_comprobante'] ?? '')));
+            $facturaCompra = trim((string)($detalle['factura_compra'] ?? ''));
+            $unidadCantidad = strtoupper(trim((string)($detalle['cantidad_comprada_unidad'] ?? 'KG')));
+            $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : null;
+            $cantidadKg = isset($detalle['cantidad_comprada_kg']) && $detalle['cantidad_comprada_kg'] !== null
+                ? (float)$detalle['cantidad_comprada_kg']
+                : (($cantidad !== null && $cantidad > 0) ? self::pesoToKg($cantidad, $unidadCantidad) : 0.0);
+            $formaPago = strtoupper(trim((string)($detalle['forma_pago'] ?? '')));
+            $precioBase = isset($detalle['precio_base_dia']) && $detalle['precio_base_dia'] !== null
+                ? (float)$detalle['precio_base_dia']
+                : null;
+            $diferencial = isset($detalle['diferencial_usd']) && $detalle['diferencial_usd'] !== null
+                ? (float)$detalle['diferencial_usd']
+                : null;
+            $precioUnitario = isset($detalle['precio_unitario_final']) && $detalle['precio_unitario_final'] !== null
+                ? (float)$detalle['precio_unitario_final']
+                : null;
+            $precioTotal = isset($detalle['precio_total_pagar']) && $detalle['precio_total_pagar'] !== null
+                ? (float)$detalle['precio_total_pagar']
+                : 0.0;
+            $proveedorNombre = trim((string)($detalle['proveedor_nombre'] ?? ''));
+
+            if ($primerDetalle === null) {
+                $primerDetalle = [
+                    'fecha_pago' => $fechaPago,
+                    'tipo_comprobante' => $tipoComprobante,
+                    'factura_compra' => $facturaCompra,
+                    'forma_pago' => $formaPago,
+                    'precio_base_dia' => $precioBase,
+                    'diferencial_usd' => $diferencial,
+                    'precio_unitario_final' => $precioUnitario,
+                ];
+            }
+
+            $resumen['detalle_count']++;
+            $resumen['cantidad_total_kg'] += max(0.0, (float)$cantidadKg);
+            $resumen['precio_total_pagar'] += max(0.0, (float)$precioTotal);
+
+            if ($fechaPago !== '') {
+                $timestamp = strtotime($fechaPago);
+                if ($timestamp !== false && ($ultimaFecha === null || $timestamp > $ultimaFecha)) {
+                    $ultimaFecha = $timestamp;
+                    $resumen['fecha_pago'] = $fechaPago;
+                }
+            }
+            if ($tipoComprobante !== '') {
+                $tipos[$tipoComprobante] = true;
+            }
+            if ($formaPago !== '') {
+                $formas[$formaPago] = true;
+            }
+            if ($precioBase !== null) {
+                $preciosBase[(string)$precioBase] = $precioBase;
+            }
+            if ($diferencial !== null) {
+                $diferenciales[(string)$diferencial] = $diferencial;
+            }
+            if ($precioUnitario !== null) {
+                $preciosUnitarios[(string)$precioUnitario] = $precioUnitario;
+            }
+            if ($proveedorNombre !== '' && !in_array($proveedorNombre, $resumen['proveedores'], true)) {
+                $resumen['proveedores'][] = $proveedorNombre;
+            }
+        }
+
+        $resumen['cantidad_comprada'] = $resumen['cantidad_total_kg'] > 0
+            ? round($resumen['cantidad_total_kg'], 4)
+            : null;
+
+        if ($primerDetalle !== null) {
+            $resumen['tipo_comprobante'] = count($tipos) === 1 ? $primerDetalle['tipo_comprobante'] : null;
+            $resumen['factura_compra'] = $resumen['detalle_count'] === 1 ? $primerDetalle['factura_compra'] : null;
+            $resumen['forma_pago'] = count($formas) === 1 ? $primerDetalle['forma_pago'] : null;
+            $resumen['precio_base_dia'] = count($preciosBase) === 1 ? $primerDetalle['precio_base_dia'] : null;
+            $resumen['diferencial_usd'] = count($diferenciales) === 1 ? $primerDetalle['diferencial_usd'] : null;
+            $resumen['precio_unitario_final'] = count($preciosUnitarios) === 1 ? $primerDetalle['precio_unitario_final'] : null;
+        }
+
+        return $resumen;
+    }
+
+    /**
+     * Determina si una ficha ya tiene pago registrado.
+     */
+    public static function fichaTienePagoRegistrado(array $ficha, ?array $detalles = null): bool {
+        $fichaId = (int)($ficha['id'] ?? 0);
+        if ($detalles === null && $fichaId > 0) {
+            $detalles = self::getFichaPagoDetalles($fichaId, $ficha);
+        }
+
+        if (!empty($detalles)) {
+            foreach ($detalles as $detalle) {
+                $fechaPago = trim((string)($detalle['fecha_pago'] ?? ''));
+                $tipoComprobante = strtoupper(trim((string)($detalle['tipo_comprobante'] ?? '')));
+                $facturaCompra = trim((string)($detalle['factura_compra'] ?? ''));
+                $unidadCantidad = strtoupper(trim((string)($detalle['cantidad_comprada_unidad'] ?? 'KG')));
+                $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : 0.0;
+                $formaPago = strtoupper(trim((string)($detalle['forma_pago'] ?? '')));
+                $precioTotal = isset($detalle['precio_total_pagar']) ? (float)$detalle['precio_total_pagar'] : 0.0;
+
+                if ($fechaPago !== ''
+                    && in_array($tipoComprobante, ['FACTURA', 'NOTA_COMPRA'], true)
+                    && $facturaCompra !== ''
+                    && in_array($unidadCantidad, ['LB', 'KG', 'QQ'], true)
+                    && $cantidad > 0
+                    && in_array($formaPago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)
+                    && $precioTotal > 0
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        $fechaPago = trim((string)($ficha['fecha_pago'] ?? ''));
+        $tipoComprobante = strtoupper(trim((string)($ficha['tipo_comprobante'] ?? '')));
+        $facturaCompra = trim((string)($ficha['factura_compra'] ?? ''));
+        $unidadCantidad = strtoupper(trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')));
+        $cantidad = isset($ficha['cantidad_comprada']) ? (float)$ficha['cantidad_comprada'] : 0.0;
+        $formaPago = strtoupper(trim((string)($ficha['forma_pago'] ?? '')));
+
+        if ($fechaPago !== ''
+            && in_array($tipoComprobante, ['FACTURA', 'NOTA_COMPRA'], true)
+            && $facturaCompra !== ''
+            && in_array($unidadCantidad, ['LB', 'KG', 'QQ'], true)
+            && $cantidad > 0
+            && in_array($formaPago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)
+        ) {
+            return true;
+        }
+
+        return isset($ficha['precio_total_pagar']) && $ficha['precio_total_pagar'] !== null;
     }
 
     /**

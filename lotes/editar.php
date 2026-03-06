@@ -58,8 +58,30 @@ $proveedores = $db->fetchAll("SELECT id, nombre, codigo FROM proveedores WHERE a
 $variedades = $db->fetchAll("SELECT id, nombre FROM variedades WHERE activo = 1 ORDER BY nombre");
 $estadosProducto = $db->fetchAll("SELECT id, nombre FROM estados_producto WHERE activo = 1 ORDER BY id");
 $estadosFermentacion = $db->fetchAll("SELECT id, nombre FROM estados_fermentacion WHERE activo = 1 ORDER BY id");
-$cajones = $db->fetchAll("SELECT id, nombre FROM cajones_fermentacion WHERE activo = 1 ORDER BY nombre");
-$secadoras = $db->fetchAll("SELECT id, nombre FROM secadoras WHERE activo = 1 ORDER BY nombre");
+Helpers::ensureCajonesFermentacionCatalog();
+$cajones = Helpers::getCajonesFermentacionCatalog(true);
+$colsSecadoras = array_column($db->fetchAll("SHOW COLUMNS FROM secadoras"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecadoras, true);
+$exprNumeroSecadora = $hasSecCol('numero') ? "NULLIF(TRIM(numero), '')" : 'NULL';
+$exprNombreSecadora = $hasSecCol('nombre') ? "NULLIF(TRIM(nombre), '')" : 'NULL';
+$exprSecadoraActivo = $hasSecCol('activo') ? 'activo = 1' : '1 = 1';
+$exprEtiquetaSecadora = ($hasSecCol('numero') && $hasSecCol('nombre'))
+    ? "CASE
+        WHEN {$exprNumeroSecadora} IS NOT NULL AND {$exprNombreSecadora} IS NOT NULL AND UPPER({$exprNumeroSecadora}) <> UPPER({$exprNombreSecadora})
+            THEN CONCAT({$exprNumeroSecadora}, ' - ', {$exprNombreSecadora})
+        ELSE COALESCE({$exprNumeroSecadora}, {$exprNombreSecadora}, CONCAT('Secadora #', id))
+      END"
+    : ($hasSecCol('numero')
+        ? "COALESCE({$exprNumeroSecadora}, CONCAT('Secadora #', id))"
+        : ($hasSecCol('nombre')
+            ? "COALESCE({$exprNombreSecadora}, CONCAT('Secadora #', id))"
+            : "CONCAT('Secadora #', id)"));
+$secadoras = $db->fetchAll("
+    SELECT id, {$exprEtiquetaSecadora} as nombre
+    FROM secadoras
+    WHERE {$exprSecadoraActivo}
+    ORDER BY " . ($hasSecCol('numero') ? 'numero' : ($hasSecCol('nombre') ? 'nombre' : 'id'))
+);
 
 // Estados del proceso
 $estadosProceso = [
@@ -415,10 +437,10 @@ ob_start();
                     <div class="form-group">
                         <label class="form-label">Cajón de Fermentación</label>
                         <select name="cajon_fermentacion_id" class="form-control form-select">
-                            <option value="">Sin asignar</option>
+                            <option value="">No aplica</option>
                             <?php foreach ($cajones as $cajon): ?>
                                 <option value="<?= $cajon['id'] ?>" <?= $lote['cajon_fermentacion_id'] == $cajon['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($cajon['nombre']) ?>
+                                    <?= htmlspecialchars((string)($cajon['nombre'] ?? 'Cajón #' . (int)($cajon['id'] ?? 0))) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -431,7 +453,7 @@ ob_start();
                             <option value="">Sin asignar</option>
                             <?php foreach ($secadoras as $sec): ?>
                                 <option value="<?= $sec['id'] ?>" <?= $lote['secadora_id'] == $sec['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($sec['nombre']) ?>
+                                    <?= htmlspecialchars((string)($sec['nombre'] ?? 'Secadora #' . (int)($sec['id'] ?? 0))) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>

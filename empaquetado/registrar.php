@@ -225,7 +225,7 @@ ob_start();
             </div>
             <div class="text-center">
                 <p class="text-xs text-warmgray">Tipo Empaque</p>
-                <p class="font-medium"><?= $empaquetado['tipo_empaque'] ?></p>
+                <p class="font-medium"><?= htmlspecialchars(Helpers::formatTipoEmpaque($empaquetado['tipo_empaque'] ?? '', $empaquetado['peso_saco'] ?? null)) ?></p>
                 <p class="text-xs text-warmgray"><?= $empaquetado['peso_saco'] ?> kg/saco</p>
             </div>
         </div>

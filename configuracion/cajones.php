@@ -13,7 +13,20 @@ if (!Auth::isAdmin() && !Auth::hasPermission('configuracion') && $rolActual !== 
     redirect('/dashboard.php');
 }
 
+$parametrosGenerales = Helpers::getParametros('GENERAL');
+$cajonesObjetivo = max(1, (int)($parametrosGenerales['cajones_fermentacion_objetivo'] ?? 6));
+Helpers::ensureCajonesFermentacionCatalog($cajonesObjetivo);
+
 $db = Database::getInstance()->getConnection();
+$colsCajonesTabla = array_column(Database::getInstance()->fetchAll("SHOW COLUMNS FROM cajones_fermentacion"), 'Field');
+$hasCajCatalogCol = static fn(string $name): bool => in_array($name, $colsCajonesTabla, true);
+$resolverNombreCajon = static function (string $numero): string {
+    $numero = strtoupper(trim($numero));
+    if (preg_match('/(\d+)$/', $numero, $coincidencias)) {
+        return 'Cajón ' . (int)$coincidencias[1];
+    }
+    return $numero;
+};
 
 // Procesar acciones POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -39,12 +52,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->fetch()) {
                     throw new Exception('Ya existe un cajón con este número');
                 }
-                
-                $stmt = $db->prepare("
-                    INSERT INTO cajones_fermentacion (numero, capacidad_kg, material, ubicacion, activo)
-                    VALUES (?, ?, ?, ?, 1)
-                ");
-                $stmt->execute([$numero, $capacidad_kg ?: null, $material ?: null, $ubicacion ?: null]);
+
+                if ($hasCajCatalogCol('nombre')) {
+                    $stmt = $db->prepare("
+                        INSERT INTO cajones_fermentacion (numero, nombre, capacidad_kg, material, ubicacion, activo)
+                        VALUES (?, ?, ?, ?, ?, 1)
+                    ");
+                    $stmt->execute([$numero, $resolverNombreCajon($numero), $capacidad_kg ?: null, $material ?: null, $ubicacion ?: null]);
+                } else {
+                    $stmt = $db->prepare("
+                        INSERT INTO cajones_fermentacion (numero, capacidad_kg, material, ubicacion, activo)
+                        VALUES (?, ?, ?, ?, 1)
+                    ");
+                    $stmt->execute([$numero, $capacidad_kg ?: null, $material ?: null, $ubicacion ?: null]);
+                }
                 
                 echo json_encode(['success' => true, 'message' => 'Cajón creado exitosamente', 'id' => $db->lastInsertId()]);
                 break;
@@ -66,13 +87,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($stmt->fetch()) {
                     throw new Exception('Ya existe otro cajón con este número');
                 }
-                
-                $stmt = $db->prepare("
-                    UPDATE cajones_fermentacion 
-                    SET numero = ?, capacidad_kg = ?, material = ?, ubicacion = ?
-                    WHERE id = ?
-                ");
-                $stmt->execute([$numero, $capacidad_kg ?: null, $material ?: null, $ubicacion ?: null, $id]);
+
+                if ($hasCajCatalogCol('nombre')) {
+                    $stmt = $db->prepare("
+                        UPDATE cajones_fermentacion 
+                        SET numero = ?, nombre = ?, capacidad_kg = ?, material = ?, ubicacion = ?
+                        WHERE id = ?
+                    ");
+                    $stmt->execute([$numero, $resolverNombreCajon($numero), $capacidad_kg ?: null, $material ?: null, $ubicacion ?: null, $id]);
+                } else {
+                    $stmt = $db->prepare("
+                        UPDATE cajones_fermentacion 
+                        SET numero = ?, capacidad_kg = ?, material = ?, ubicacion = ?
+                        WHERE id = ?
+                    ");
+                    $stmt->execute([$numero, $capacidad_kg ?: null, $material ?: null, $ubicacion ?: null, $id]);
+                }
                 
                 echo json_encode(['success' => true, 'message' => 'Cajón actualizado exitosamente']);
                 break;
@@ -171,6 +201,7 @@ $enUso = $db->query("
     FROM registros_fermentacion 
     WHERE estado = 'EN_PROCESO'
 ")->fetchColumn();
+$faltantesCajones = max(0, $cajonesObjetivo - (int)($stats['activos'] ?? 0));
 
 $pageTitle = 'Gestión de Cajones de Fermentación';
 ob_start();
@@ -215,6 +246,13 @@ ob_start();
             <div class="text-sm text-warmgray">Capacidad Total (kg)</div>
         </div>
     </div>
+
+    <?php if ($faltantesCajones > 0): ?>
+    <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Faltan <strong><?= (int)$faltantesCajones ?></strong> cajón(es) activo(s) para alcanzar la meta operativa de
+        <strong><?= (int)$cajonesObjetivo ?> cajones</strong>. Puede agregarlos desde esta misma pantalla.
+    </div>
+    <?php endif; ?>
 
     <!-- Filtros y Acciones -->
     <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-6 mb-6">

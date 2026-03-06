@@ -186,7 +186,7 @@ ob_start();
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
                 <p class="text-xs text-warmgray">Tipo de empaque</p>
-                <p class="font-medium"><?= htmlspecialchars((string)($empaquetado['tipo_empaque'] ?? 'N/R')) ?></p>
+                <p class="font-medium"><?= htmlspecialchars(Helpers::formatTipoEmpaque($empaquetado['tipo_empaque'] ?? '', $empaquetado['peso_saco'] ?? null)) ?></p>
             </div>
             <div>
                 <p class="text-xs text-warmgray">Peso por saco</p>

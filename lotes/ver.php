@@ -63,27 +63,11 @@ $registroCalidadSalida = $tablaCalidadSalidaExiste
 
 $colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
 $hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
-$camposPagoCompletos = $hasFichaCol('fecha_pago')
-    && $hasFichaCol('tipo_comprobante')
-    && $hasFichaCol('factura_compra')
-    && $hasFichaCol('cantidad_comprada_unidad')
-    && $hasFichaCol('cantidad_comprada')
-    && $hasFichaCol('forma_pago');
 
 $tieneFichaRegistro = (bool)$fichaRegistro;
-$tieneRegistroPago = false;
-if ($tieneFichaRegistro) {
-    if ($camposPagoCompletos) {
-        $tieneRegistroPago = !empty($fichaRegistro['fecha_pago'])
-            && trim((string)($fichaRegistro['tipo_comprobante'] ?? '')) !== ''
-            && trim((string)($fichaRegistro['factura_compra'] ?? '')) !== ''
-            && trim((string)($fichaRegistro['cantidad_comprada_unidad'] ?? '')) !== ''
-            && isset($fichaRegistro['cantidad_comprada']) && (float)$fichaRegistro['cantidad_comprada'] > 0
-            && trim((string)($fichaRegistro['forma_pago'] ?? '')) !== '';
-    } else {
-        $tieneRegistroPago = isset($fichaRegistro['precio_total_pagar']) && $fichaRegistro['precio_total_pagar'] !== null;
-    }
-}
+$tieneRegistroPago = $tieneFichaRegistro
+    ? Helpers::fichaTienePagoRegistrado($fichaRegistro, Helpers::getFichaPagoDetalles((int)$fichaRegistro['id'], $fichaRegistro))
+    : false;
 $tieneCodificacion = $tieneFichaRegistro && trim((string)($fichaRegistro['codificacion'] ?? '')) !== '';
 $rutaFicha = APP_URL . '/fichas/' . ($tieneFichaRegistro ? 'ver.php?id=' . (int)$fichaRegistro['id'] : 'crear.php?etapa=recepcion&lote_id=' . $id);
 $rutaPago = $tieneFichaRegistro ? (APP_URL . '/fichas/pago.php?id=' . (int)$fichaRegistro['id']) : '#';

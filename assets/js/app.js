@@ -18,6 +18,7 @@ const App = {
         this.initAlerts();
         this.initModals();
         this.initForms();
+        this.initSearchableSelects();
         this.initTooltips();
     },
     
@@ -146,6 +147,139 @@ const App = {
                     input.value = value.toFixed(input.dataset.decimals || 2);
                 }
             });
+        });
+    },
+
+    initSearchableSelects() {
+        document.querySelectorAll('select[data-searchable="true"]').forEach((select) => {
+            if (select.dataset.searchableReady === 'true') {
+                return;
+            }
+
+            if (select.querySelector('optgroup')) {
+                return;
+            }
+
+            const parent = select.parentNode;
+            if (!parent) {
+                return;
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'searchable-select';
+
+            const input = document.createElement('input');
+            input.type = 'search';
+            const inputBaseClass = select.className.replace(/\bform-select\b/g, ' ').trim();
+            input.className = `${inputBaseClass || 'form-control'} searchable-select-input`.trim();
+            input.placeholder = select.dataset.searchPlaceholder || 'Buscar en la lista...';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            input.disabled = select.disabled;
+            input.setAttribute('aria-label', select.dataset.searchAriaLabel || input.placeholder);
+
+            const status = document.createElement('p');
+            status.className = 'searchable-select-status';
+            status.hidden = true;
+
+            parent.insertBefore(wrapper, select);
+            wrapper.appendChild(input);
+            wrapper.appendChild(select);
+            wrapper.appendChild(status);
+
+            const originalOptions = Array.from(select.options).map((option, index) => ({
+                value: option.value,
+                text: option.textContent || '',
+                html: option.innerHTML,
+                disabled: option.disabled,
+                attributes: Array.from(option.attributes).reduce((accumulator, attribute) => {
+                    accumulator[attribute.name] = attribute.value;
+                    return accumulator;
+                }, {}),
+                isPlaceholder: !select.multiple && index === 0 && option.value === ''
+            }));
+
+            const normalizeText = (value) => value
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+
+            const getSelectedValues = () => {
+                if (select.multiple) {
+                    return Array.from(select.selectedOptions).map((option) => option.value);
+                }
+
+                return select.value ? [select.value] : [];
+            };
+
+            const renderOptions = () => {
+                const query = normalizeText(input.value);
+                const selectedValues = getSelectedValues();
+                const selectedSet = new Set(selectedValues);
+                const fragment = document.createDocumentFragment();
+                let matchesFound = 0;
+
+                originalOptions.forEach((optionMeta) => {
+                    const matchesQuery = optionMeta.isPlaceholder
+                        || query === ''
+                        || normalizeText(optionMeta.text).includes(query);
+                    const isSelected = selectedSet.has(optionMeta.value);
+
+                    if (!matchesQuery && !(isSelected && optionMeta.value !== '')) {
+                        return;
+                    }
+
+                    const option = document.createElement('option');
+                    Object.entries(optionMeta.attributes).forEach(([name, value]) => {
+                        option.setAttribute(name, value);
+                    });
+                    option.value = optionMeta.value;
+                    option.disabled = optionMeta.disabled;
+                    option.innerHTML = optionMeta.html;
+                    option.selected = optionMeta.value === ''
+                        ? selectedSet.size === 0 && optionMeta.isPlaceholder
+                        : isSelected;
+
+                    fragment.appendChild(option);
+
+                    if (!optionMeta.isPlaceholder && matchesQuery) {
+                        matchesFound++;
+                    }
+                });
+
+                select.innerHTML = '';
+                select.appendChild(fragment);
+
+                const emptyMessage = select.dataset.searchEmpty || 'No se encontraron coincidencias.';
+                status.textContent = query !== '' && matchesFound === 0 ? emptyMessage : '';
+                status.hidden = status.textContent === '';
+            };
+
+            input.addEventListener('input', renderOptions);
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    input.value = '';
+                    renderOptions();
+                    input.select();
+                }
+            });
+
+            select.addEventListener('change', () => {
+                if (select.multiple) {
+                    renderOptions();
+                    return;
+                }
+
+                if (input.value !== '') {
+                    input.value = '';
+                    renderOptions();
+                }
+            });
+
+            select.dataset.searchableReady = 'true';
+            renderOptions();
         });
     },
     

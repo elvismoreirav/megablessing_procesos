@@ -33,7 +33,21 @@ $normalizarCategoria = static function (string $valor): string {
     ]);
 };
 
+$normalizarTipoProveedor = static function (string $valor): string {
+    $valor = strtoupper(trim($valor));
+    return match ($valor) {
+        'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'BODEGA',
+        default => $valor,
+    };
+};
+
 $tiposProveedor = ['MERCADO', 'BODEGA', 'RUTA', 'PRODUCTOR'];
+$tipoLabels = [
+    'MERCADO' => 'Mercado',
+    'BODEGA' => 'Centro de Acopio',
+    'RUTA' => 'Ruta',
+    'PRODUCTOR' => 'Productor',
+];
 $parseUpperList = static function ($value, array $allowList = []): array {
     $items = [];
     if (is_array($value)) {
@@ -122,7 +136,7 @@ $guardarDocumentoCertificaciones = static function (array $file, ?string $actual
 };
 $categoriasSeed = [
     ['codigo' => 'M', 'nombre' => 'Mercado', 'tipo' => 'MERCADO', 'categoria' => 'MERCADO'],
-    ['codigo' => 'B', 'nombre' => 'Bodega', 'tipo' => 'BODEGA', 'categoria' => 'BODEGA'],
+    ['codigo' => 'CA', 'nombre' => 'Centro de Acopio', 'tipo' => 'BODEGA', 'categoria' => 'CENTRO DE ACOPIO'],
     ['codigo' => 'ES', 'nombre' => 'Esmeraldas', 'tipo' => 'RUTA', 'categoria' => 'ESMERALDAS'],
     ['codigo' => 'FM', 'nombre' => 'Flor de Manabí', 'tipo' => 'RUTA', 'categoria' => 'FLOR DE MANABI'],
     ['codigo' => 'VP', 'nombre' => 'Vía Pedernales', 'tipo' => 'RUTA', 'categoria' => 'VIA PEDERNALES'],
@@ -203,6 +217,44 @@ foreach ($schemaStatements as $statement) {
     }
 }
 $colsProveedores = $getTableColumns($db, 'proveedores');
+
+try {
+    $db->exec(
+        "UPDATE proveedores
+         SET tipo = 'BODEGA'
+         WHERE UPPER(COALESCE(tipo, '')) IN ('CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO')"
+    );
+
+    if ($hasProvCol('categoria')) {
+        $db->prepare(
+            "UPDATE proveedores
+             SET categoria = ?
+             WHERE UPPER(COALESCE(categoria, '')) = 'BODEGA'"
+        )->execute(['CENTRO DE ACOPIO']);
+    }
+
+    if ($hasProvCol('es_categoria') && $hasProvCol('categoria')) {
+        $db->prepare(
+            "UPDATE proveedores
+             SET codigo = 'CA',
+                 nombre = 'Centro de Acopio',
+                 tipo = 'BODEGA',
+                 categoria = 'CENTRO DE ACOPIO',
+                 es_categoria = 1" . ($hasProvCol('tipos_permitidos') ? ",
+                 tipos_permitidos = 'BODEGA'" : "") . "
+             WHERE UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
+                OR (
+                    es_categoria = 1
+                    AND (
+                        UPPER(COALESCE(categoria, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+                        OR UPPER(COALESCE(nombre, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+                    )
+               )"
+        )->execute();
+    }
+} catch (Throwable $e) {
+    // Compatibilidad: si la migración no aplica, continuar con la parametrización existente.
+}
 
 if (in_array('tipos_permitidos', $colsProveedores, true)) {
     try {
@@ -346,7 +398,7 @@ foreach ($categoriasCatalogo as $catRow) {
         $tiposProveedor
     );
     if (empty($tiposPermitidos)) {
-        $tipoFallback = strtoupper(trim((string)($catRow['tipo'] ?? 'RUTA')));
+        $tipoFallback = $normalizarTipoProveedor((string)($catRow['tipo'] ?? 'RUTA'));
         $tiposPermitidos = in_array($tipoFallback, $tiposProveedor, true) ? [$tipoFallback] : ['RUTA'];
     }
     $tipoCat = $tiposPermitidos[0];
@@ -462,7 +514,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create_category':
                 $codigo = strtoupper(trim($_POST['codigo'] ?? ''));
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipoLegacy = strtoupper(trim($_POST['tipo'] ?? ''));
+                $tipoLegacy = $normalizarTipoProveedor((string)($_POST['tipo'] ?? ''));
                 $tiposPermitidos = $parseUpperList(
                     $_POST['tipos_permitidos'] ?? ($tipoLegacy !== '' ? [$tipoLegacy] : []),
                     $tiposProveedor
@@ -540,7 +592,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = (int)($_POST['id'] ?? 0);
                 $codigo = strtoupper(trim($_POST['codigo'] ?? ''));
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipoLegacy = strtoupper(trim($_POST['tipo'] ?? ''));
+                $tipoLegacy = $normalizarTipoProveedor((string)($_POST['tipo'] ?? ''));
                 $tiposPermitidos = $parseUpperList(
                     $_POST['tipos_permitidos'] ?? ($tipoLegacy !== '' ? [$tipoLegacy] : []),
                     $tiposProveedor
@@ -629,7 +681,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create':
                 $codigo = '';
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipo = strtoupper(trim($_POST['tipo'] ?? 'MERCADO'));
+                $tipo = $normalizarTipoProveedor((string)($_POST['tipo'] ?? 'MERCADO'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
                 $cedulaRuc = preg_replace('/\s+/', '', trim($_POST['cedula_ruc'] ?? ''));
                 $codigoIdentificacion = '';
@@ -805,7 +857,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = (int)($_POST['id'] ?? 0);
                 $codigo = '';
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipo = strtoupper(trim($_POST['tipo'] ?? 'MERCADO'));
+                $tipo = $normalizarTipoProveedor((string)($_POST['tipo'] ?? 'MERCADO'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
                 $cedulaRuc = preg_replace('/\s+/', '', trim($_POST['cedula_ruc'] ?? ''));
                 $codigoIdentificacion = strtoupper(trim($_POST['codigo_identificacion'] ?? ''));
@@ -1029,10 +1081,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                if ($hasProvCol('documento_certificaciones')) {
+                    $documentoRegistro = trim((string)($registro['documento_certificaciones'] ?? ''));
+                    if ($documentoRegistro !== '') {
+                        $documentoAbs = __DIR__ . '/../' . ltrim($documentoRegistro, '/');
+                        $documentosBase = realpath(__DIR__ . '/../uploads/proveedores-certificaciones');
+                        $documentoReal = realpath($documentoAbs);
+                        if ($documentosBase && $documentoReal && strpos($documentoReal, $documentosBase) === 0 && is_file($documentoReal)) {
+                            @unlink($documentoReal);
+                        }
+                    }
+                }
+
                 $stmt = $db->prepare("DELETE FROM proveedores WHERE id = ?");
                 $stmt->execute([$id]);
 
-                echo json_encode(['success' => true, 'message' => 'Registro eliminado']);
+                $mensajeEliminacion = ($hasProvCol('es_categoria') && (int)($registro['es_categoria'] ?? 0) === 1)
+                    ? 'Categoría o ruta eliminada'
+                    : 'Proveedor eliminado';
+                echo json_encode(['success' => true, 'message' => $mensajeEliminacion]);
                 break;
 
             case 'get':
@@ -1063,7 +1130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Obtener proveedores para listado
 $search = trim($_GET['search'] ?? '');
-$tipo_filter = strtoupper(trim($_GET['tipo'] ?? ''));
+$tipo_filter = $normalizarTipoProveedor((string)($_GET['tipo'] ?? ''));
 $categoria_filter = $normalizarCategoria((string)($_GET['categoria'] ?? ''));
 $estado_filter = $_GET['estado'] ?? '';
 
@@ -1226,7 +1293,7 @@ ob_start();
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-amber-600"><?= number_format($stats['bodega'] ?? 0) ?></div>
-            <div class="text-sm text-warmgray">Bodega</div>
+            <div class="text-sm text-warmgray">Centro de Acopio</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-purple-600"><?= number_format($stats['ruta'] ?? 0) ?></div>
@@ -1295,12 +1362,12 @@ ob_start();
                                 $tiposProveedor
                             );
                             if (empty($tiposCat)) {
-                                $tiposCat = [strtoupper((string)($cat['tipo'] ?? 'RUTA'))];
+                                $tiposCat = [$normalizarTipoProveedor((string)($cat['tipo'] ?? 'RUTA'))];
                             }
                             ?>
                             <div class="flex flex-wrap gap-1">
                                 <?php foreach ($tiposCat as $tipoCatBadge): ?>
-                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700"><?= htmlspecialchars($tipoCatBadge) ?></span>
+                                    <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700"><?= htmlspecialchars($tipoLabels[$tipoCatBadge] ?? $tipoCatBadge) ?></span>
                                 <?php endforeach; ?>
                             </div>
                         </td>
@@ -1326,6 +1393,12 @@ ob_start();
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                     </svg>
                                 </button>
+                                <button type="button" onclick='deleteRegistro(<?= (int)$cat['id'] ?>, <?= json_encode((string)$cat['nombre'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>, true)'
+                                        class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar categoría o ruta">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -1344,7 +1417,7 @@ ob_start();
             <select name="tipo" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary">
                 <option value="">Todos los tipos</option>
                 <option value="MERCADO" <?= $tipo_filter === 'MERCADO' ? 'selected' : '' ?>>Mercado</option>
-                <option value="BODEGA" <?= $tipo_filter === 'BODEGA' ? 'selected' : '' ?>>Bodega</option>
+                <option value="BODEGA" <?= $tipo_filter === 'BODEGA' ? 'selected' : '' ?>>Centro de Acopio</option>
                 <option value="RUTA" <?= $tipo_filter === 'RUTA' ? 'selected' : '' ?>>Ruta</option>
                 <option value="PRODUCTOR" <?= $tipo_filter === 'PRODUCTOR' ? 'selected' : '' ?>>Productor</option>
             </select>
@@ -1450,16 +1523,17 @@ ob_start();
                         </td>
                         <td class="px-6 py-4">
                             <?php
+                            $tipoProveedorFila = $normalizarTipoProveedor((string)($prov['tipo'] ?? ''));
                             $tipoColors = [
                                 'MERCADO' => 'bg-blue-100 text-blue-800',
                                 'BODEGA' => 'bg-amber-100 text-amber-800',
                                 'RUTA' => 'bg-purple-100 text-purple-800',
                                 'PRODUCTOR' => 'bg-teal-100 text-teal-800'
                             ];
-                            $color = $tipoColors[$prov['tipo']] ?? 'bg-gray-100 text-gray-800';
+                            $color = $tipoColors[$tipoProveedorFila] ?? 'bg-gray-100 text-gray-800';
                             ?>
                             <span class="px-3 py-1 rounded-full text-xs font-medium <?= $color ?>">
-                                <?= htmlspecialchars($prov['tipo']) ?>
+                                <?= htmlspecialchars($tipoLabels[$tipoProveedorFila] ?? $tipoProveedorFila) ?>
                             </span>
                         </td>
                         <td class="px-6 py-4 text-gray-600">
@@ -1494,14 +1568,12 @@ ob_start();
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                     </svg>
                                 </button>
-                                <?php if ($prov['total_lotes'] == 0): ?>
-                                <button onclick="deleteProveedor(<?= $prov['id'] ?>, '<?= htmlspecialchars($prov['nombre']) ?>')" 
+                                <button onclick='deleteRegistro(<?= (int)$prov['id'] ?>, <?= json_encode((string)$prov['nombre'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>)' 
                                         class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                     </svg>
                                 </button>
-                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>
@@ -1564,7 +1636,7 @@ ob_start();
                         <select id="tipo" name="tipo" required
                                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
                             <option value="MERCADO">Mercado</option>
-                            <option value="BODEGA">Bodega</option>
+                            <option value="BODEGA">Centro de Acopio</option>
                             <option value="RUTA">Ruta</option>
                             <option value="PRODUCTOR">Productor</option>
                         </select>
@@ -1743,13 +1815,13 @@ ob_start();
                     <label class="block text-sm font-medium text-gray-700 mb-1">Código categoría *</label>
                     <input type="text" id="categoriaCodigo" name="codigo" required maxlength="20"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary uppercase"
-                           placeholder="Ej: ES, B, M, VP...">
+                           placeholder="Ej: ES, CA, M, VP...">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Nombre categoría *</label>
                     <input type="text" id="categoriaNombre" name="nombre" required maxlength="100"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
-                           placeholder="Ej: Esmeraldas, Bodega, Vía Pedernales">
+                           placeholder="Ej: Esmeraldas, Centro de Acopio, Vía Pedernales">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Tipos permitidos *</label>
@@ -1760,7 +1832,7 @@ ob_start();
                         </label>
                         <label class="inline-flex items-center gap-2">
                             <input type="checkbox" name="tipos_permitidos[]" value="BODEGA" class="rounded border-gray-300 text-primary focus:ring-primary">
-                            <span>Bodega</span>
+                            <span>Centro de Acopio</span>
                         </label>
                         <label class="inline-flex items-center gap-2">
                             <input type="checkbox" name="tipos_permitidos[]" value="RUTA" class="rounded border-gray-300 text-primary focus:ring-primary">
@@ -1792,18 +1864,18 @@ ob_start();
 <script>
 const proveedoresUrl = '<?= APP_URL ?>/configuracion/proveedores.php';
 const csrfToken = '<?= e($csrfToken) ?>';
-const categoriasCatalogoData = <?= json_encode(array_map(static function (array $cat) use ($normalizarCategoria, $categoriaLabels, $parseUpperList, $tiposProveedor) {
+const categoriasCatalogoData = <?= json_encode(array_map(static function (array $cat) use ($normalizarCategoria, $normalizarTipoProveedor, $categoriaLabels, $parseUpperList, $tiposProveedor) {
     $key = $normalizarCategoria((string)($cat['categoria'] ?? $cat['nombre'] ?? ''));
     $tiposPermitidos = $parseUpperList($cat['tipos_permitidos'] ?? ($cat['tipo'] ?? ''), $tiposProveedor);
     if (empty($tiposPermitidos)) {
-        $tipoFallback = strtoupper((string)($cat['tipo'] ?? 'RUTA'));
+        $tipoFallback = $normalizarTipoProveedor((string)($cat['tipo'] ?? 'RUTA'));
         $tiposPermitidos = [$tipoFallback];
     }
     return [
         'id' => (int)($cat['id'] ?? 0),
         'codigo' => (string)($cat['codigo'] ?? ''),
         'label' => (string)($cat['nombre'] ?? ($categoriaLabels[$key] ?? $key)),
-        'tipo' => strtoupper((string)($cat['tipo'] ?? 'RUTA')),
+        'tipo' => $normalizarTipoProveedor((string)($cat['tipo'] ?? 'RUTA')),
         'tipos_permitidos' => $tiposPermitidos,
         'key' => $key,
         'activo' => (int)($cat['activo'] ?? 1),
@@ -1814,6 +1886,14 @@ const categoriasDisponibles = <?= json_encode($categoriasProveedor, JSON_UNESCAP
 const tipoPorCategoria = <?= json_encode($tipoPorCategoria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const tiposPermitidosPorCategoria = <?= json_encode($tiposPermitidosPorCategoria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const categoriaLabels = <?= json_encode($categoriaLabels, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
+function normalizeTipoProveedor(tipo = '') {
+    const value = String(tipo || '').trim().toUpperCase();
+    if (['CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)'].includes(value)) {
+        return 'BODEGA';
+    }
+    return value;
+}
 
 function actualizarTiposPermitidosEnFormulario() {
     const categoriaSelect = document.getElementById('categoria');
@@ -1935,7 +2015,8 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
                 }
                 document.getElementById('proveedorId').value = p.id;
                 document.getElementById('nombre').value = p.nombre;
-                document.getElementById('tipo').value = p.tipo;
+                const tipoProveedor = normalizeTipoProveedor(p.tipo);
+                document.getElementById('tipo').value = tipoProveedor || document.getElementById('tipo').value;
                 document.getElementById('contacto').value = p.contacto || '';
                 document.getElementById('telefono').value = p.telefono || '';
                 document.getElementById('direccion').value = p.direccion || '';
@@ -1966,12 +2047,12 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
                 if (emailInput) emailInput.value = p.email || '';
                 let categoriaResuelta = p.categoria || '';
                 if (!categoriaResuelta) {
-                    const categoriasTipo = categoriasPorTipo[p.tipo] || [];
+                    const categoriasTipo = categoriasPorTipo[tipoProveedor] || [];
                     categoriaResuelta = categoriasTipo.length > 0 ? categoriasTipo[0] : '';
                 }
                 actualizarCategorias(categoriaResuelta, true);
                 if (document.getElementById('tipo')) {
-                    document.getElementById('tipo').value = p.tipo || document.getElementById('tipo').value;
+                    document.getElementById('tipo').value = tipoProveedor || document.getElementById('tipo').value;
                 }
                 actualizarTiposPermitidosEnFormulario();
 
@@ -1993,7 +2074,7 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
 
                 if (documentoLink) {
                     if (p.documento_certificaciones) {
-                        documentoLink.href = `<?= rtrim(APP_URL, '/') ?>/${String(p.documento_certificaciones).replace(/^\\/+/, '')}`;
+                        documentoLink.href = `<?= rtrim(APP_URL, '/') ?>/${String(p.documento_certificaciones).replace(/^\/+/, '')}`;
                         documentoLink.classList.remove('hidden');
                     } else {
                         documentoLink.classList.add('hidden');
@@ -2166,10 +2247,12 @@ async function toggleEstado(id) {
 }
 
 // Eliminar proveedor
-async function deleteProveedor(id, nombre) {
-    const mensaje = `¿Está seguro de eliminar el proveedor "${nombre}"?\n\nEsta acción no se puede deshacer.`;
+async function deleteRegistro(id, nombre, esCategoria = false) {
+    const etiqueta = esCategoria ? 'la categoría o ruta' : 'el proveedor';
+    const titulo = esCategoria ? 'Eliminar categoría o ruta' : 'Eliminar proveedor';
+    const mensaje = `¿Está seguro de eliminar ${etiqueta} "${nombre}"?\n\nEsta acción no se puede deshacer.`;
     const confirmed = window.App?.confirm
-        ? await App.confirm(mensaje, 'Eliminar proveedor')
+        ? await App.confirm(mensaje, titulo)
         : confirm(mensaje);
     if (!confirmed) return;
     
@@ -2187,6 +2270,14 @@ async function deleteProveedor(id, nombre) {
             showNotification(data.message, 'error');
         }
     });
+}
+
+async function deleteProveedor(id, nombre) {
+    return deleteRegistro(id, nombre, false);
+}
+
+async function deleteCategoria(id, nombre) {
+    return deleteRegistro(id, nombre, true);
 }
 
 // Notificaciones
@@ -2236,6 +2327,8 @@ window.openCategoriaModal = openCategoriaModal;
 window.closeCategoriaModal = closeCategoriaModal;
 window.toggleEstado = toggleEstado;
 window.deleteProveedor = deleteProveedor;
+window.deleteCategoria = deleteCategoria;
+window.deleteRegistro = deleteRegistro;
 
 document.addEventListener('DOMContentLoaded', function() {
     const tipoSelect = document.getElementById('tipo');

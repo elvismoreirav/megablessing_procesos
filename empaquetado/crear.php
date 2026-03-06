@@ -10,6 +10,11 @@ requireAuth();
 
 $db = Database::getInstance();
 $errors = [];
+$parametrosGenerales = Helpers::getParametros('GENERAL');
+$pesoSacoEstandar = (float)($parametrosGenerales['peso_saco_kg'] ?? 69);
+if ($pesoSacoEstandar <= 0) {
+    $pesoSacoEstandar = 69.0;
+}
 
 if (!Helpers::ensureEmpaquetadoTable()) {
     setFlash('error', 'No se pudo habilitar el módulo de empaquetado en esta base de datos.');
@@ -118,7 +123,7 @@ $lotesDisponibles = $db->fetchAll("
 
 // Obtener tipos de empaque
 $tiposEmpaque = [
-    ['codigo' => 'SACO_50', 'nombre' => 'Saco 50 kg', 'peso' => 50],
+    ['codigo' => 'SACO_ESTANDAR', 'nombre' => 'Saco estándar ' . number_format($pesoSacoEstandar, 0) . ' kg', 'peso' => $pesoSacoEstandar],
     ['codigo' => 'SACO_46', 'nombre' => 'Saco 46 kg (Exportación)', 'peso' => 46],
     ['codigo' => 'SACO_25', 'nombre' => 'Saco 25 kg', 'peso' => 25],
     ['codigo' => 'BIG_BAG', 'nombre' => 'Big Bag 1000 kg', 'peso' => 1000],
@@ -306,7 +311,7 @@ ob_start();
                     <label class="form-label required">Peso por Saco (kg)</label>
                     <input type="number" name="peso_saco" id="peso_saco" class="form-control" required
                            step="0.01" min="0.1" max="1500"
-                           value="<?= $_POST['peso_saco'] ?? '50' ?>">
+                           value="<?= htmlspecialchars((string)($_POST['peso_saco'] ?? number_format($pesoSacoEstandar, 2, '.', ''))) ?>">
                     <p class="text-xs text-warmgray mt-1">Peso estándar por unidad de empaque</p>
                 </div>
                 
@@ -314,7 +319,7 @@ ob_start();
                 <div class="form-group">
                     <label class="form-label">Sacos Estimados</label>
                     <div class="form-control bg-olive/10 font-bold text-primary" id="sacos_estimados">
-                        <?= floor($loteInfo['peso_secado'] / 50) ?> sacos
+                        <?= floor($loteInfo['peso_secado'] / $pesoSacoEstandar) ?> sacos
                     </div>
                     <p class="text-xs text-warmgray mt-1">Basado en peso disponible</p>
                 </div>
@@ -340,7 +345,7 @@ ob_start();
                     <h4 class="font-semibold text-blue-900">Información de Empaque</h4>
                     <ul class="mt-2 text-sm text-blue-800 space-y-1">
                         <li>• <strong>Exportación:</strong> Sacos de yute de 46 kg con etiqueta de trazabilidad</li>
-                        <li>• <strong>Nacional:</strong> Sacos de polipropileno de 50 kg</li>
+                        <li>• <strong>Estándar:</strong> Sacos de polipropileno de <?= number_format($pesoSacoEstandar, 0) ?> kg</li>
                         <li>• <strong>Premium:</strong> Empaque especial según especificaciones del cliente</li>
                         <li>• Registrar número de lote en cada saco</li>
                         <li>• Verificar que la humedad sea ≤7% antes de empacar</li>
@@ -373,7 +378,7 @@ function actualizarPeso(radio) {
 
 function calcularSacos() {
     const pesoDisponible = <?= $loteInfo['peso_secado'] ?? 0 ?>;
-    const pesoSaco = parseFloat(document.getElementById('peso_saco').value) || 50;
+    const pesoSaco = parseFloat(document.getElementById('peso_saco').value) || <?= json_encode($pesoSacoEstandar) ?>;
     
     if (pesoDisponible > 0 && pesoSaco > 0) {
         const sacos = Math.floor(pesoDisponible / pesoSaco);
@@ -385,6 +390,7 @@ function calcularSacos() {
 }
 
 document.getElementById('peso_saco').addEventListener('input', calcularSacos);
+calcularSacos();
 </script>
 
 <?php

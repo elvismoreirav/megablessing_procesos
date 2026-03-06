@@ -26,15 +26,7 @@ $colObsFermentacion = $hasFerCol('observaciones')
     : ($hasFerCol('observaciones_generales') ? 'observaciones_generales' : null);
 
 // Compatibilidad de esquema para cajones
-$colsCajones = array_column($db->fetchAll("SHOW COLUMNS FROM cajones_fermentacion"), 'Field');
-$hasCajonCol = static fn(string $name): bool => in_array($name, $colsCajones, true);
-$exprNombreCajon = $hasCajonCol('nombre')
-    ? "NULLIF(TRIM(nombre), '')"
-    : ($hasCajonCol('numero') ? "NULLIF(TRIM(numero), '')" : "NULL");
-$exprCapacidadCajon = $hasCajonCol('capacidad_kg')
-    ? 'capacidad_kg'
-    : ($hasCajonCol('capacidad') ? 'capacidad' : 'NULL');
-$whereCajonActivo = $hasCajonCol('activo') ? 'activo = 1' : '1 = 1';
+Helpers::ensureCajonesFermentacionCatalog();
 
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
@@ -75,14 +67,7 @@ if ($loteId) {
 }
 
 // Obtener cajones disponibles
-$cajones = $db->fetchAll("
-    SELECT id,
-           COALESCE({$exprNombreCajon}, CONCAT('Cajón #', id)) as nombre,
-           {$exprCapacidadCajon} as capacidad_kg
-    FROM cajones_fermentacion
-    WHERE {$whereCajonActivo}
-    ORDER BY nombre
-");
+$cajones = Helpers::getCajonesFermentacionCatalog(true);
 
 // Obtener lotes disponibles para fermentación
 $lotesDisponibles = $db->fetchAll("
@@ -270,7 +255,7 @@ ob_start();
                 <div class="form-group">
                     <label class="form-label">Cajón de Fermentación</label>
                     <select name="cajon_id" class="form-control form-select">
-                        <option value="">-- Sin asignar --</option>
+                        <option value="">No aplica</option>
                         <?php foreach ($cajones as $cajon): ?>
                             <?php
                                 $capacidadCajonTexto = is_numeric($cajon['capacidad_kg'] ?? null)
@@ -278,7 +263,7 @@ ob_start();
                                     : 'Capacidad N/D';
                             ?>
                             <option value="<?= $cajon['id'] ?>" <?= (isset($_POST['cajon_id']) && $_POST['cajon_id'] == $cajon['id']) ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($cajon['nombre']) ?> 
+                                <?= htmlspecialchars((string)($cajon['nombre'] ?? 'Cajón #' . (int)($cajon['id'] ?? 0))) ?> 
                                 (<?= htmlspecialchars($capacidadCajonTexto) ?>)
                             </option>
                         <?php endforeach; ?>

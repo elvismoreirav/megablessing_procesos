@@ -88,7 +88,8 @@ $camposPagoDisponibles = $hasFichaCol('fecha_pago')
     && $hasFichaCol('factura_compra')
     && $hasFichaCol('cantidad_comprada')
     && $hasFichaCol('forma_pago');
-$pagoRegistradoExpr = $camposPagoDisponibles
+$tablaPagoDetalleLista = Helpers::ensureFichaPagoDetalleTable();
+$pagoRegistradoExprBase = $camposPagoDisponibles
     ? "(CASE WHEN f.fecha_pago IS NOT NULL
                 AND TRIM(COALESCE(f.factura_compra, '')) <> ''
                 AND f.cantidad_comprada IS NOT NULL
@@ -96,6 +97,28 @@ $pagoRegistradoExpr = $camposPagoDisponibles
                 AND TRIM(COALESCE(f.forma_pago, '')) <> ''
              THEN 1 ELSE 0 END)"
     : "(CASE WHEN f.precio_total_pagar IS NOT NULL THEN 1 ELSE 0 END)";
+$joinPagoDetalle = '';
+$selectPagoDetalle = '';
+$pagoRegistradoExpr = $pagoRegistradoExprBase;
+$precioTotalMostrarExpr = 'f.precio_total_pagar';
+if ($tablaPagoDetalleLista) {
+    $joinPagoDetalle = "
+        LEFT JOIN (
+            SELECT ficha_id,
+                   COUNT(*) as detalle_count,
+                   MAX(fecha_pago) as ultima_fecha_pago,
+                   SUM(precio_total_pagar) as total_pago_detalle
+            FROM fichas_pago_detalle
+            GROUP BY ficha_id
+        ) pd ON pd.ficha_id = f.id
+    ";
+    $selectPagoDetalle = ",
+           pd.detalle_count as pago_detalle_count,
+           pd.ultima_fecha_pago as fecha_pago_detalle,
+           pd.total_pago_detalle as precio_total_pago_detalle";
+    $pagoRegistradoExpr = "(CASE WHEN COALESCE(pd.detalle_count, 0) > 0 THEN 1 ELSE {$pagoRegistradoExprBase} END)";
+    $precioTotalMostrarExpr = 'COALESCE(pd.total_pago_detalle, f.precio_total_pagar)';
+}
 $orderByClause = $vistaActual === 'pagos'
     ? 'pago_registrado ASC, f.created_at DESC'
     : 'f.created_at DESC';
@@ -141,12 +164,15 @@ $fichas = $db->fetchAll("
            p.nombre as proveedor_nombre,
            v.nombre as variedad_nombre,
            u.nombre as responsable_nombre,
+           {$precioTotalMostrarExpr} as precio_total_pago_mostrar,
            {$pagoRegistradoExpr} as pago_registrado
+           {$selectPagoDetalle}
     FROM fichas_registro f
     LEFT JOIN lotes l ON f.lote_id = l.id
     LEFT JOIN proveedores p ON l.proveedor_id = p.id
     LEFT JOIN variedades v ON l.variedad_id = v.id
     LEFT JOIN usuarios u ON f.responsable_id = u.id
+    {$joinPagoDetalle}
     WHERE {$whereClause}
     ORDER BY {$orderByClause}
 ", $params);
@@ -373,8 +399,8 @@ ob_start();
                             <?php endif; ?>
                         </td>
                         <td class="px-4 py-3 text-sm">
-                            <?php if (isset($ficha['precio_total_pagar']) && $ficha['precio_total_pagar'] !== null): ?>
-                            <span class="font-semibold text-emerald-700">$ <?= number_format((float)$ficha['precio_total_pagar'], 2) ?></span>
+                            <?php if (isset($ficha['precio_total_pago_mostrar']) && $ficha['precio_total_pago_mostrar'] !== null): ?>
+                            <span class="font-semibold text-emerald-700">$ <?= number_format((float)$ficha['precio_total_pago_mostrar'], 2) ?></span>
                             <?php else: ?>
                             <span class="text-gray-400">—</span>
                             <?php endif; ?>
@@ -383,12 +409,13 @@ ob_start();
                             <?php if ($vistaActual === 'pagos'): ?>
                             <?php
                             $pagoRegistrado = ((int)($ficha['pago_registrado'] ?? 0)) === 1;
+                            $fechaPagoFila = trim((string)($ficha['fecha_pago_detalle'] ?? ($ficha['fecha_pago'] ?? '')));
                             ?>
                             <span class="inline-flex px-2 py-1 text-xs rounded-full <?= $pagoRegistrado ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                 <?= $pagoRegistrado ? 'Registrado' : 'Pendiente' ?>
                             </span>
-                            <?php if ($pagoRegistrado && !empty($ficha['fecha_pago'])): ?>
-                            <div class="text-xs text-gray-500 mt-1"><?= date('d/m/Y', strtotime((string)$ficha['fecha_pago'])) ?></div>
+                            <?php if ($pagoRegistrado && $fechaPagoFila !== ''): ?>
+                            <div class="text-xs text-gray-500 mt-1"><?= date('d/m/Y', strtotime($fechaPagoFila)) ?></div>
                             <?php endif; ?>
                             <?php elseif ($ficha['fermentacion_estado']): ?>
                             <?php

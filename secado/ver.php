@@ -17,23 +17,87 @@ if (!$id) {
     redirect('/secado/index.php');
 }
 
+// Compatibilidad de esquema: registros_secado
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+$fechaInicioExpr = $hasSecCol('fecha_inicio') ? 'rs.fecha_inicio' : ($hasSecCol('fecha') ? 'rs.fecha' : 'NULL');
+$fechaFinExpr = $hasSecCol('fecha_fin') ? 'rs.fecha_fin' : 'NULL';
+$tipoSecadoExpr = $hasSecCol('tipo_secado') ? 'rs.tipo_secado' : ($hasSecCol('estado') ? 'rs.estado' : "'N/D'");
+$pesoInicialExpr = $hasSecCol('peso_inicial')
+    ? 'rs.peso_inicial'
+    : ($hasSecCol('qq_cargados')
+        ? '(rs.qq_cargados * 45.3592)'
+        : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
+$pesoFinalExpr = $hasSecCol('peso_final') ? 'rs.peso_final' : 'NULL';
+$humedadInicialExpr = $hasSecCol('humedad_inicial') ? 'rs.humedad_inicial' : 'NULL';
+$humedadFinalExpr = $hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL';
+$observacionesExpr = $hasSecCol('observaciones')
+    ? 'rs.observaciones'
+    : ($hasSecCol('carga_observaciones')
+        ? 'rs.carga_observaciones'
+        : ($hasSecCol('revision_observaciones') ? 'rs.revision_observaciones' : 'NULL'));
+
+// Compatibilidad de relación con usuarios
+$joinResponsable = '';
+$responsableExpr = 'NULL';
+if ($hasSecCol('responsable_id')) {
+    $joinResponsable = 'LEFT JOIN usuarios u ON rs.responsable_id = u.id';
+    $responsableExpr = 'u.nombre';
+} elseif ($hasSecCol('operador_id')) {
+    $joinResponsable = 'LEFT JOIN usuarios u ON rs.operador_id = u.id';
+    $responsableExpr = 'u.nombre';
+}
+
+// Compatibilidad de esquema: secadoras
+$tablaSecadoras = $db->fetch("SHOW TABLES LIKE 'secadoras'") ? 'secadoras' : null;
+$joinSecadora = '';
+$secadoraCodigoExpr = 'NULL';
+$secadoraTipoExpr = 'NULL';
+$secadoraCapacidadExpr = 'NULL';
+if ($tablaSecadoras) {
+    $colsSecadoras = array_column($db->fetchAll("SHOW COLUMNS FROM {$tablaSecadoras}"), 'Field');
+    $hasSecadoraCol = static fn(string $name): bool => in_array($name, $colsSecadoras, true);
+
+    $secadoraCodigoExpr = $hasSecadoraCol('nombre')
+        ? "COALESCE(NULLIF(TRIM(s.nombre), ''), " . ($hasSecadoraCol('numero') ? "NULLIF(TRIM(s.numero), ''), " : '') . "CONCAT('Secadora #', s.id))"
+        : ($hasSecadoraCol('numero') ? "COALESCE(NULLIF(TRIM(s.numero), ''), CONCAT('Secadora #', s.id))" : "CONCAT('Secadora #', s.id)");
+
+    $secadoraTipoExpr = $hasSecadoraCol('tipo') ? 's.tipo' : 'NULL';
+    if ($hasSecadoraCol('capacidad_kg')) {
+        $secadoraCapacidadExpr = 's.capacidad_kg';
+    } elseif ($hasSecadoraCol('capacidad')) {
+        $secadoraCapacidadExpr = 's.capacidad';
+    }
+
+    $joinSecadora = "LEFT JOIN {$tablaSecadoras} s ON rs.secadora_id = s.id";
+}
+
 // Obtener datos de secado
 $secado = $db->fetch("
     SELECT rs.*, 
+           {$fechaInicioExpr} as fecha_inicio,
+           {$fechaFinExpr} as fecha_fin,
+           {$tipoSecadoExpr} as tipo_secado,
+           {$pesoInicialExpr} as peso_inicial,
+           {$pesoFinalExpr} as peso_final,
+           {$humedadInicialExpr} as humedad_inicial,
+           {$humedadFinalExpr} as humedad_final,
+           {$observacionesExpr} as observaciones,
            l.codigo as lote_codigo,
+           l.id as lote_id,
            p.nombre as proveedor, 
            p.codigo as proveedor_codigo,
            v.nombre as variedad,
-           u.nombre as operador,
-           s.codigo as secadora_codigo,
-           s.tipo as secadora_tipo,
-           s.capacidad_kg as secadora_capacidad
+           {$responsableExpr} as operador,
+           {$secadoraCodigoExpr} as secadora_codigo,
+           {$secadoraTipoExpr} as secadora_tipo,
+           {$secadoraCapacidadExpr} as secadora_capacidad
     FROM registros_secado rs
     JOIN lotes l ON rs.lote_id = l.id
     JOIN proveedores p ON l.proveedor_id = p.id
     JOIN variedades v ON l.variedad_id = v.id
-    JOIN usuarios u ON rs.operador_id = u.id
-    LEFT JOIN secadoras s ON rs.secadora_id = s.id
+    {$joinResponsable}
+    {$joinSecadora}
     WHERE rs.id = :id
 ", ['id' => $id]);
 
@@ -42,12 +106,31 @@ if (!$secado) {
     redirect('/secado/index.php');
 }
 
-// Obtener control de temperatura
-$controlTemp = $db->fetchAll("
-    SELECT * FROM secado_control_temperatura 
-    WHERE secado_id = :id 
-    ORDER BY fecha ASC, hora ASC
-", ['id' => $id]);
+// Compatibilidad de esquema: secado_control_temperatura
+$colsControl = array_column($db->fetchAll("SHOW COLUMNS FROM secado_control_temperatura"), 'Field');
+$hasCtrlCol = static fn(string $name): bool => in_array($name, $colsControl, true);
+$fkControlCol = $hasCtrlCol('secado_id') ? 'secado_id' : ($hasCtrlCol('registro_secado_id') ? 'registro_secado_id' : null);
+$fechaControlExpr = $hasCtrlCol('fecha') ? 'fecha' : ($hasCtrlCol('created_at') ? 'DATE(created_at)' : 'NULL');
+$horaControlExpr = $hasCtrlCol('hora') ? 'hora' : ($hasCtrlCol('created_at') ? 'TIME(created_at)' : 'NULL');
+$tempControlExpr = $hasCtrlCol('temperatura') ? 'temperatura' : 'NULL';
+$humedadControlExpr = $hasCtrlCol('humedad') ? 'humedad' : 'NULL';
+$obsControlExpr = $hasCtrlCol('observaciones') ? 'observaciones' : 'NULL';
+$orderControlExpr = ($hasCtrlCol('fecha') ? 'fecha' : ($hasCtrlCol('created_at') ? 'created_at' : 'id'))
+    . ($hasCtrlCol('hora') ? ', hora' : '');
+
+$controlTemp = [];
+if ($fkControlCol) {
+    $controlTemp = $db->fetchAll("
+        SELECT {$fechaControlExpr} as fecha,
+               {$horaControlExpr} as hora,
+               {$tempControlExpr} as temperatura,
+               {$humedadControlExpr} as humedad,
+               {$obsControlExpr} as observaciones
+        FROM secado_control_temperatura
+        WHERE {$fkControlCol} = :id
+        ORDER BY {$orderControlExpr}
+    ", ['id' => $id]);
+}
 
 // Agrupar por día para la tabla
 $controlPorDia = [];
@@ -92,10 +175,11 @@ if (!empty($controlTemp)) {
 }
 
 // Estado
-$finalizado = !empty($secado['fecha_fin']);
+$finalizado = !empty($secado['fecha_fin'])
+    || (!$hasSecCol('fecha_fin') && !empty($secado['humedad_final']));
 
-// Horas de control
-$horasControl = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
+// Horas de control (diurno y nocturno)
+$horasControl = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00'];
 
 $pageTitle = 'Secado: ' . $secado['lote_codigo'];
 $pageSubtitle = 'Detalle del proceso de secado';
@@ -239,16 +323,22 @@ ob_start();
                 <?php if ($finalizado): ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Fecha Fin</span>
-                    <span class="font-medium"><?= Helpers::formatDate($secado['fecha_fin']) ?></span>
+                    <span class="font-medium"><?= !empty($secado['fecha_fin']) ? Helpers::formatDate($secado['fecha_fin']) : 'No registrada' ?></span>
                 </div>
-                <?php
-                    $inicio = new DateTime($secado['fecha_inicio']);
-                    $fin = new DateTime($secado['fecha_fin']);
-                    $duracion = $inicio->diff($fin)->days;
-                ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Duración</span>
-                    <span class="font-medium"><?= $duracion ?> días</span>
+                    <span class="font-medium">
+                        <?php if (!empty($secado['fecha_inicio']) && !empty($secado['fecha_fin'])): ?>
+                            <?php
+                                $inicio = new DateTime($secado['fecha_inicio']);
+                                $fin = new DateTime($secado['fecha_fin']);
+                                $duracion = $inicio->diff($fin)->days;
+                            ?>
+                            <?= $duracion ?> días
+                        <?php else: ?>
+                            N/R
+                        <?php endif; ?>
+                    </span>
                 </div>
                 <?php endif; ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
@@ -300,7 +390,12 @@ ob_start();
     <div class="lg:col-span-2">
         <div class="card">
             <div class="card-header">
-                <h3 class="card-title">Control de Temperatura por Día</h3>
+                <div>
+                    <h3 class="card-title">Control de Temperatura por Día</h3>
+                    <p class="text-sm text-warmgray mt-1">
+                        Bloque diurno: 06:00 a 18:00. Bloque nocturno: 20:00, 22:00, 00:00, 02:00 y 04:00.
+                    </p>
+                </div>
             </div>
             <div class="table-container">
                 <table class="table text-sm">
@@ -318,7 +413,7 @@ ob_start();
                     <tbody>
                         <?php if (empty($controlPorDia)): ?>
                             <tr>
-                                <td colspan="<?= 3 + count($horasControl) ?>" class="text-center py-8 text-warmgray">
+                                <td colspan="<?= 4 + count($horasControl) ?>" class="text-center py-8 text-warmgray">
                                     No hay registros de control de temperatura
                                 </td>
                             </tr>

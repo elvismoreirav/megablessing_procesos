@@ -79,16 +79,38 @@ if ($sugerido === '') {
 $prefijoProveedor = Helpers::resolveProveedorLotePrefix(
     $loteProveedorId > 0 ? $loteProveedorId : ((string)($ficha['proveedor_nombre'] ?? ''))
 );
+$tipoEntregaFicha = strtoupper(trim((string)($ficha['tipo_entrega'] ?? '')));
+$esEntregaRuta = $tipoEntregaFicha === 'RUTAS';
+$proveedorRutaCompuesto = Helpers::parseProveedorRutaCompuesta((string)($ficha['proveedor_ruta'] ?? ''));
+$rutaEntregaTexto = trim((string)($proveedorRutaCompuesto['ruta'] ?? ''));
+$proveedoresRuta = array_values(array_filter(array_map(
+    static fn(string $nombre): string => trim($nombre),
+    (array)($proveedorRutaCompuesto['proveedores'] ?? [])
+)));
+if (empty($proveedoresRuta)) {
+    $proveedorNombreFicha = trim((string)($ficha['proveedor_nombre'] ?? ''));
+    if ($proveedorNombreFicha !== '') {
+        $proveedoresRuta[] = $proveedorNombreFicha;
+    }
+}
+$proveedoresRutaTexto = !empty($proveedoresRuta) ? implode(', ', $proveedoresRuta) : '—';
+$proveedorPrincipalTexto = $esEntregaRuta ? $proveedoresRutaTexto : trim((string)($ficha['proveedor_nombre'] ?? '—'));
+$codigoBaseTexto = trim((string)($ficha['lote_codigo'] ?? ''));
 
 $pageTitle = "Codificacion de Lote - Ficha #{$id}";
 ob_start();
 ?>
 
-<div class="max-w-3xl mx-auto space-y-6">
+<div class="max-w-5xl mx-auto space-y-6">
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Codificacion de Lote</h1>
             <p class="text-gray-600">Ficha #<?= (int)$id ?> · Lote <?= htmlspecialchars((string)($ficha['lote_codigo'] ?: 'Sin lote asignado')) ?></p>
+            <?php if ($esEntregaRuta): ?>
+            <p class="text-sm text-gray-500 mt-1">
+                Ruta: <?= htmlspecialchars($rutaEntregaTexto !== '' ? $rutaEntregaTexto : 'No aplica') ?> · Proveedores: <?= htmlspecialchars($proveedoresRutaTexto) ?>
+            </p>
+            <?php endif; ?>
         </div>
         <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="text-amber-600 hover:text-amber-700">
             <i class="fas fa-arrow-left mr-2"></i>Volver al listado
@@ -104,12 +126,27 @@ ob_start();
     </div>
     <?php endif; ?>
 
+    <?php if ($esEntregaRuta): ?>
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-info-circle text-blue-600"></i>
+            <span class="text-blue-800">El código base corresponde al lote creado para la ruta. La codificación final identifica esta ficha y puede conservar la base agregando un sufijo.</span>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-<?= $esEntregaRuta ? '5' : '4' ?> gap-4">
             <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <p class="text-xs text-gray-500">Proveedor</p>
-                <p class="font-semibold text-gray-900"><?= htmlspecialchars((string)($ficha['proveedor_nombre'] ?? '—')) ?></p>
+                <p class="text-xs text-gray-500"><?= $esEntregaRuta ? 'Proveedores' : 'Proveedor' ?></p>
+                <p class="font-semibold text-gray-900"><?= htmlspecialchars($proveedorPrincipalTexto !== '' ? $proveedorPrincipalTexto : '—') ?></p>
             </div>
+            <?php if ($esEntregaRuta): ?>
+            <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                <p class="text-xs text-gray-500">Ruta de entrega</p>
+                <p class="font-semibold text-gray-900"><?= htmlspecialchars($rutaEntregaTexto !== '' ? $rutaEntregaTexto : 'No aplica') ?></p>
+            </div>
+            <?php endif; ?>
             <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
                 <p class="text-xs text-gray-500">Tipo proveedor (prefijo)</p>
                 <p class="font-semibold text-gray-900"><?= htmlspecialchars($prefijoProveedor !== '' ? $prefijoProveedor : '—') ?></p>
@@ -119,8 +156,11 @@ ob_start();
                 <p class="font-semibold text-gray-900"><?= htmlspecialchars((string)($ficha['variedad_nombre'] ?? '—')) ?></p>
             </div>
             <div class="p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <p class="text-xs text-gray-500">Codigo de lote base</p>
-                <p class="font-semibold text-gray-900"><?= htmlspecialchars((string)($ficha['lote_codigo'] ?? '—')) ?></p>
+                <p class="text-xs text-gray-500"><?= $esEntregaRuta ? 'Codigo base de referencia' : 'Codigo de lote base' ?></p>
+                <p class="font-semibold text-gray-900"><?= htmlspecialchars($codigoBaseTexto !== '' ? $codigoBaseTexto : '—') ?></p>
+                <?php if ($esEntregaRuta): ?>
+                <p class="text-[11px] text-gray-500 mt-1">Corresponde al lote creado para la ruta.</p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -135,6 +175,9 @@ ob_start();
                    class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono tracking-wide uppercase">
             <p class="text-xs text-gray-500 mt-2">Formato recomendado: CAT-DD-MM-YY-ESTADO[-LETRA].</p>
             <p class="text-xs text-gray-500">Estados válidos: ES, SC, SM, BA. Si hay duplicados del mismo día/categoría, use sufijo A, B, C...</p>
+            <?php if ($esEntregaRuta && $codigoBaseTexto !== ''): ?>
+            <p class="text-xs text-blue-700 mt-1">Referencia visual: lote base <?= htmlspecialchars($codigoBaseTexto) ?>, codificación sugerida <?= htmlspecialchars($sugerido !== '' ? $sugerido : 'N/D') ?>.</p>
+            <?php endif; ?>
         </div>
 
         <div class="flex items-center gap-3">

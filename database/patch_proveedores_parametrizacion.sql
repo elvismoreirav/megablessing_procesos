@@ -271,9 +271,13 @@ DEALLOCATE PREPARE stmt;
 
 -- Sugerencia de categorias por defecto para registros existentes
 UPDATE proveedores
+SET tipo = 'BODEGA'
+WHERE UPPER(COALESCE(tipo, '')) IN ('CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO');
+
+UPDATE proveedores
 SET categoria = CASE
     WHEN tipo = 'MERCADO' THEN 'MERCADO'
-    WHEN tipo = 'BODEGA' THEN 'BODEGA'
+    WHEN tipo = 'BODEGA' THEN 'CENTRO DE ACOPIO'
     WHEN tipo = 'PRODUCTOR' THEN 'PRODUCTOR'
     WHEN tipo = 'RUTA' AND UPPER(nombre) LIKE '%ESMERALDAS%' THEN 'ESMERALDAS'
     WHEN tipo = 'RUTA' AND (UPPER(nombre) LIKE '%FLOR%' OR UPPER(nombre) LIKE '%MANABI%') THEN 'FLOR DE MANABI'
@@ -283,10 +287,30 @@ SET categoria = CASE
 END
 WHERE categoria IS NULL OR categoria = '';
 
+-- Renombrar categoria base Bodega a Centro de Acopio
+UPDATE proveedores
+SET categoria = 'CENTRO DE ACOPIO'
+WHERE UPPER(COALESCE(categoria, '')) = 'BODEGA';
+
+UPDATE proveedores
+SET codigo = 'CA',
+    nombre = 'Centro de Acopio',
+    tipo = 'BODEGA',
+    categoria = 'CENTRO DE ACOPIO',
+    es_categoria = 1
+WHERE UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
+   OR (
+       es_categoria = 1
+       AND (
+           UPPER(COALESCE(categoria, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+           OR UPPER(COALESCE(nombre, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+       )
+   );
+
 -- Marcar categorias base ya existentes
 UPDATE proveedores
 SET es_categoria = 1
-WHERE UPPER(codigo) IN ('M','B','ES','FM','VP');
+WHERE UPPER(codigo) IN ('M','CA','ES','FM','VP');
 
 -- Completar tipos_permitidos para categorias existentes
 UPDATE proveedores

@@ -123,7 +123,10 @@ ob_start();
                 </select>
             </div>
             <div>
-                <select name="proveedor" class="form-control form-select">
+                <select name="proveedor" class="form-control form-select"
+                        data-searchable="true"
+                        data-search-placeholder="Buscar proveedor para filtrar..."
+                        data-search-empty="No hay proveedores que coincidan con la búsqueda.">
                     <option value="">Todos los proveedores</option>
                     <?php foreach ($proveedores as $prov): ?>
                         <option value="<?= $prov['id'] ?>" <?= $filtroProveedor == $prov['id'] ? 'selected' : '' ?>>

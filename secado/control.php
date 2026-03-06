@@ -157,8 +157,8 @@ $fechaInicio = new DateTime($fechaInicioBase);
 $hoy = new DateTime();
 $diasTranscurridos = $fechaInicio->diff($hoy)->days + 1;
 
-// Horas de control (cada 2 horas de 6:00 a 18:00)
-$horasControl = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
+// Horas de control (cada 2 horas, bloque diurno y nocturno)
+$horasControl = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00'];
 
 // Preparar datos para Handsontable (7 días de control)
 $diasControl = [];
@@ -322,6 +322,9 @@ ob_start();
                 <span class="w-4 h-4 rounded" style="background-color: #f8d7da"></span>
                 <span>Temperatura alta (&gt;60°C)</span>
             </div>
+            <div class="w-full text-warmgray">
+                Bloque diurno: 06:00 a 18:00. Bloque nocturno: 20:00, 22:00, 00:00, 02:00 y 04:00.
+            </div>
         </div>
     </div>
 </div>
@@ -440,6 +443,9 @@ const secadoId = <?= $id ?>;
 const esFinalizado = <?= $secadoFinalizado ? 'true' : 'false' ?>;
 const etapaSecado = <?= json_encode($etapaSecado) ?>;
 const horasControl = <?= json_encode($horasControl) ?>;
+const primerIndiceTemperatura = 2;
+const indiceHumedad = primerIndiceTemperatura + horasControl.length;
+const indiceObservaciones = indiceHumedad + 1;
 
 // Datos iniciales
 const datosControl = <?= json_encode($diasControl) ?>;
@@ -459,19 +465,18 @@ const tableData = datosControl.map(d => {
 const container = document.getElementById('controlTable');
 const hot = new Handsontable(container, {
     data: tableData,
-    colHeaders: ['Día', 'Fecha', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', 'Humedad %', 'Observaciones'],
+    colHeaders: ['Día', 'Fecha', ...horasControl, 'Humedad %', 'Observaciones'],
     columns: [
         { data: 0, type: 'numeric', readOnly: true, className: 'htCenter htDimmed', width: 50 },
         { data: 1, type: 'text', readOnly: true, className: 'htCenter htDimmed', width: 70 },
-        { data: 2, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 3, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 4, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 5, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 6, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 7, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 8, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 60 },
-        { data: 9, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 80 },
-        { data: 10, type: 'text', width: 180 }
+        ...horasControl.map((_, idx) => ({
+            data: primerIndiceTemperatura + idx,
+            type: 'numeric',
+            numericFormat: { pattern: '0.0' },
+            width: 60
+        })),
+        { data: indiceHumedad, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 80 },
+        { data: indiceObservaciones, type: 'text', width: 180 }
     ],
     rowHeaders: false,
     height: 'auto',
@@ -481,8 +486,8 @@ const hot = new Handsontable(container, {
         const cellProperties = {};
         const data = this.instance.getData();
         
-        // Colorear celdas de temperatura (columnas 2-8)
-        if (col >= 2 && col <= 8) {
+        // Colorear celdas de temperatura
+        if (col >= primerIndiceTemperatura && col < indiceHumedad) {
             const val = data[row][col];
             if (val !== null && val !== '') {
                 if (val > 60) {
@@ -494,7 +499,7 @@ const hot = new Handsontable(container, {
         }
         
         // Colorear humedad si está en rango objetivo
-        if (col === 9) {
+        if (col === indiceHumedad) {
             const val = data[row][col];
             if (val !== null && val !== '' && val <= 7) {
                 cellProperties.className = 'htCenter humedad-ok';
@@ -519,28 +524,28 @@ async function guardarControl() {
         
         // Crear registro para cada hora con temperatura
         horasControl.forEach((hora, hIdx) => {
-            const temp = row[2 + hIdx];
+            const temp = row[primerIndiceTemperatura + hIdx];
             if (temp !== null && temp !== '') {
                 controles.push({
                     fecha: fecha,
                     hora: hora,
                     temperatura: temp,
-                    humedad: row[9],
-                    observaciones: row[10]
+                    humedad: row[indiceHumedad],
+                    observaciones: row[indiceObservaciones]
                 });
             }
         });
         
         // Si no hay temperaturas pero hay humedad u observaciones
-        if (row[9] || row[10]) {
-            const hasTemp = horasControl.some((_, hIdx) => row[2 + hIdx] !== null && row[2 + hIdx] !== '');
+        if (row[indiceHumedad] || row[indiceObservaciones]) {
+            const hasTemp = horasControl.some((_, hIdx) => row[primerIndiceTemperatura + hIdx] !== null && row[primerIndiceTemperatura + hIdx] !== '');
             if (!hasTemp) {
                 controles.push({
                     fecha: fecha,
                     hora: '12:00',
                     temperatura: null,
-                    humedad: row[9],
-                    observaciones: row[10]
+                    humedad: row[indiceHumedad],
+                    observaciones: row[indiceObservaciones]
                 });
             }
         }

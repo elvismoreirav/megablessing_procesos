@@ -242,6 +242,34 @@ CREATE TABLE IF NOT EXISTS `fichas_registro` (
     FOREIGN KEY (`responsable_id`) REFERENCES `usuarios`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ============================================================================
+-- DETALLE DE PAGOS POR PROVEEDOR EN FICHA
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `fichas_pago_detalle` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `ficha_id` INT NOT NULL,
+    `proveedor_id` INT NULL,
+    `proveedor_nombre` VARCHAR(150) NOT NULL,
+    `fecha_pago` DATE NOT NULL,
+    `tipo_comprobante` ENUM('FACTURA','NOTA_COMPRA') NOT NULL,
+    `factura_compra` VARCHAR(80) NOT NULL,
+    `cantidad_comprada_unidad` ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG',
+    `cantidad_comprada` DECIMAL(10,2) NOT NULL,
+    `cantidad_comprada_kg` DECIMAL(10,4) NOT NULL,
+    `forma_pago` ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS') NOT NULL,
+    `precio_base_dia` DECIMAL(10,4) NOT NULL,
+    `diferencial_usd` DECIMAL(10,4) DEFAULT 0,
+    `precio_unitario_final` DECIMAL(10,4) NOT NULL,
+    `precio_total_pagar` DECIMAL(12,2) NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_fichas_pago_detalle_ficha` (`ficha_id`),
+    INDEX `idx_fichas_pago_detalle_proveedor` (`proveedor_id`),
+    FOREIGN KEY (`ficha_id`) REFERENCES `fichas_registro`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`proveedor_id`) REFERENCES `proveedores`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ========================================================================
 -- REGISTRO DE FERMENTACIÓN
 -- ========================================================================
@@ -506,7 +534,7 @@ INSERT INTO `usuarios` (`nombre`, `email`, `password`, `rol_id`) VALUES
 -- Categorías base de proveedores
 INSERT INTO `proveedores` (`codigo`, `codigo_identificacion`, `nombre`, `tipo`, `categoria`, `es_categoria`) VALUES
 ('M', NULL, 'Mercado', 'MERCADO', 'MERCADO', 1),
-('B', NULL, 'Bodega', 'BODEGA', 'BODEGA', 1),
+('CA', NULL, 'Centro de Acopio', 'BODEGA', 'CENTRO DE ACOPIO', 1),
 ('ES', NULL, 'Esmeraldas', 'RUTA', 'ESMERALDAS', 1),
 ('FM', NULL, 'Flor de Manabí', 'RUTA', 'FLOR DE MANABI', 1),
 ('VP', NULL, 'Vía Pedernales', 'RUTA', 'VIA PEDERNALES', 1);
@@ -588,6 +616,7 @@ INSERT INTO `parametros_proceso` (`categoria`, `clave`, `valor`, `tipo`, `descri
 ('CALIDAD', 'violeta_maximo', '15', 'NUMBER', 'Porcentaje máximo de granos violeta'),
 ('CALIDAD', 'mohosos_maximo', '1', 'NUMBER', 'Porcentaje máximo de granos mohosos'),
 ('CALIDAD', 'peso_100_granos_minimo', '130', 'NUMBER', 'Peso mínimo de 100 granos (g)'),
+('GENERAL', 'cajones_fermentacion_objetivo', '6', 'NUMBER', 'Cantidad objetivo de cajones de fermentación activos'),
 ('GENERAL', 'peso_saco_kg', '69', 'NUMBER', 'Peso estándar por saco (kg)'),
 ('GENERAL', 'sacos_por_pallet', '30', 'NUMBER', 'Cantidad de sacos por pallet');
 

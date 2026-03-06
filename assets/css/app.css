@@ -369,6 +369,22 @@ body {
     padding-right: 2.5rem;
 }
 
+.searchable-select {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.searchable-select-input {
+    padding-right: 0.875rem;
+}
+
+.searchable-select-status {
+    margin: 0;
+    font-size: 0.8125rem;
+    color: var(--color-secondary-text);
+}
+
 .form-check {
     display: flex;
     align-items: center;

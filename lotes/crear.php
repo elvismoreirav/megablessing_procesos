@@ -153,7 +153,9 @@ ob_start();
                     <!-- Proveedor -->
                     <div class="form-group">
                         <label class="form-label required">Proveedor</label>
-                        <select name="proveedor_id" class="form-control form-select" required>
+                        <select name="proveedor_id" class="form-control form-select" required
+                                data-searchable="true"
+                                data-search-placeholder="Buscar proveedor por código o nombre...">
                             <option value="">Seleccione un proveedor</option>
                             <?php foreach ($proveedores as $prov): ?>
                                 <?php

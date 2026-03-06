@@ -178,7 +178,10 @@ ob_start();
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
-                <select name="proveedor" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-shalom-primary focus:border-shalom-primary">
+                <select name="proveedor" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-shalom-primary focus:border-shalom-primary"
+                        data-searchable="true"
+                        data-search-placeholder="Buscar proveedor para filtrar..."
+                        data-search-empty="No hay proveedores que coincidan con la búsqueda.">
                     <option value="">Todos</option>
                     <?php foreach ($proveedores as $prov): ?>
                     <option value="<?= $prov['id'] ?>" <?= $proveedor == $prov['id'] ? 'selected' : '' ?>>

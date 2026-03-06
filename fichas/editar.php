@@ -75,7 +75,7 @@ $proveedores = $db->fetchAll("
     ORDER BY nombre
 ");
 $whereRutas = in_array('es_categoria', $colsProveedores, true)
-    ? "AND (es_categoria = 1 OR UPPER(COALESCE(tipo, '')) = 'RUTA')"
+    ? "AND (es_categoria = 0 OR es_categoria IS NULL) AND UPPER(COALESCE(tipo, '')) = 'RUTA'"
     : "AND UPPER(COALESCE(tipo, '')) = 'RUTA'";
 $rutasDisponibles = $db->fetchAll("
     SELECT id, codigo, nombre
@@ -662,7 +662,10 @@ ob_start();
                         ?>
                         <input type="hidden" name="proveedor_id" id="proveedor_id" value="<?= $proveedorPrimario > 0 ? $proveedorPrimario : '' ?>">
                         <select name="proveedor_ids[]" id="proveedor_ids" multiple size="6"
-                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                data-searchable="true"
+                                data-search-placeholder="Buscar proveedor(es) por código o nombre..."
+                                data-search-empty="No hay proveedores que coincidan con la búsqueda.">
                             <?php foreach ($proveedores as $provItem): ?>
                                 <?php
                                 $idProv = (int)($provItem['id'] ?? 0);
@@ -695,7 +698,10 @@ ob_start();
                         $proveedorFueraCatalogo = $proveedorRutaActual !== '' && !isset($nombresProveedores[$proveedorRutaActual]);
                         ?>
                         <select name="proveedor_ruta" id="proveedor_ruta"
-                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                data-searchable="true"
+                                data-search-placeholder="Buscar proveedor por código o nombre..."
+                                data-search-empty="No hay proveedores que coincidan con la búsqueda.">
                             <option value="">Seleccione un proveedor</option>
                             <?php foreach ($proveedores as $provItem): ?>
                                 <?php
@@ -1225,6 +1231,14 @@ document.addEventListener('DOMContentLoaded', function() {
         return peso;
     }
 
+    function kgToLb(kg) {
+        return kg / 0.45359237;
+    }
+
+    function kgToQq(kg) {
+        return kg / 45.36;
+    }
+
     function calcularPesoFinal() {
         if (!pesoBrutoInput || !pesoFinalInput) {
             return;
@@ -1270,6 +1284,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const peso = toNumber(pesoFinalInput);
         const unidad = unidadPesoSelect?.value || 'KG';
         const pesoKg = pesoToKg(peso, unidad);
+        const pesoLb = kgToLb(pesoKg);
+        const pesoQq = kgToQq(pesoKg);
         const cantidadIngresada = parseFloat(cantidadCompradaInput?.value || '');
         const unidadCantidad = cantidadCompradaUnidad?.value || 'KG';
         const usarCantidadIngresada = !Number.isNaN(cantidadIngresada) && cantidadIngresada > 0;
@@ -1277,12 +1293,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const total = unitario * cantidadKg;
         precioTotalInput.value = total.toFixed(2);
         if (pesoEquivKg) {
-            pesoEquivKg.textContent = `Peso equivalente: ${pesoKg.toFixed(2)} kg`;
+            pesoEquivKg.textContent = `Peso equivalente: ${pesoKg.toFixed(2)} KG | ${pesoLb.toFixed(2)} LB | ${pesoQq.toFixed(2)} QQ`;
         }
         if (cantidadCalculo) {
             cantidadCalculo.textContent = usarCantidadIngresada
-                ? `Cantidad aplicada: ${cantidadIngresada.toFixed(2)} ${unidadCantidad} (${cantidadKg.toFixed(2)} kg)`
-                : `Cantidad aplicada: ${cantidadKg.toFixed(2)} kg`;
+                ? `Cantidad aplicada: ${cantidadIngresada.toFixed(2)} ${unidadCantidad} (${cantidadKg.toFixed(2)} KG)`
+                : `Cantidad aplicada: ${cantidadKg.toFixed(2)} KG`;
         }
     }
 

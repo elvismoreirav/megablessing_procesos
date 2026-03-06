@@ -16,7 +16,15 @@ $input = json_decode(file_get_contents('php://input'), true);
 
 $fermentacionId = $input['fermentacion_id'] ?? null;
 $fechaFin = $input['fecha_fin'] ?? null;
-$pesoFinal = isset($input['peso_final']) ? floatval($input['peso_final']) : null;
+$pesoFinalUnidad = strtoupper(trim((string)($input['peso_final_unidad'] ?? 'KG')));
+$pesoFinalIngresado = $input['peso_final'] ?? null;
+$pesoFinal = null;
+if ($pesoFinalIngresado !== null && $pesoFinalIngresado !== '') {
+    if (!in_array($pesoFinalUnidad, ['LB', 'KG', 'QQ'], true)) {
+        $pesoFinalUnidad = 'KG';
+    }
+    $pesoFinal = Helpers::pesoToKg($pesoFinalIngresado, $pesoFinalUnidad);
+}
 $humedadFinal = isset($input['humedad_final']) ? floatval($input['humedad_final']) : null;
 
 if (!$fermentacionId || !$fechaFin) {

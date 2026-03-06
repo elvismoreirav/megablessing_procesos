@@ -77,6 +77,14 @@ if (!$fermentacion) {
     redirect('/fermentacion/index.php');
 }
 
+$pesoInicialKg = isset($fermentacion['peso_inicial']) && $fermentacion['peso_inicial'] !== null
+    ? (float)$fermentacion['peso_inicial']
+    : null;
+$pesoFinalKg = isset($fermentacion['peso_final']) && $fermentacion['peso_final'] !== null
+    ? (float)$fermentacion['peso_final']
+    : null;
+$pesoInicialReferenciaVisual = Helpers::formatPesoVisual($pesoInicialKg, ['QQ', 'LB']);
+
 $registroSecado = $db->fetch(
     "SELECT id FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
     [$fermentacion['lote_id']]
@@ -144,6 +152,9 @@ for ($i = 1; $i <= 6; $i++) {
 
 $pageTitle = 'Control de Fermentación';
 $pageSubtitle = 'Lote: ' . $fermentacion['lote_codigo'];
+$franjaDiurnaAmLabel = '08h-12h';
+$franjaDiurnaPmLabel = '12h-18h';
+$horasVolteoDisponibles = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00'];
 
 // Estilos adicionales para Handsontable
 $extraHead = <<<HTML
@@ -198,7 +209,7 @@ ob_start();
             </div>
             <div>
                 <p class="text-xs text-warmgray uppercase tracking-wide">Cajón</p>
-                <p class="font-medium"><?= $fermentacion['cajon'] ?? 'Sin asignar' ?></p>
+                <p class="font-medium"><?= $fermentacion['cajon'] ?? 'No aplica' ?></p>
             </div>
             <div>
                 <p class="text-xs text-warmgray uppercase tracking-wide">Fecha Inicio</p>
@@ -230,8 +241,9 @@ ob_start();
     <div class="card-body">
         <div class="control-summary">
             <div class="text-center p-4 bg-olive/10 rounded-lg">
-                <p class="text-2xl font-bold text-primary"><?= number_format($fermentacion['peso_inicial'], 2) ?></p>
-                <p class="text-xs text-warmgray">Peso Inicial (Kg)</p>
+                <p class="text-2xl font-bold text-primary"><?= $pesoInicialKg !== null ? Helpers::formatPesoVisual($pesoInicialKg, ['QQ']) : '-' ?></p>
+                <p class="text-xs text-warmgray">Peso Inicial</p>
+                <p class="text-xs text-warmgray mt-1"><?= $pesoInicialKg !== null ? Helpers::formatPesoVisual($pesoInicialKg, ['LB']) : '' ?></p>
             </div>
             <div class="text-center p-4 bg-olive/10 rounded-lg">
                 <p class="text-2xl font-bold text-primary"><?= $fermentacion['humedad_inicial'] ? number_format($fermentacion['humedad_inicial'], 1) . '%' : '-' ?></p>
@@ -287,6 +299,9 @@ ob_start();
                 <span class="w-4 h-4 rounded" style="background-color: #d4edda"></span>
                 <span>Volteo realizado</span>
             </div>
+            <div class="w-full text-warmgray">
+                Franja diurna visible: <?= htmlspecialchars($franjaDiurnaAmLabel) ?> y <?= htmlspecialchars($franjaDiurnaPmLabel) ?>. Franja nocturna: 20h, 22h, 24h, 02h y 04h.
+            </div>
         </div>
     </div>
 </div>
@@ -305,9 +320,19 @@ ob_start();
                        value="<?= date('Y-m-d') ?>" min="<?= $fermentacion['fecha_inicio'] ?>">
             </div>
             <div class="form-group">
-                <label class="form-label">Peso Final (Kg)</label>
-                <input type="number" name="peso_final" id="peso_final" class="form-control" 
-                       step="0.01" min="0" placeholder="<?= number_format($fermentacion['peso_inicial'], 2) ?>">
+                <label class="form-label">Peso Final</label>
+                <div class="flex gap-3">
+                    <input type="number" name="peso_final" id="peso_final" class="form-control flex-1"
+                           step="0.01" min="0" placeholder="0.00">
+                    <select id="peso_final_unidad" class="form-control w-28">
+                        <option value="QQ" selected>QQ</option>
+                        <option value="LB">LB</option>
+                        <option value="KG">KG</option>
+                    </select>
+                </div>
+                <p id="peso_final_equivalencias" class="form-hint mt-2">
+                    <?= $pesoInicialReferenciaVisual !== '' ? 'Referencia actual: ' . $pesoInicialReferenciaVisual : 'Ingrese el peso final en LB, QQ o KG.' ?>
+                </p>
             </div>
             <div class="form-group">
                 <label class="form-label">Humedad Final (%)</label>
@@ -338,7 +363,7 @@ ob_start();
                 <h4 class="font-semibold text-green-800">Fermentación Finalizada</h4>
                 <p class="text-sm text-green-700 mt-1">
                     Fecha: <?= Helpers::formatDate($fermentacion['fecha_fin']) ?> |
-                    Peso Final: <?= $fermentacion['peso_final'] ? number_format($fermentacion['peso_final'], 2) . ' Kg' : 'No registrado' ?> |
+                    Peso Final: <?= $pesoFinalKg !== null ? Helpers::formatPesoVisual($pesoFinalKg, ['QQ', 'LB']) : 'No registrado' ?> |
                     Humedad Final: <?= $fermentacion['humedad_final'] ? number_format($fermentacion['humedad_final'], 1) . '%' : 'No registrada' ?>
                 </p>
             </div>
@@ -403,9 +428,61 @@ ob_start();
 <script>
 const fermentacionId = <?= $id ?>;
 const esFinalizado = <?= $fermentacion['fecha_fin'] ? 'true' : 'false' ?>;
+const franjaDiurnaAmLabel = <?= json_encode($franjaDiurnaAmLabel) ?>;
+const franjaDiurnaPmLabel = <?= json_encode($franjaDiurnaPmLabel) ?>;
+const horasVolteoDisponibles = <?= json_encode($horasVolteoDisponibles) ?>;
+const pesoInicialKgReferencia = <?= json_encode($pesoInicialKg) ?>;
 
 // Datos iniciales
 const datosControl = <?= json_encode($diasControl) ?>;
+const pesoFinalInput = document.getElementById('peso_final');
+const pesoFinalUnidadSelect = document.getElementById('peso_final_unidad');
+const pesoFinalEquivalencias = document.getElementById('peso_final_equivalencias');
+
+function pesoToKg(peso, unidad) {
+    if (unidad === 'LB') return peso * 0.45359237;
+    if (unidad === 'QQ') return peso * 45.36;
+    return peso;
+}
+
+function kgToLb(kg) {
+    return kg / 0.45359237;
+}
+
+function kgToQq(kg) {
+    return kg / 45.36;
+}
+
+function formatPeso(valor) {
+    return Number(valor).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function actualizarPesoFinalEquivalencias() {
+    if (!pesoFinalEquivalencias) {
+        return;
+    }
+
+    const valor = Number.parseFloat(pesoFinalInput?.value ?? '');
+    if (!Number.isFinite(valor) || valor <= 0) {
+        pesoFinalEquivalencias.textContent = pesoInicialKgReferencia && pesoInicialKgReferencia > 0
+            ? `Referencia actual: ${formatPeso(kgToQq(pesoInicialKgReferencia))} QQ | ${formatPeso(kgToLb(pesoInicialKgReferencia))} LB`
+            : 'Ingrese el peso final en LB, QQ o KG.';
+        return;
+    }
+
+    const unidad = pesoFinalUnidadSelect?.value || 'QQ';
+    const pesoKg = pesoToKg(valor, unidad);
+    pesoFinalEquivalencias.textContent = `Equivalente: ${formatPeso(kgToQq(pesoKg))} QQ | ${formatPeso(kgToLb(pesoKg))} LB | ${formatPeso(pesoKg)} KG`;
+}
+
+if (pesoFinalInput && pesoFinalUnidadSelect) {
+    pesoFinalInput.addEventListener('input', actualizarPesoFinalEquivalencias);
+    pesoFinalUnidadSelect.addEventListener('change', actualizarPesoFinalEquivalencias);
+    actualizarPesoFinalEquivalencias();
+}
 
 // Configurar Handsontable
 const container = document.getElementById('controlTable');
@@ -434,10 +511,10 @@ const hot = new Handsontable(container, {
         '24h (°C)',
         '02h (°C)',
         '04h (°C)',
-        'Temp AM (°C)',
-        'Temp PM (°C)',
-        'pH AM',
-        'pH PM',
+        `${franjaDiurnaAmLabel} (°C)`,
+        `${franjaDiurnaPmLabel} (°C)`,
+        `pH ${franjaDiurnaAmLabel}`,
+        `pH ${franjaDiurnaPmLabel}`,
         'Volteo',
         'Hora Volteo',
         'Observaciones'
@@ -455,10 +532,10 @@ const hot = new Handsontable(container, {
         { data: 9, type: 'numeric', numericFormat: { pattern: '0.00' } },
         { data: 10, type: 'numeric', numericFormat: { pattern: '0.00' } },
         { data: 11, type: 'dropdown', source: ['Sí', 'No'], className: 'htCenter' },
-        { data: 12, type: 'time', timeFormat: 'HH:mm', correctFormat: true },
+        { data: 12, type: 'dropdown', source: ['', ...horasVolteoDisponibles], strict: false, allowInvalid: false, className: 'htCenter' },
         { data: 13, type: 'text', width: 220 }
     ],
-    colWidths: [50, 80, 85, 85, 85, 85, 85, 95, 95, 75, 75, 70, 100, 220],
+    colWidths: [50, 80, 85, 85, 85, 85, 85, 110, 110, 95, 95, 70, 110, 220],
     rowHeaders: false,
     height: 'auto',
     licenseKey: 'non-commercial-and-evaluation',
@@ -540,6 +617,7 @@ async function guardarControl() {
 async function finalizarFermentacion() {
     const fechaFin = document.getElementById('fecha_fin').value;
     const pesoFinal = document.getElementById('peso_final').value;
+    const pesoFinalUnidad = document.getElementById('peso_final_unidad')?.value || 'QQ';
     const humedadFinal = document.getElementById('humedad_final').value;
     
     if (!fechaFin) {
@@ -563,6 +641,7 @@ async function finalizarFermentacion() {
             fermentacion_id: fermentacionId,
             fecha_fin: fechaFin,
             peso_final: pesoFinal || null,
+            peso_final_unidad: pesoFinal ? pesoFinalUnidad : null,
             humedad_final: humedadFinal || null
         });
         
