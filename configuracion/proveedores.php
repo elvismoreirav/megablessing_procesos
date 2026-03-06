@@ -1591,13 +1591,13 @@ ob_start();
 </div>
 
 <!-- Modal Crear/Editar -->
-<div id="proveedorModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl transform transition-all">
-        <div class="bg-gradient-to-r from-primary to-primary/80 px-6 py-4 rounded-t-2xl">
+<div id="proveedorModal" class="fixed inset-0 bg-black/50 z-50 hidden items-start sm:items-center justify-center overflow-y-auto p-3 sm:p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl transform transition-all my-4 sm:my-6 max-h-[calc(100vh-1.5rem)] sm:max-h-[90vh] flex flex-col">
+        <div class="bg-gradient-to-r from-primary to-primary/80 px-6 py-4 rounded-t-2xl shrink-0">
             <h3 id="modalTitle" class="text-xl font-bold text-white">Nuevo Proveedor</h3>
         </div>
         
-        <form id="proveedorForm" class="p-6" enctype="multipart/form-data">
+        <form id="proveedorForm" class="p-4 sm:p-6 overflow-y-auto" enctype="multipart/form-data">
             <input type="hidden" id="proveedorId" name="id">
             <input type="hidden" id="formAction" name="action" value="create">
             <input type="hidden" name="_csrf" value="<?= e($csrfToken) ?>">
@@ -1799,13 +1799,13 @@ ob_start();
 </div>
 
 <!-- Modal Crear/Editar Categoría -->
-<div id="categoriaModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl transform transition-all">
-        <div class="bg-gradient-to-r from-primary to-primary/80 px-6 py-4 rounded-t-2xl">
+<div id="categoriaModal" class="fixed inset-0 bg-black/50 z-50 hidden items-start sm:items-center justify-center overflow-y-auto p-3 sm:p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl transform transition-all my-4 sm:my-6 max-h-[calc(100vh-1.5rem)] sm:max-h-[90vh] flex flex-col">
+        <div class="bg-gradient-to-r from-primary to-primary/80 px-6 py-4 rounded-t-2xl shrink-0">
             <h3 id="categoriaModalTitle" class="text-xl font-bold text-white">Nueva Categoría/Tipo</h3>
         </div>
 
-        <form id="categoriaForm" class="p-6">
+        <form id="categoriaForm" class="p-4 sm:p-6 overflow-y-auto">
             <input type="hidden" id="categoriaId" name="id">
             <input type="hidden" id="categoriaAction" name="action" value="create_category">
             <input type="hidden" name="_csrf" value="<?= e($csrfToken) ?>">
@@ -1977,6 +1977,8 @@ function openProveedorModal(mode, id = null, categoriaPreset = '') {
     document.querySelectorAll('#proveedorForm input[name="certificaciones[]"]').forEach((chk) => {
         chk.checked = false;
     });
+    form.scrollTop = 0;
+    modal.scrollTop = 0;
     
     if (mode === 'create') {
         title.textContent = 'Nuevo Proveedor';
@@ -2115,6 +2117,8 @@ function openCategoriaModal(mode, id = null) {
     form.reset();
     document.getElementById('categoriaId').value = '';
     marcarTiposCategoriaSeleccionados([]);
+    form.scrollTop = 0;
+    modal.scrollTop = 0;
 
     if (mode === 'create') {
         title.textContent = 'Nueva Categoría/Tipo';
