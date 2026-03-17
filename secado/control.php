@@ -19,6 +19,9 @@ if (!$id) {
 // Compatibilidad de esquema: registros_secado
 $colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
 $hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+Helpers::ensureSecadoPesoUnitColumn();
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
 $fechaInicioExpr = $hasSecCol('fecha_inicio') ? 'rs.fecha_inicio' : ($hasSecCol('fecha') ? 'rs.fecha' : 'NULL');
 $fechaFinExpr = $hasSecCol('fecha_fin') ? 'rs.fecha_fin' : 'NULL';
 $tipoSecadoExpr = $hasSecCol('tipo_secado') ? 'rs.tipo_secado' : ($hasSecCol('estado') ? 'rs.estado' : "'N/D'");
@@ -29,6 +32,7 @@ $pesoInicialExpr = $hasSecCol('peso_inicial')
         : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
 $pesoFinalExpr = $hasSecCol('peso_final') ? 'rs.peso_final' : 'NULL';
 $etapaProcesoExpr = $hasSecCol('etapa_proceso') ? 'rs.etapa_proceso' : 'NULL';
+$unidadPesoExpr = $hasSecCol('unidad_peso') ? 'rs.unidad_peso' : 'NULL';
 $observacionesExpr = $hasSecCol('observaciones')
     ? 'rs.observaciones'
     : ($hasSecCol('carga_observaciones')
@@ -62,6 +66,7 @@ $secado = $db->fetch("
            {$tipoSecadoExpr} as tipo_secado,
            {$pesoInicialExpr} as peso_inicial,
            {$pesoFinalExpr} as peso_final,
+           {$unidadPesoExpr} as unidad_peso,
            {$etapaProcesoExpr} as etapa_proceso,
            (SELECT COUNT(*) FROM registros_secado rs2 WHERE rs2.lote_id = rs.lote_id AND rs2.id <= rs.id) as orden_etapa,
            {$observacionesExpr} as observaciones,
@@ -91,6 +96,23 @@ if (!in_array($etapaSecado, ['PRE_SECADO', 'SECADO_FINAL'], true)) {
         || in_array($estadoLote, ['SECADO', 'CALIDAD_POST', 'CALIDAD_SALIDA', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO'], true)
     ) ? 'SECADO_FINAL' : 'PRE_SECADO';
 }
+$pesoInicialKgProceso = is_numeric($secado['peso_inicial'] ?? null) ? (float)$secado['peso_inicial'] : null;
+$pesoFinalKgProceso = is_numeric($secado['peso_final'] ?? null) ? (float)$secado['peso_final'] : null;
+$unidadPesoProcesoSecado = !empty($secado['unidad_peso'])
+    ? Helpers::normalizePesoUnit($secado['unidad_peso'])
+    : Helpers::resolveSecadoPesoUnitForLote((int)$secado['lote_id'], $etapaSecado, (int)$secado['id']);
+$pesoInicialPrincipal = $pesoInicialKgProceso !== null
+    ? Helpers::kgToPeso($pesoInicialKgProceso, $unidadPesoProcesoSecado)
+    : null;
+$pesoFinalPrincipal = $pesoFinalKgProceso !== null
+    ? Helpers::kgToPeso($pesoFinalKgProceso, $unidadPesoProcesoSecado)
+    : null;
+$pesoInicialReferencias = $pesoInicialKgProceso !== null
+    ? Helpers::formatPesoVisual($pesoInicialKgProceso, ['KG', 'QQ', 'LB'])
+    : '';
+$pesoFinalReferencias = $pesoFinalKgProceso !== null
+    ? Helpers::formatPesoVisual($pesoFinalKgProceso, ['KG', 'QQ', 'LB'])
+    : '';
 $etapaSecadoLabel = $etapaSecado === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
 
 $secadoFinalizado = !empty($secado['fecha_fin'])
@@ -210,6 +232,9 @@ $extraHead = <<<HTML
     .handsontable td.temp-alta {
         background-color: #f8d7da !important;
     }
+    .handsontable td.temp-baja {
+        background-color: #fff3cd !important;
+    }
     .handsontable td.temp-normal {
         background-color: #d4edda !important;
     }
@@ -275,8 +300,11 @@ ob_start();
     <div class="card-body">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div class="text-center p-4 bg-olive/10 rounded-lg">
-                <p class="text-2xl font-bold text-primary"><?= number_format($secado['peso_inicial'], 2) ?></p>
-                <p class="text-xs text-warmgray">Peso Inicial (Kg)</p>
+                <p class="text-2xl font-bold text-primary"><?= $pesoInicialPrincipal !== null ? number_format($pesoInicialPrincipal, 2) : '-' ?></p>
+                <p class="text-xs text-warmgray">Peso Inicial (<?= htmlspecialchars($unidadPesoProcesoSecado) ?>)</p>
+                <?php if ($pesoInicialReferencias !== ''): ?>
+                    <p class="text-xs text-warmgray mt-1"><?= htmlspecialchars($pesoInicialReferencias) ?></p>
+                <?php endif; ?>
             </div>
             <div class="text-center p-4 bg-olive/10 rounded-lg">
                 <p class="text-2xl font-bold text-primary"><?= $secado['humedad_inicial'] ? number_format($secado['humedad_inicial'], 1) . '%' : '-' ?></p>
@@ -289,8 +317,11 @@ ob_start();
                 <p class="text-xs text-warmgray">Humedad Final</p>
             </div>
             <div class="text-center p-4 bg-olive/10 rounded-lg">
-                <p class="text-2xl font-bold text-primary"><?= $secado['peso_final'] ? number_format($secado['peso_final'], 2) : '-' ?></p>
-                <p class="text-xs text-warmgray">Peso Final (Kg)</p>
+                <p class="text-2xl font-bold text-primary"><?= $pesoFinalPrincipal !== null ? number_format($pesoFinalPrincipal, 2) : '-' ?></p>
+                <p class="text-xs text-warmgray">Peso Final (<?= htmlspecialchars($unidadPesoProcesoSecado) ?>)</p>
+                <?php if ($pesoFinalReferencias !== ''): ?>
+                    <p class="text-xs text-warmgray mt-1"><?= htmlspecialchars($pesoFinalReferencias) ?></p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -316,11 +347,15 @@ ob_start();
         <div class="flex flex-wrap items-center gap-4 text-sm">
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #d4edda"></span>
-                <span>Temperatura normal (&lt;60°C)</span>
+                <span>Temperatura en rango (70-130°C)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="w-4 h-4 rounded" style="background-color: #fff3cd"></span>
+                <span>Temperatura baja (&lt;70°C)</span>
             </div>
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #f8d7da"></span>
-                <span>Temperatura alta (&gt;60°C)</span>
+                <span>Temperatura alta (&gt;130°C)</span>
             </div>
             <div class="w-full text-warmgray">
                 Bloque diurno: 06:00 a 18:00. Bloque nocturno: 20:00, 22:00, 00:00, 02:00 y 04:00.
@@ -343,9 +378,12 @@ ob_start();
                        value="<?= date('Y-m-d') ?>" min="<?= $secado['fecha_inicio'] ?>">
             </div>
             <div class="form-group">
-                <label class="form-label">Peso Final (Kg)</label>
+                <label class="form-label">Peso Final (<?= htmlspecialchars($unidadPesoProcesoSecado) ?>)</label>
                 <input type="number" name="peso_final" id="peso_final" class="form-control" 
                        step="0.01" min="0">
+                <p id="peso_final_equivalencias" class="text-xs text-warmgray mt-1">
+                    <?= $pesoInicialReferencias !== '' ? 'Referencia actual: ' . htmlspecialchars($pesoInicialReferencias) : 'Referencias disponibles en KG, QQ y LB.' ?>
+                </p>
             </div>
             <div class="form-group">
                 <label class="form-label required">Humedad Final (%)</label>
@@ -378,7 +416,7 @@ ob_start();
                 <h4 class="font-semibold text-green-800"><?= htmlspecialchars($etapaSecadoLabel) ?> finalizado</h4>
                 <p class="text-sm text-green-700 mt-1">
                     Fecha: <?= Helpers::formatDate($secado['fecha_fin']) ?> |
-                    Peso Final: <?= $secado['peso_final'] ? number_format($secado['peso_final'], 2) . ' Kg' : 'No registrado' ?> |
+                    Peso Final: <?= $pesoFinalPrincipal !== null ? number_format($pesoFinalPrincipal, 2) . ' ' . htmlspecialchars($unidadPesoProcesoSecado) . ' (' . $pesoFinalReferencias . ')' : 'No registrado' ?> |
                     Humedad Final: <?= $secado['humedad_final'] ? number_format($secado['humedad_final'], 1) . '%' : 'No registrada' ?>
                 </p>
             </div>
@@ -446,9 +484,58 @@ const horasControl = <?= json_encode($horasControl) ?>;
 const primerIndiceTemperatura = 2;
 const indiceHumedad = primerIndiceTemperatura + horasControl.length;
 const indiceObservaciones = indiceHumedad + 1;
+const TEMPERATURA_MINIMA_SECADO = 70;
+const TEMPERATURA_MAXIMA_SECADO = 130;
+const unidadPesoProcesoSecado = <?= json_encode($unidadPesoProcesoSecado) ?>;
+const pesoInicialKgReferencia = <?= json_encode($pesoInicialKgProceso) ?>;
 
 // Datos iniciales
 const datosControl = <?= json_encode($diasControl) ?>;
+const pesoFinalInput = document.getElementById('peso_final');
+const pesoFinalEquivalencias = document.getElementById('peso_final_equivalencias');
+
+function pesoToKg(peso, unidad) {
+    if (unidad === 'LB') return peso * 0.45359237;
+    if (unidad === 'QQ') return peso * 45.36;
+    return peso;
+}
+
+function kgToLb(kg) {
+    return kg / 0.45359237;
+}
+
+function kgToQq(kg) {
+    return kg / 45.36;
+}
+
+function formatPeso(valor) {
+    return Number(valor || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function actualizarPesoFinalEquivalencias() {
+    if (!pesoFinalEquivalencias) {
+        return;
+    }
+
+    const valor = Number.parseFloat(pesoFinalInput?.value ?? '');
+    if (!Number.isFinite(valor) || valor <= 0) {
+        pesoFinalEquivalencias.textContent = pesoInicialKgReferencia && pesoInicialKgReferencia > 0
+            ? `Referencia actual: ${formatPeso(pesoInicialKgReferencia)} KG | ${formatPeso(kgToQq(pesoInicialKgReferencia))} QQ | ${formatPeso(kgToLb(pesoInicialKgReferencia))} LB`
+            : 'Referencias disponibles en KG, QQ y LB.';
+        return;
+    }
+
+    const pesoKg = pesoToKg(valor, unidadPesoProcesoSecado);
+    pesoFinalEquivalencias.textContent = `Equivalente: ${formatPeso(pesoKg)} KG | ${formatPeso(kgToQq(pesoKg))} QQ | ${formatPeso(kgToLb(pesoKg))} LB`;
+}
+
+if (pesoFinalInput) {
+    pesoFinalInput.addEventListener('input', actualizarPesoFinalEquivalencias);
+    actualizarPesoFinalEquivalencias();
+}
 
 // Preparar datos para tabla
 const tableData = datosControl.map(d => {
@@ -473,7 +560,21 @@ const hot = new Handsontable(container, {
             data: primerIndiceTemperatura + idx,
             type: 'numeric',
             numericFormat: { pattern: '0.0' },
-            width: 60
+            width: 60,
+            allowInvalid: false,
+            validator: function(value, callback) {
+                if (value === null || value === '') {
+                    callback(true);
+                    return;
+                }
+
+                const temperatura = Number(value);
+                callback(
+                    Number.isFinite(temperatura)
+                    && temperatura >= TEMPERATURA_MINIMA_SECADO
+                    && temperatura <= TEMPERATURA_MAXIMA_SECADO
+                );
+            }
         })),
         { data: indiceHumedad, type: 'numeric', numericFormat: { pattern: '0.0' }, width: 80 },
         { data: indiceObservaciones, type: 'text', width: 180 }
@@ -490,8 +591,10 @@ const hot = new Handsontable(container, {
         if (col >= primerIndiceTemperatura && col < indiceHumedad) {
             const val = data[row][col];
             if (val !== null && val !== '') {
-                if (val > 60) {
+                if (val > TEMPERATURA_MAXIMA_SECADO) {
                     cellProperties.className = 'htCenter temp-alta';
+                } else if (val < TEMPERATURA_MINIMA_SECADO) {
+                    cellProperties.className = 'htCenter temp-baja';
                 } else {
                     cellProperties.className = 'htCenter temp-normal';
                 }
@@ -518,18 +621,31 @@ const hot = new Handsontable(container, {
 async function guardarControl() {
     const data = hot.getData();
     const controles = [];
+    let rangoErrorMensaje = '';
     
     data.forEach((row, idx) => {
+        if (rangoErrorMensaje !== '') {
+            return;
+        }
         const fecha = datosControl[idx].fecha;
+        const fechaDisplay = row[1] || fecha;
         
         // Crear registro para cada hora con temperatura
         horasControl.forEach((hora, hIdx) => {
+            if (rangoErrorMensaje !== '') {
+                return;
+            }
             const temp = row[primerIndiceTemperatura + hIdx];
             if (temp !== null && temp !== '') {
+                const temperatura = Number(temp);
+                if (!Number.isFinite(temperatura) || temperatura < TEMPERATURA_MINIMA_SECADO || temperatura > TEMPERATURA_MAXIMA_SECADO) {
+                    rangoErrorMensaje = `La temperatura del ${fechaDisplay} a las ${hora} debe estar entre ${TEMPERATURA_MINIMA_SECADO}°C y ${TEMPERATURA_MAXIMA_SECADO}°C.`;
+                    return;
+                }
                 controles.push({
                     fecha: fecha,
                     hora: hora,
-                    temperatura: temp,
+                    temperatura: temperatura,
                     humedad: row[indiceHumedad],
                     observaciones: row[indiceObservaciones]
                 });
@@ -550,6 +666,11 @@ async function guardarControl() {
             }
         }
     });
+
+    if (rangoErrorMensaje !== '') {
+        App.toast(rangoErrorMensaje, 'warning');
+        return false;
+    }
     
     try {
         const response = await App.post('/api/secado/guardar-control.php', {
@@ -559,11 +680,14 @@ async function guardarControl() {
         
         if (response.success) {
             App.toast('Control guardado correctamente', 'success');
+            return true;
         } else {
             App.toast(response.error || 'Error al guardar', 'error');
+            return false;
         }
     } catch (error) {
         App.toast('Error de conexión', 'error');
+        return false;
     }
 }
 
@@ -604,13 +728,17 @@ async function finalizarSecado() {
     }
     
     // Primero guardar el control actual
-    await guardarControl();
+    const controlGuardado = await guardarControl();
+    if (!controlGuardado) {
+        return;
+    }
     
     try {
         const response = await App.post('/api/secado/finalizar.php', {
             secado_id: secadoId,
             fecha_fin: fechaFin,
             peso_final: pesoFinal || null,
+            peso_final_unidad: pesoFinal ? unidadPesoProcesoSecado : null,
             humedad_final: humedadFinal
         });
         

@@ -113,7 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pesoActualKg = floatval(str_replace(',', '.', $_POST['peso_actual_kg'] ?? 0));
     $humedadInicial = !empty($_POST['humedad_inicial']) ? floatval(str_replace(',', '.', $_POST['humedad_inicial'])) : null;
     $humedadFinal = !empty($_POST['humedad_final']) ? floatval(str_replace(',', '.', $_POST['humedad_final'])) : null;
-    $precioKg = !empty($_POST['precio_kg']) ? floatval(str_replace(',', '.', $_POST['precio_kg'])) : null;
     $estadoProceso = $_POST['estado_proceso'] ?? $lote['estado_proceso'];
     $cajonFermentacionId = intval($_POST['cajon_fermentacion_id'] ?? 0) ?: null;
     $secadoraId = intval($_POST['secadora_id'] ?? 0) ?: null;
@@ -151,7 +150,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'peso_actual_qq' => $pesoActualQQ,
                 'humedad_inicial' => $humedadInicial,
                 'humedad_final' => $humedadFinal,
-                'precio_kg' => $precioKg,
                 'estado_proceso' => $estadoProceso,
                 'cajon_fermentacion_id' => $cajonFermentacionId,
                 'secadora_id' => $secadoraId,
@@ -462,44 +460,19 @@ ob_start();
             </div>
         </div>
 
-        <!-- Información Comercial -->
+        <!-- Observaciones -->
         <div class="card">
             <div class="card-header">
                 <h3 class="card-title">
                     <svg class="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h8m-8 4h6M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/>
                     </svg>
-                    Información Comercial
+                    Observaciones
                 </h3>
             </div>
             <div class="card-body">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Precio por Kg -->
-                    <div class="form-group">
-                        <label class="form-label">Precio por Kg ($)</label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-warmgray font-medium">$</span>
-                            <input type="number" name="precio_kg" class="form-control pl-8" 
-                                   id="precio_kg" step="0.01" min="0"
-                                   value="<?= $lote['precio_kg'] ?>">
-                        </div>
-                    </div>
-
-                    <!-- Total (calculado) -->
-                    <div class="form-group">
-                        <label class="form-label">Total Actual</label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-warmgray font-medium">$</span>
-                            <input type="text" class="form-control pl-8 bg-gray-50 font-medium text-primary" readonly
-                                   id="total_actual" value="0.00">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Observaciones -->
-                <div class="form-group mt-6">
-                    <label class="form-label">Observaciones</label>
-                    <textarea name="observaciones" class="form-control" rows="3" 
+                <div class="form-group">
+                    <textarea name="observaciones" class="form-control" rows="3"
                               placeholder="Notas adicionales..."><?= htmlspecialchars($lote['observaciones']) ?></textarea>
                 </div>
             </div>
@@ -561,14 +534,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const pesoKgInput = document.getElementById('peso_kg');
     const pesoQQInput = document.getElementById('peso_qq');
     const mermaInput = document.getElementById('merma');
-    const precioKgInput = document.getElementById('precio_kg');
-    const totalActualInput = document.getElementById('total_actual');
     
     const pesoInicial = <?= $lote['peso_inicial_kg'] ?>;
 
     function updateCalculations() {
         const pesoActual = parseFloat(pesoKgInput.value) || 0;
-        const precioKg = parseFloat(precioKgInput.value) || 0;
         
         // Calcular quintales
         const qq = pesoActual / 45.36;
@@ -579,14 +549,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const merma = ((pesoInicial - pesoActual) / pesoInicial) * 100;
             mermaInput.value = merma.toFixed(1);
         }
-        
-        // Calcular total
-        const total = pesoActual * precioKg;
-        totalActualInput.value = total.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     pesoKgInput.addEventListener('input', updateCalculations);
-    precioKgInput.addEventListener('input', updateCalculations);
 
     updateCalculations();
 });

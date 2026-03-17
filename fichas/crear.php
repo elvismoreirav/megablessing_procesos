@@ -58,6 +58,31 @@ $lotes = $db->fetchAll("
 
 // Obtener proveedores activos para selección en recepción
 $colsProveedores = array_column($db->fetchAll("SHOW COLUMNS FROM proveedores"), 'Field');
+$normalizarClaveCatalogo = static function (string $valor): string {
+    $valor = trim((string)preg_replace('/\s+/', ' ', trim($valor)));
+    if ($valor === '') {
+        return '';
+    }
+
+    $valor = strtr($valor, [
+        'Á' => 'A',
+        'É' => 'E',
+        'Í' => 'I',
+        'Ó' => 'O',
+        'Ú' => 'U',
+        'Ü' => 'U',
+        'Ñ' => 'N',
+        'á' => 'A',
+        'é' => 'E',
+        'í' => 'I',
+        'ó' => 'O',
+        'ú' => 'U',
+        'ü' => 'U',
+        'ñ' => 'N',
+    ]);
+
+    return strtoupper($valor);
+};
 $filtroProveedorReal = in_array('es_categoria', $colsProveedores, true)
     ? ' AND (es_categoria = 0 OR es_categoria IS NULL)'
     : '';
@@ -67,27 +92,44 @@ $proveedores = $db->fetchAll("
     WHERE activo = 1{$filtroProveedorReal}
     ORDER BY nombre
 ");
-$whereRutas = in_array('es_categoria', $colsProveedores, true)
-    ? "AND (es_categoria = 0 OR es_categoria IS NULL) AND UPPER(COALESCE(tipo, '')) = 'RUTA'"
-    : "AND UPPER(COALESCE(tipo, '')) = 'RUTA'";
-$rutasDisponibles = $db->fetchAll("
-    SELECT id, codigo, nombre
+$rutasCatalogo = $db->fetchAll("
+    SELECT id, codigo, nombre" . (in_array('es_categoria', $colsProveedores, true) ? ", COALESCE(es_categoria, 0) AS es_categoria" : "") . "
     FROM proveedores
-    WHERE activo = 1 {$whereRutas}
-    ORDER BY nombre
+    WHERE activo = 1
+      AND UPPER(TRIM(COALESCE(tipo, ''))) = 'RUTA'
+    ORDER BY " . (in_array('es_categoria', $colsProveedores, true) ? "COALESCE(es_categoria, 0) DESC, " : "") . "nombre
 ");
+$rutasDisponibles = [];
 $rutasPorNombre = [];
-foreach ($rutasDisponibles as $rutaItem) {
+foreach ($rutasCatalogo as $rutaItem) {
     $nombreRuta = trim((string)($rutaItem['nombre'] ?? ''));
     if ($nombreRuta === '') {
         continue;
     }
-    $rutasPorNombre[strtolower($nombreRuta)] = [
+    $claveRuta = $normalizarClaveCatalogo($nombreRuta);
+    if ($claveRuta === '') {
+        continue;
+    }
+    $esCategoriaRuta = (int)($rutaItem['es_categoria'] ?? 0) === 1;
+    if (isset($rutasPorNombre[$claveRuta]) && !$esCategoriaRuta) {
+        continue;
+    }
+    $rutaNormalizada = [
         'id' => (int)($rutaItem['id'] ?? 0),
         'codigo' => trim((string)($rutaItem['codigo'] ?? '')),
         'nombre' => $nombreRuta,
+        'clave' => $claveRuta,
     ];
+    $rutasPorNombre[$claveRuta] = $rutaNormalizada;
 }
+$rutasDisponibles = array_values($rutasPorNombre);
+usort($rutasDisponibles, static function (array $rutaA, array $rutaB): int {
+    return strnatcasecmp(
+        trim((string)($rutaA['nombre'] ?? '')) . '|' . trim((string)($rutaA['codigo'] ?? '')),
+        trim((string)($rutaB['nombre'] ?? '')) . '|' . trim((string)($rutaB['codigo'] ?? ''))
+    );
+});
+$rutaNoAplicaClave = $normalizarClaveCatalogo('NO APLICA');
 $proveedoresPorId = [];
 $proveedoresPorNombre = [];
 $proveedoresPorCodigo = [];
@@ -177,6 +219,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($ruta_entrega === 'NO_APLICA') {
         $ruta_entrega = 'NO APLICA';
     }
+    $claveRutaEntrega = $normalizarClaveCatalogo($ruta_entrega);
+    if ($claveRutaEntrega === $rutaNoAplicaClave) {
+        $ruta_entrega = 'NO APLICA';
+    } elseif ($claveRutaEntrega !== '' && isset($rutasPorNombre[$claveRutaEntrega])) {
+        $ruta_entrega = $rutasPorNombre[$claveRutaEntrega]['nombre'];
+    }
     $proveedor_ruta = trim($_POST['proveedor_ruta'] ?? '');
     $tipo_entrega = trim($_POST['tipo_entrega'] ?? '');
     $fecha_entrada = $_POST['fecha_entrada'] ?? null;
@@ -232,8 +280,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$error && $esFormularioRecepcion && $ruta_entrega !== '') {
-        $claveRuta = strtolower($ruta_entrega);
-        if ($claveRuta !== 'no aplica' && !isset($rutasPorNombre[$claveRuta])) {
+        $claveRuta = $normalizarClaveCatalogo($ruta_entrega);
+        if ($claveRuta !== $rutaNoAplicaClave && !isset($rutasPorNombre[$claveRuta])) {
             $error = 'Debe seleccionar una ruta válida o indicar No aplica';
         }
     }
@@ -850,10 +898,16 @@ ob_start();
                     if ($rutaEntregaActual === '') {
                         $rutaEntregaActual = 'NO_APLICA';
                     }
+                    $rutaEntregaActualClave = $rutaEntregaActual === 'NO_APLICA'
+                        ? $rutaNoAplicaClave
+                        : $normalizarClaveCatalogo($rutaEntregaActual);
+                    $rutaFueraCatalogo = $rutaEntregaActual !== 'NO_APLICA'
+                        && $rutaEntregaActual !== ''
+                        && !isset($rutasPorNombre[$rutaEntregaActualClave]);
                     ?>
                     <select name="ruta_entrega" id="ruta_entrega"
                             class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
-                        <option value="NO_APLICA" <?= $rutaEntregaActual === 'NO_APLICA' ? 'selected' : '' ?>>No aplica</option>
+                        <option value="NO_APLICA" <?= $rutaEntregaActualClave === $rutaNoAplicaClave ? 'selected' : '' ?>>No aplica</option>
                         <?php foreach ($rutasDisponibles as $rutaItem): ?>
                             <?php
                             $nombreRuta = trim((string)($rutaItem['nombre'] ?? ''));
@@ -863,10 +917,15 @@ ob_start();
                             $codigoRuta = trim((string)($rutaItem['codigo'] ?? ''));
                             $labelRuta = ($codigoRuta !== '' ? $codigoRuta . ' - ' : '') . $nombreRuta;
                             ?>
-                            <option value="<?= htmlspecialchars($nombreRuta) ?>" <?= $rutaEntregaActual === $nombreRuta ? 'selected' : '' ?>>
+                            <option value="<?= htmlspecialchars($nombreRuta) ?>" <?= $rutaEntregaActualClave === (string)($rutaItem['clave'] ?? '') ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($labelRuta) ?>
                             </option>
                         <?php endforeach; ?>
+                        <?php if ($rutaFueraCatalogo): ?>
+                            <option value="<?= htmlspecialchars($rutaEntregaActual) ?>" selected>
+                                <?= htmlspecialchars($rutaEntregaActual) ?> (actual)
+                            </option>
+                        <?php endif; ?>
                     </select>
                 </div>
                 <?php endif; ?>

@@ -40,6 +40,9 @@ $whereSecadoraActiva = $hasSecCol('activo') ? 'activo = 1' : '1 = 1';
 // Compatibilidad de esquema para registros de secado
 $colsRegistroSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
 $hasRegSecCol = static fn(string $name): bool => in_array($name, $colsRegistroSecado, true);
+Helpers::ensureSecadoPesoUnitColumn();
+$colsRegistroSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasRegSecCol = static fn(string $name): bool => in_array($name, $colsRegistroSecado, true);
 $colFechaInicioSecado = $hasRegSecCol('fecha_inicio')
     ? 'fecha_inicio'
     : ($hasRegSecCol('fecha') ? 'fecha' : null);
@@ -56,9 +59,13 @@ $colObservacionesSecado = $hasRegSecCol('observaciones')
     : ($hasRegSecCol('carga_observaciones')
         ? 'carga_observaciones'
         : ($hasRegSecCol('revision_observaciones') ? 'revision_observaciones' : null));
+$colUnidadPesoSecado = $hasRegSecCol('unidad_peso') ? 'unidad_peso' : null;
 $exprCierreSecado = $hasRegSecCol('fecha_fin')
     ? 'fecha_fin'
     : ($hasRegSecCol('humedad_final') ? 'humedad_final' : 'NULL');
+$formatPesoInput = static fn($valor): string => ($valor === null || $valor === '' || !is_numeric($valor))
+    ? ''
+    : number_format((float)$valor, 2, '.', '');
 
 // Obtener lote si viene por parámetro
 $loteId = $_GET['lote_id'] ?? null;
@@ -66,6 +73,8 @@ $loteInfo = null;
 $loteSinFichaRecepcion = false;
 $registroFermentacion = null;
 $etapaSecado = null;
+$unidadPesoProcesoSecado = 'KG';
+$pesoReferenciaSecadoKg = null;
 $etapaSecadoLabel = static fn(string $etapa): string => $etapa === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
 
 if ($loteId) {
@@ -96,6 +105,11 @@ if ($loteId) {
             SELECT id FROM registros_fermentacion WHERE lote_id = :lote_id ORDER BY id DESC LIMIT 1
         ", ['lote_id' => $loteId]);
     }
+
+    $unidadPesoProcesoSecado = Helpers::resolveSecadoPesoUnitForLote((int)$loteId, $etapaSecado);
+    $pesoReferenciaSecadoKg = is_numeric($loteInfo['peso_fermentacion'] ?? null)
+        ? (float)$loteInfo['peso_fermentacion']
+        : (is_numeric($loteInfo['peso_inicial_kg'] ?? null) ? (float)$loteInfo['peso_inicial_kg'] : null);
     
     // Verificar duplicidad por etapa (permite una ficha de pre-secado y una de secado final)
     $registrosSecadoExistentes = $db->fetchAll("
@@ -153,6 +167,57 @@ $lotesDisponibles = $db->fetchAll("
     )
     ORDER BY l.fecha_entrada DESC
 ");
+foreach ($lotesDisponibles as &$loteDisponible) {
+    $loteDisponibleId = (int)($loteDisponible['id'] ?? 0);
+    $etapaSecadoLote = strtoupper((string)($loteDisponible['estado_proceso'] ?? '')) === 'PRE_SECADO'
+        ? 'PRE_SECADO'
+        : 'SECADO_FINAL';
+    $loteDisponible['unidad_peso_proceso'] = Helpers::resolveSecadoPesoUnitForLote($loteDisponibleId, $etapaSecadoLote);
+    $pesoReferenciaLoteKg = is_numeric($loteDisponible['peso_inicial_kg'] ?? null) ? (float)$loteDisponible['peso_inicial_kg'] : null;
+
+    if (strtoupper((string)($loteDisponible['estado_proceso'] ?? '')) === 'SECADO') {
+        $fermentacionPeso = $db->fetch("
+            SELECT {$exprPesoFermentacion} as peso_fermentacion
+            FROM registros_fermentacion rf
+            WHERE rf.lote_id = :lote_id
+            ORDER BY rf.id DESC
+            LIMIT 1
+        ", ['lote_id' => $loteDisponibleId]);
+
+        if (is_numeric($fermentacionPeso['peso_fermentacion'] ?? null)) {
+            $pesoReferenciaLoteKg = (float)$fermentacionPeso['peso_fermentacion'];
+        }
+    }
+
+    $loteDisponible['peso_referencia_kg'] = $pesoReferenciaLoteKg;
+    $loteDisponible['peso_referencia_visual'] = $pesoReferenciaLoteKg !== null
+        ? Helpers::kgToPeso($pesoReferenciaLoteKg, $loteDisponible['unidad_peso_proceso'])
+        : null;
+}
+unset($loteDisponible);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $loteIdPost = (int)($_POST['lote_id'] ?? 0);
+    if ($loteIdPost > 0) {
+        foreach ($lotesDisponibles as $loteDisponible) {
+            if ((int)($loteDisponible['id'] ?? 0) === $loteIdPost) {
+                $unidadPesoProcesoSecado = Helpers::normalizePesoUnit($loteDisponible['unidad_peso_proceso'] ?? 'KG');
+                if ($pesoReferenciaSecadoKg === null && is_numeric($loteDisponible['peso_referencia_kg'] ?? null)) {
+                    $pesoReferenciaSecadoKg = (float)$loteDisponible['peso_referencia_kg'];
+                }
+                break;
+            }
+        }
+    }
+
+    $unidadPesoProcesoSecado = Helpers::normalizePesoUnit($_POST['unidad_peso_proceso'] ?? $unidadPesoProcesoSecado);
+}
+$pesoInicialReferenciaTexto = $pesoReferenciaSecadoKg !== null
+    ? Helpers::formatPesoVisual($pesoReferenciaSecadoKg, ['KG', 'QQ', 'LB'])
+    : '';
+$pesoInicialDefaultVisual = $pesoReferenciaSecadoKg !== null
+    ? Helpers::kgToPeso($pesoReferenciaSecadoKg, $unidadPesoProcesoSecado)
+    : null;
 
 // Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -163,7 +228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tipoSecado = $_POST['tipo_secado'] ?? 'SOLAR';
     $etapaSecadoPost = strtoupper(trim((string)($_POST['etapa_secado'] ?? '')));
     $fechaInicio = $_POST['fecha_inicio'] ?? '';
-    $pesoInicial = floatval($_POST['peso_inicial'] ?? 0);
+    $unidadPesoProceso = Helpers::normalizePesoUnit($_POST['unidad_peso_proceso'] ?? $unidadPesoProcesoSecado);
+    $pesoInicialIngresado = $_POST['peso_inicial'] ?? 0;
+    $pesoInicial = Helpers::pesoToKg($pesoInicialIngresado, $unidadPesoProceso);
     $humedadInicial = floatval($_POST['humedad_inicial'] ?? 0);
     $observaciones = trim($_POST['observaciones'] ?? '');
     
@@ -240,6 +307,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($hasRegSecCol('fecha') && $colFechaInicioSecado !== 'fecha') {
                 $dataSecado['fecha'] = $fechaInicio;
+            }
+            if ($colUnidadPesoSecado) {
+                $dataSecado[$colUnidadPesoSecado] = $unidadPesoProceso;
             }
             if ($colPesoInicialSecado === 'peso_inicial') {
                 $dataSecado['peso_inicial'] = $pesoInicial;
@@ -373,6 +443,7 @@ ob_start();
         $etapaFormulario = $etapaSecado ?? $etapaSecadoVista;
     ?>
     <input type="hidden" name="etapa_secado" id="etapa_secado" value="<?= htmlspecialchars($etapaFormulario) ?>">
+    <input type="hidden" name="unidad_peso_proceso" id="unidad_peso_proceso" value="<?= htmlspecialchars($unidadPesoProcesoSecado) ?>">
 
     <div class="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4">
         <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Etapa de la ficha</p>
@@ -420,7 +491,7 @@ ob_start();
                     <div class="mt-4 p-4 bg-green-50 rounded-lg">
                         <p class="text-sm font-medium text-green-800">Datos de Fermentación:</p>
                         <p class="text-sm text-green-700">
-                            Peso: <?= $loteInfo['peso_fermentacion'] ? number_format($loteInfo['peso_fermentacion'], 2) . ' Kg' : 'No registrado' ?> |
+                            Peso: <?= $loteInfo['peso_fermentacion'] ? Helpers::formatPesoVisual((float)$loteInfo['peso_fermentacion'], ['KG', 'QQ', 'LB']) : 'No registrado' ?> |
                             Humedad: <?= $loteInfo['humedad_fermentacion'] ? number_format($loteInfo['humedad_fermentacion'], 1) . '%' : 'No registrada' ?>
                         </p>
                     </div>
@@ -431,11 +502,21 @@ ob_start();
                     <select name="lote_id" class="form-control form-select" required>
                         <option value="">-- Seleccione un lote --</option>
                         <?php foreach ($lotesDisponibles as $lote): ?>
-                            <?php $etapaOpcion = ($lote['estado_proceso'] ?? '') === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL'; ?>
-                            <option value="<?= $lote['id'] ?>" data-etapa="<?= htmlspecialchars($etapaOpcion) ?>" <?= (isset($_POST['lote_id']) && $_POST['lote_id'] == $lote['id']) ? 'selected' : '' ?>>
+                            <?php
+                            $etapaOpcion = ($lote['estado_proceso'] ?? '') === 'PRE_SECADO' ? 'PRE_SECADO' : 'SECADO_FINAL';
+                            $unidadOpcion = Helpers::normalizePesoUnit($lote['unidad_peso_proceso'] ?? 'KG');
+                            $pesoOpcionVisual = is_numeric($lote['peso_referencia_visual'] ?? null)
+                                ? $formatPesoInput($lote['peso_referencia_visual'])
+                                : '';
+                            ?>
+                            <option value="<?= $lote['id'] ?>"
+                                    data-etapa="<?= htmlspecialchars($etapaOpcion) ?>"
+                                    data-unidad="<?= htmlspecialchars($unidadOpcion) ?>"
+                                    data-peso-base-kg="<?= htmlspecialchars($formatPesoInput($lote['peso_referencia_kg'] ?? '')) ?>"
+                                    <?= (isset($_POST['lote_id']) && $_POST['lote_id'] == $lote['id']) ? 'selected' : '' ?>>
                                 <?= $etapaOpcion === 'PRE_SECADO' ? '[Pre-secado] ' : '[Secado final] ' ?>
                                 <?= htmlspecialchars($lote['codigo']) ?> - <?= htmlspecialchars($lote['proveedor']) ?> 
-                                (<?= number_format($lote['peso_inicial_kg'], 2) ?> Kg)
+                                (<?= $pesoOpcionVisual !== '' ? htmlspecialchars($pesoOpcionVisual . ' ' . $unidadOpcion) : number_format((float)($lote['peso_inicial_kg'] ?? 0), 2) . ' KG' ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -489,10 +570,13 @@ ob_start();
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label required">Peso Inicial (Kg)</label>
-                    <input type="number" name="peso_inicial" class="form-control" required
+                    <label class="form-label required" id="peso_inicial_label">Peso Inicial (<?= htmlspecialchars($unidadPesoProcesoSecado) ?>)</label>
+                    <input type="number" name="peso_inicial" id="peso_inicial_input" class="form-control" required
                            step="0.01" min="0"
-                           value="<?= $_POST['peso_inicial'] ?? ($loteInfo['peso_fermentacion'] ?? $loteInfo['peso_inicial_kg'] ?? '') ?>">
+                           value="<?= htmlspecialchars($_POST['peso_inicial'] ?? $formatPesoInput($pesoInicialDefaultVisual)) ?>">
+                    <p class="text-xs text-warmgray mt-1" id="peso_inicial_referencias">
+                        <?= $pesoInicialReferenciaTexto !== '' ? 'Referencias: ' . htmlspecialchars($pesoInicialReferenciaTexto) : 'Referencias disponibles en KG, QQ y LB.' ?>
+                    </p>
                 </div>
                 
                 <div class="form-group">
@@ -526,7 +610,7 @@ ob_start();
                     <ul class="text-sm text-warmgray space-y-1">
                         <li>• El secado típico dura entre 5-8 días (solar) o 1-2 días (mecánico)</li>
                         <li>• La humedad objetivo final es 6-7%</li>
-                        <li>• Temperatura máxima recomendada: 60°C</li>
+                        <li>• Temperatura operativa recomendada: 70°C a 130°C</li>
                         <li>• Se deben registrar temperaturas cada 2 horas</li>
                         <li>• Configuración recomendada del sistema: 13 secadoras activas</li>
                     </ul>
@@ -551,6 +635,42 @@ document.addEventListener('DOMContentLoaded', function () {
     const loteSelect = document.querySelector('select[name=\"lote_id\"]');
     const etapaInput = document.getElementById('etapa_secado');
     const etapaLabel = document.getElementById('etapa_secado_label');
+    const unidadInput = document.getElementById('unidad_peso_proceso');
+    const pesoInput = document.getElementById('peso_inicial_input');
+    const pesoLabel = document.getElementById('peso_inicial_label');
+    const pesoReferencias = document.getElementById('peso_inicial_referencias');
+
+    const formatPeso = (valor) => Number(valor || 0).toFixed(2);
+    const kgToPeso = (kg, unidad) => {
+        const valorKg = Number.parseFloat(kg || 0);
+        if (unidad === 'LB') return valorKg / 0.45359237;
+        if (unidad === 'QQ') return valorKg / 45.36;
+        return valorKg;
+    };
+    const actualizarPeso = (force = false) => {
+        if (!loteSelect || !unidadInput || !pesoInput || !pesoLabel || !pesoReferencias) {
+            return;
+        }
+
+        const option = loteSelect.options[loteSelect.selectedIndex];
+        const unidad = option?.dataset?.unidad || unidadInput.value || 'KG';
+        const pesoBaseKg = Number.parseFloat(option?.dataset?.pesoBaseKg || '');
+        unidadInput.value = unidad;
+        pesoLabel.textContent = `Peso Inicial (${unidad})`;
+
+        if (Number.isFinite(pesoBaseKg) && pesoBaseKg > 0) {
+            pesoReferencias.textContent = `Referencias: ${formatPeso(pesoBaseKg)} KG | ${formatPeso(kgToPeso(pesoBaseKg, 'QQ'))} QQ | ${formatPeso(kgToPeso(pesoBaseKg, 'LB'))} LB`;
+            if (force) {
+                pesoInput.value = formatPeso(kgToPeso(pesoBaseKg, unidad));
+            }
+        } else {
+            pesoReferencias.textContent = 'Referencias disponibles en KG, QQ y LB.';
+            if (force) {
+                pesoInput.value = '';
+            }
+        }
+    };
+
     if (!loteSelect || !etapaInput || !etapaLabel) {
         return;
     }
@@ -562,8 +682,12 @@ document.addEventListener('DOMContentLoaded', function () {
         etapaLabel.textContent = etapa === 'PRE_SECADO' ? 'Pre-secado' : 'Secado final';
     };
 
-    loteSelect.addEventListener('change', syncEtapa);
+    loteSelect.addEventListener('change', () => {
+        syncEtapa();
+        actualizarPeso(true);
+    });
     syncEtapa();
+    actualizarPeso(<?= $_SERVER['REQUEST_METHOD'] === 'POST' ? 'false' : 'true' ?>);
 });
 </script>
 <?php endif; ?>

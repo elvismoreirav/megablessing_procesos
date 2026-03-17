@@ -19,6 +19,9 @@ if (!$id) {
 // Compatibilidad de esquema (instalaciones con columnas distintas)
 $colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
 $hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
+Helpers::ensureFermentacionPesoUnitColumn();
+$colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
+$hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
 
 $fechaFinExpr = $hasFerCol('fecha_fin')
     ? 'rf.fecha_fin'
@@ -26,6 +29,7 @@ $fechaFinExpr = $hasFerCol('fecha_fin')
 $pesoInicialExpr = $hasFerCol('peso_inicial')
     ? 'rf.peso_inicial'
     : ($hasFerCol('peso_lote_kg') ? 'rf.peso_lote_kg' : 'NULL');
+$unidadPesoExpr = $hasFerCol('unidad_peso') ? 'rf.unidad_peso' : 'NULL';
 $phInicialExpr = $hasFerCol('ph_inicial')
     ? 'rf.ph_inicial'
     : ($hasFerCol('ph_pulpa_inicial') ? 'rf.ph_pulpa_inicial' : 'NULL');
@@ -55,6 +59,7 @@ $fermentacion = $db->fetch("
     SELECT rf.*, 
            {$fechaFinExpr} as fecha_fin,
            {$pesoInicialExpr} as peso_inicial,
+           {$unidadPesoExpr} as unidad_peso,
            {$phInicialExpr} as ph_inicial,
            {$observacionesExpr} as observaciones,
            {$totalVolteosExpr} as total_volteos,
@@ -83,7 +88,9 @@ $pesoInicialKg = isset($fermentacion['peso_inicial']) && $fermentacion['peso_ini
 $pesoFinalKg = isset($fermentacion['peso_final']) && $fermentacion['peso_final'] !== null
     ? (float)$fermentacion['peso_final']
     : null;
-$pesoInicialReferenciaVisual = Helpers::formatPesoVisual($pesoInicialKg, ['QQ', 'LB']);
+$unidadPesoProcesoFermentacion = !empty($fermentacion['unidad_peso'])
+    ? Helpers::normalizePesoUnit($fermentacion['unidad_peso'])
+    : Helpers::resolveInheritedPesoUnitForLote((int)$fermentacion['lote_id']);
 
 $registroSecado = $db->fetch(
     "SELECT id FROM registros_secado WHERE lote_id = ? ORDER BY id DESC LIMIT 1",
@@ -325,13 +332,13 @@ ob_start();
                     <input type="number" name="peso_final" id="peso_final" class="form-control flex-1"
                            step="0.01" min="0" placeholder="0.00">
                     <select id="peso_final_unidad" class="form-control w-28">
-                        <option value="QQ" selected>QQ</option>
-                        <option value="LB">LB</option>
-                        <option value="KG">KG</option>
+                        <option value="QQ" <?= $unidadPesoProcesoFermentacion === 'QQ' ? 'selected' : '' ?>>QQ</option>
+                        <option value="LB" <?= $unidadPesoProcesoFermentacion === 'LB' ? 'selected' : '' ?>>LB</option>
+                        <option value="KG" <?= $unidadPesoProcesoFermentacion === 'KG' ? 'selected' : '' ?>>KG</option>
                     </select>
                 </div>
                 <p id="peso_final_equivalencias" class="form-hint mt-2">
-                    <?= $pesoInicialReferenciaVisual !== '' ? 'Referencia actual: ' . $pesoInicialReferenciaVisual : 'Ingrese el peso final en LB, QQ o KG.' ?>
+                    <?= $pesoInicialKg !== null ? 'Referencia actual: ' . htmlspecialchars(Helpers::formatPesoVisual($pesoInicialKg, ['KG', 'QQ', 'LB'])) : 'Ingrese el peso final en LB, QQ o KG.' ?>
                 </p>
             </div>
             <div class="form-group">
@@ -468,7 +475,7 @@ function actualizarPesoFinalEquivalencias() {
     const valor = Number.parseFloat(pesoFinalInput?.value ?? '');
     if (!Number.isFinite(valor) || valor <= 0) {
         pesoFinalEquivalencias.textContent = pesoInicialKgReferencia && pesoInicialKgReferencia > 0
-            ? `Referencia actual: ${formatPeso(kgToQq(pesoInicialKgReferencia))} QQ | ${formatPeso(kgToLb(pesoInicialKgReferencia))} LB`
+            ? `Referencia actual: ${formatPeso(pesoInicialKgReferencia)} KG | ${formatPeso(kgToQq(pesoInicialKgReferencia))} QQ | ${formatPeso(kgToLb(pesoInicialKgReferencia))} LB`
             : 'Ingrese el peso final en LB, QQ o KG.';
         return;
     }

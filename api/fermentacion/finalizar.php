@@ -16,13 +16,10 @@ $input = json_decode(file_get_contents('php://input'), true);
 
 $fermentacionId = $input['fermentacion_id'] ?? null;
 $fechaFin = $input['fecha_fin'] ?? null;
-$pesoFinalUnidad = strtoupper(trim((string)($input['peso_final_unidad'] ?? 'KG')));
+$pesoFinalUnidad = Helpers::normalizePesoUnit($input['peso_final_unidad'] ?? 'KG');
 $pesoFinalIngresado = $input['peso_final'] ?? null;
 $pesoFinal = null;
 if ($pesoFinalIngresado !== null && $pesoFinalIngresado !== '') {
-    if (!in_array($pesoFinalUnidad, ['LB', 'KG', 'QQ'], true)) {
-        $pesoFinalUnidad = 'KG';
-    }
     $pesoFinal = Helpers::pesoToKg($pesoFinalIngresado, $pesoFinalUnidad);
 }
 $humedadFinal = isset($input['humedad_final']) ? floatval($input['humedad_final']) : null;
@@ -34,6 +31,7 @@ if (!$fermentacionId || !$fechaFin) {
 $db = Database::getInstance();
 
 // Compatibilidad de esquema
+Helpers::ensureFermentacionPesoUnitColumn();
 $colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
 $hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
 $colFechaCierre = $hasFerCol('fecha_fin') ? 'fecha_fin' : ($hasFerCol('fecha_salida') ? 'fecha_salida' : null);
@@ -71,6 +69,9 @@ try {
     }
     if ($hasFerCol('peso_final')) {
         $datosActualizacion['peso_final'] = $pesoFinal;
+    }
+    if ($hasFerCol('unidad_peso')) {
+        $datosActualizacion['unidad_peso'] = $pesoFinalUnidad;
     }
     if ($hasFerCol('humedad_final')) {
         $datosActualizacion['humedad_final'] = $humedadFinal;

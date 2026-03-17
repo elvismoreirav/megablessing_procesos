@@ -20,6 +20,10 @@ if (!$id) {
 // Compatibilidad de esquema: registros_secado
 $colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
 $hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
+Helpers::ensureSecadoPesoUnitColumn();
+Helpers::ensureFermentacionPesoUnitColumn();
+$colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
+$hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
 $fechaInicioExpr = $hasSecCol('fecha_inicio') ? 'rs.fecha_inicio' : ($hasSecCol('fecha') ? 'rs.fecha' : 'NULL');
 $fechaFinExpr = $hasSecCol('fecha_fin') ? 'rs.fecha_fin' : 'NULL';
 $tipoSecadoExpr = $hasSecCol('tipo_secado') ? 'rs.tipo_secado' : ($hasSecCol('estado') ? 'rs.estado' : "'N/D'");
@@ -29,6 +33,7 @@ $pesoInicialExpr = $hasSecCol('peso_inicial')
         ? '(rs.qq_cargados * 45.3592)'
         : ($hasSecCol('cantidad_total_qq') ? '(rs.cantidad_total_qq * 45.3592)' : 'NULL'));
 $pesoFinalExpr = $hasSecCol('peso_final') ? 'rs.peso_final' : 'NULL';
+$unidadPesoExpr = $hasSecCol('unidad_peso') ? 'rs.unidad_peso' : 'NULL';
 $humedadInicialExpr = $hasSecCol('humedad_inicial') ? 'rs.humedad_inicial' : 'NULL';
 $humedadFinalExpr = $hasSecCol('humedad_final') ? 'rs.humedad_final' : 'NULL';
 $observacionesExpr = $hasSecCol('observaciones')
@@ -80,11 +85,13 @@ $secado = $db->fetch("
            {$tipoSecadoExpr} as tipo_secado,
            {$pesoInicialExpr} as peso_inicial,
            {$pesoFinalExpr} as peso_final,
+           {$unidadPesoExpr} as unidad_peso,
            {$humedadInicialExpr} as humedad_inicial,
            {$humedadFinalExpr} as humedad_final,
            {$observacionesExpr} as observaciones,
            l.codigo as lote_codigo,
            l.id as lote_id,
+           l.estado_proceso as lote_estado,
            p.nombre as proveedor, 
            p.codigo as proveedor_codigo,
            v.nombre as variedad,
@@ -105,6 +112,35 @@ if (!$secado) {
     setFlash('error', 'Registro de secado no encontrado');
     redirect('/secado/index.php');
 }
+
+$etapaSecado = strtoupper(trim((string)($secado['etapa_proceso'] ?? '')));
+if (!in_array($etapaSecado, ['PRE_SECADO', 'SECADO_FINAL'], true)) {
+    $estadoLote = strtoupper(trim((string)($secado['lote_estado'] ?? '')));
+    $etapaSecado = in_array($estadoLote, ['SECADO', 'CALIDAD_POST', 'CALIDAD_SALIDA', 'EMPAQUETADO', 'ALMACENADO', 'DESPACHO', 'FINALIZADO'], true)
+        ? 'SECADO_FINAL'
+        : 'PRE_SECADO';
+}
+
+$pesoInicialKgProceso = is_numeric($secado['peso_inicial'] ?? null) ? (float)$secado['peso_inicial'] : null;
+$pesoFinalKgProceso = is_numeric($secado['peso_final'] ?? null) ? (float)$secado['peso_final'] : null;
+$unidadPesoProcesoSecado = !empty($secado['unidad_peso'])
+    ? Helpers::normalizePesoUnit($secado['unidad_peso'])
+    : Helpers::resolveSecadoPesoUnitForLote((int)$secado['lote_id'], $etapaSecado, (int)$secado['id']);
+$pesoInicialPrincipal = $pesoInicialKgProceso !== null
+    ? Helpers::kgToPeso($pesoInicialKgProceso, $unidadPesoProcesoSecado)
+    : null;
+$pesoFinalPrincipal = $pesoFinalKgProceso !== null
+    ? Helpers::kgToPeso($pesoFinalKgProceso, $unidadPesoProcesoSecado)
+    : null;
+$pesoInicialReferencias = $pesoInicialKgProceso !== null
+    ? Helpers::formatPesoVisual($pesoInicialKgProceso, ['KG', 'QQ', 'LB'])
+    : '';
+$pesoFinalReferencias = $pesoFinalKgProceso !== null
+    ? Helpers::formatPesoVisual($pesoFinalKgProceso, ['KG', 'QQ', 'LB'])
+    : '';
+$perdidaPesoPorcentaje = ($pesoInicialKgProceso !== null && $pesoFinalKgProceso !== null && $pesoInicialKgProceso > 0)
+    ? (($pesoInicialKgProceso - $pesoFinalKgProceso) / $pesoInicialKgProceso) * 100
+    : null;
 
 // Compatibilidad de esquema: secado_control_temperatura
 $colsControl = array_column($db->fetchAll("SHOW COLUMNS FROM secado_control_temperatura"), 'Field');
@@ -232,7 +268,7 @@ ob_start();
         <p class="text-xs text-warmgray">Temp. Promedio</p>
     </div>
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= $stats['temp_max'] > 60 ? 'text-red-600' : 'text-green-600' ?>"><?= number_format($stats['temp_max'], 1) ?>°C</p>
+        <p class="text-3xl font-bold <?= $stats['temp_max'] > 130 ? 'text-red-600' : 'text-green-600' ?>"><?= number_format($stats['temp_max'], 1) ?>°C</p>
         <p class="text-xs text-warmgray">Temp. Máxima</p>
     </div>
     <div class="card p-4 text-center">
@@ -301,11 +337,15 @@ ob_start();
                     <span class="text-warmgray">Operador</span>
                     <span class="font-medium"><?= htmlspecialchars($secado['operador']) ?></span>
                 </div>
-                <div class="flex justify-between items-center py-2">
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Estado</span>
                     <span class="badge <?= $finalizado ? 'badge-success' : 'badge-warning' ?>">
                         <?= $finalizado ? 'Finalizado' : 'En Proceso' ?>
                     </span>
+                </div>
+                <div class="flex justify-between items-center py-2">
+                    <span class="text-warmgray">Unidad del Proceso</span>
+                    <span class="font-medium"><?= htmlspecialchars($unidadPesoProcesoSecado) ?></span>
                 </div>
             </div>
         </div>
@@ -341,22 +381,31 @@ ob_start();
                     </span>
                 </div>
                 <?php endif; ?>
-                <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span class="text-warmgray">Peso Inicial</span>
-                    <span class="font-medium"><?= $secado['peso_inicial'] ? number_format($secado['peso_inicial'], 2) . ' kg' : 'N/R' ?></span>
+                <div class="flex justify-between items-start py-2 border-b border-gray-100 gap-4">
+                    <span class="text-warmgray">Peso Inicial (<?= htmlspecialchars($unidadPesoProcesoSecado) ?>)</span>
+                    <div class="text-right">
+                        <div class="font-medium"><?= $pesoInicialPrincipal !== null ? number_format($pesoInicialPrincipal, 2) . ' ' . htmlspecialchars($unidadPesoProcesoSecado) : 'N/R' ?></div>
+                        <?php if ($pesoInicialReferencias !== ''): ?>
+                            <div class="text-xs text-warmgray"><?= htmlspecialchars($pesoInicialReferencias) ?></div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php if ($finalizado && $secado['peso_final']): ?>
-                <div class="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span class="text-warmgray">Peso Final</span>
-                    <span class="font-medium"><?= number_format($secado['peso_final'], 2) ?> kg</span>
+                <?php if ($finalizado && $pesoFinalPrincipal !== null): ?>
+                <div class="flex justify-between items-start py-2 border-b border-gray-100 gap-4">
+                    <span class="text-warmgray">Peso Final (<?= htmlspecialchars($unidadPesoProcesoSecado) ?>)</span>
+                    <div class="text-right">
+                        <div class="font-medium"><?= number_format($pesoFinalPrincipal, 2) . ' ' . htmlspecialchars($unidadPesoProcesoSecado) ?></div>
+                        <?php if ($pesoFinalReferencias !== ''): ?>
+                            <div class="text-xs text-warmgray"><?= htmlspecialchars($pesoFinalReferencias) ?></div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php 
-                    $perdida = (($secado['peso_inicial'] - $secado['peso_final']) / $secado['peso_inicial']) * 100;
-                ?>
+                <?php if ($perdidaPesoPorcentaje !== null): ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Pérdida de Peso</span>
-                    <span class="font-medium text-red-600"><?= number_format($perdida, 1) ?>%</span>
+                    <span class="font-medium text-red-600"><?= number_format($perdidaPesoPorcentaje, 1) ?>%</span>
                 </div>
+                <?php endif; ?>
                 <?php endif; ?>
                 <div class="flex justify-between items-center py-2 border-b border-gray-100">
                     <span class="text-warmgray">Humedad Inicial</span>
@@ -393,6 +442,9 @@ ob_start();
                 <div>
                     <h3 class="card-title">Control de Temperatura por Día</h3>
                     <p class="text-sm text-warmgray mt-1">
+                        Rango esperado: 70°C a 130°C.
+                    </p>
+                    <p class="text-sm text-warmgray">
                         Bloque diurno: 06:00 a 18:00. Bloque nocturno: 20:00, 22:00, 00:00, 02:00 y 04:00.
                     </p>
                 </div>
@@ -430,7 +482,15 @@ ob_start();
                                         $temp = $dia['temperaturas'][$horaKey] ?? null;
                                         ?>
                                         <?php if ($temp): ?>
-                                            <span class="px-2 py-1 rounded text-xs <?= $temp > 60 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600' ?>">
+                                            <?php
+                                            $tempClass = 'bg-green-100 text-green-600';
+                                            if ($temp > 130) {
+                                                $tempClass = 'bg-red-100 text-red-600';
+                                            } elseif ($temp < 70) {
+                                                $tempClass = 'bg-amber-100 text-amber-700';
+                                            }
+                                            ?>
+                                            <span class="px-2 py-1 rounded text-xs <?= $tempClass ?>">
                                                 <?= number_format($temp, 1) ?>°
                                             </span>
                                         <?php else: ?>

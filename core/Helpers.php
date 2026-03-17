@@ -550,6 +550,166 @@ class Helpers {
     }
 
     /**
+     * Normaliza una unidad de peso soportada.
+     */
+    public static function normalizePesoUnit($unidad, string $default = 'KG'): string {
+        $unidadNormalizada = strtoupper(trim((string)$unidad));
+        if (in_array($unidadNormalizada, ['KG', 'QQ', 'LB'], true)) {
+            return $unidadNormalizada;
+        }
+
+        $defaultNormalizado = strtoupper(trim($default));
+        return in_array($defaultNormalizado, ['KG', 'QQ', 'LB'], true) ? $defaultNormalizado : 'KG';
+    }
+
+    /**
+     * Asegura la columna unidad_peso en registros_fermentacion para persistir la unidad visible del proceso.
+     */
+    public static function ensureFermentacionPesoUnitColumn(): bool {
+        $db = Database::getInstance();
+        $cols = self::getTableColumns('registros_fermentacion');
+        if (in_array('unidad_peso', $cols, true)) {
+            return true;
+        }
+
+        try {
+            $db->query("ALTER TABLE registros_fermentacion ADD COLUMN unidad_peso ENUM('LB','KG','QQ') NULL AFTER peso_lote_kg");
+        } catch (Throwable $e) {
+            // Continuar en modo compatibilidad si el esquema no puede alterarse.
+        }
+
+        return in_array('unidad_peso', self::getTableColumns('registros_fermentacion'), true);
+    }
+
+    /**
+     * Asegura la columna unidad_peso en registros_secado para persistir la unidad visible del proceso.
+     */
+    public static function ensureSecadoPesoUnitColumn(): bool {
+        $db = Database::getInstance();
+        $cols = self::getTableColumns('registros_secado');
+        if (in_array('unidad_peso', $cols, true)) {
+            return true;
+        }
+
+        try {
+            $db->query("ALTER TABLE registros_secado ADD COLUMN unidad_peso ENUM('LB','KG','QQ') NULL AFTER etapa_proceso");
+        } catch (Throwable $e) {
+            // Continuar en modo compatibilidad si el esquema no puede alterarse.
+        }
+
+        return in_array('unidad_peso', self::getTableColumns('registros_secado'), true);
+    }
+
+    /**
+     * Resuelve la unidad de peso heredada para un lote.
+     * Prioridad:
+     * 1) Último secado con unidad persistida
+     * 2) Ficha de registro
+     * 3) KG por defecto
+     */
+    public static function resolveInheritedPesoUnitForLote($loteId, ?int $excludeSecadoId = null): string {
+        $loteId = (int)$loteId;
+        if ($loteId <= 0) {
+            return 'KG';
+        }
+
+        $db = Database::getInstance();
+
+        try {
+            $colsSecado = self::getTableColumns('registros_secado');
+            if (in_array('unidad_peso', $colsSecado, true)) {
+                $params = [$loteId];
+                $whereExclude = '';
+                if ($excludeSecadoId !== null && $excludeSecadoId > 0) {
+                    $whereExclude = ' AND id < ?';
+                    $params[] = $excludeSecadoId;
+                }
+
+                $secado = $db->fetch(
+                    "SELECT unidad_peso
+                     FROM registros_secado
+                     WHERE lote_id = ?{$whereExclude}
+                       AND unidad_peso IS NOT NULL
+                       AND TRIM(unidad_peso) <> ''
+                     ORDER BY id DESC
+                     LIMIT 1",
+                    $params
+                );
+
+                if (!empty($secado['unidad_peso'])) {
+                    return self::normalizePesoUnit($secado['unidad_peso']);
+                }
+            }
+        } catch (Throwable $e) {
+            // Continuar con la siguiente fuente disponible.
+        }
+
+        try {
+            $colsFichas = self::getTableColumns('fichas_registro');
+            if (in_array('unidad_peso', $colsFichas, true)) {
+                $ficha = $db->fetch(
+                    "SELECT unidad_peso
+                     FROM fichas_registro
+                     WHERE lote_id = ?
+                     ORDER BY id DESC
+                     LIMIT 1",
+                    [$loteId]
+                );
+
+                if (!empty($ficha['unidad_peso'])) {
+                    return self::normalizePesoUnit($ficha['unidad_peso']);
+                }
+            }
+        } catch (Throwable $e) {
+            // Si no hay ficha disponible, caer al valor por defecto.
+        }
+
+        return 'KG';
+    }
+
+    /**
+     * Resuelve la unidad visible del proceso de secado según la etapa anterior.
+     * PRE_SECADO: ficha de registro -> secado previo -> KG
+     * SECADO_FINAL: fermentación -> secado previo -> ficha de registro -> KG
+     */
+    public static function resolveSecadoPesoUnitForLote($loteId, string $etapaSecado = 'PRE_SECADO', ?int $excludeSecadoId = null): string {
+        $loteId = (int)$loteId;
+        if ($loteId <= 0) {
+            return 'KG';
+        }
+
+        $etapa = strtoupper(trim($etapaSecado));
+        $db = Database::getInstance();
+
+        if ($etapa === 'SECADO_FINAL') {
+            try {
+                self::ensureFermentacionPesoUnitColumn();
+                $colsFermentacion = self::getTableColumns('registros_fermentacion');
+                if (in_array('unidad_peso', $colsFermentacion, true)) {
+                    $fermentacion = $db->fetch(
+                        "SELECT unidad_peso
+                         FROM registros_fermentacion
+                         WHERE lote_id = ?
+                           AND unidad_peso IS NOT NULL
+                           AND TRIM(unidad_peso) <> ''
+                         ORDER BY id DESC
+                         LIMIT 1",
+                        [$loteId]
+                    );
+
+                    if (!empty($fermentacion['unidad_peso'])) {
+                        return self::normalizePesoUnit($fermentacion['unidad_peso']);
+                    }
+                }
+            } catch (Throwable $e) {
+                // Continuar con la siguiente fuente disponible.
+            }
+        }
+
+        return self::resolveInheritedPesoUnitForLote($loteId, $excludeSecadoId);
+    }
+
+    /**
      * Asegura el catálogo base de cajones de fermentación.
      */
     public static function ensureCajonesFermentacionCatalog(int $objetivoBase = 6): bool {

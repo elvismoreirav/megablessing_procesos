@@ -16,7 +16,8 @@ $input = json_decode(file_get_contents('php://input'), true);
 
 $secadoId = $input['secado_id'] ?? null;
 $fechaFin = $input['fecha_fin'] ?? null;
-$pesoFinal = isset($input['peso_final']) && $input['peso_final'] !== '' ? floatval($input['peso_final']) : null;
+$pesoFinalIngresado = isset($input['peso_final']) && $input['peso_final'] !== '' ? floatval($input['peso_final']) : null;
+$pesoFinalUnidadIngresada = $input['peso_final_unidad'] ?? null;
 $humedadFinal = isset($input['humedad_final']) && $input['humedad_final'] !== '' ? floatval($input['humedad_final']) : null;
 
 if (!$secadoId || !$fechaFin) {
@@ -26,6 +27,8 @@ if (!$secadoId || !$fechaFin) {
 $db = Database::getInstance();
 
 // Compatibilidad de esquema
+Helpers::ensureSecadoPesoUnitColumn();
+Helpers::ensureFermentacionPesoUnitColumn();
 $colsSecado = array_column($db->fetchAll("SHOW COLUMNS FROM registros_secado"), 'Field');
 $hasSecCol = static fn(string $name): bool => in_array($name, $colsSecado, true);
 $fechaInicioExpr = $hasSecCol('fecha_inicio') ? 'rs.fecha_inicio' : ($hasSecCol('fecha') ? 'rs.fecha' : 'NULL');
@@ -33,6 +36,7 @@ $fechaFinExpr = $hasSecCol('fecha_fin') ? 'rs.fecha_fin' : 'NULL';
 $colFechaFin = $hasSecCol('fecha_fin') ? 'fecha_fin' : null;
 $colPesoFinal = $hasSecCol('peso_final') ? 'peso_final' : null;
 $colHumedadFinal = $hasSecCol('humedad_final') ? 'humedad_final' : null;
+$colUnidadPeso = $hasSecCol('unidad_peso') ? 'unidad_peso' : null;
 $etapaProcesoExpr = $hasSecCol('etapa_proceso') ? 'rs.etapa_proceso' : 'NULL';
 
 // Verificar que el secado existe
@@ -68,6 +72,16 @@ if (!in_array($etapaSecado, ['PRE_SECADO', 'SECADO_FINAL'], true)) {
     ) ? 'SECADO_FINAL' : 'PRE_SECADO';
 }
 
+$unidadPesoProceso = !empty($secado['unidad_peso'])
+    ? Helpers::normalizePesoUnit($secado['unidad_peso'])
+    : Helpers::resolveSecadoPesoUnitForLote((int)$secado['lote_id'], $etapaSecado, (int)$secado['id']);
+if ($pesoFinalUnidadIngresada !== null && $pesoFinalUnidadIngresada !== '') {
+    $unidadPesoProceso = Helpers::normalizePesoUnit($pesoFinalUnidadIngresada, $unidadPesoProceso);
+}
+$pesoFinal = $pesoFinalIngresado !== null
+    ? Helpers::pesoToKg($pesoFinalIngresado, $unidadPesoProceso)
+    : null;
+
 // Validar fecha
 if (!empty($secado['fecha_inicio_base']) && $fechaFin < $secado['fecha_inicio_base']) {
     Helpers::jsonResponse(['success' => false, 'error' => 'La fecha de fin no puede ser anterior a la fecha de inicio']);
@@ -86,6 +100,9 @@ try {
     }
     if ($colHumedadFinal) {
         $dataSecado[$colHumedadFinal] = $humedadFinal;
+    }
+    if ($colUnidadPeso) {
+        $dataSecado[$colUnidadPeso] = $unidadPesoProceso;
     }
     if (!empty($dataSecado)) {
         $db->update('registros_secado', $dataSecado, 'id = :id', ['id' => $secadoId]);

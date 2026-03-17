@@ -280,6 +280,7 @@ CREATE TABLE IF NOT EXISTS `registros_fermentacion` (
     `cajon_id` INT,
     `fecha_inicio` DATE NOT NULL,
     `peso_lote_kg` DECIMAL(10,2),
+    `unidad_peso` ENUM('LB','KG','QQ') DEFAULT NULL,
     -- Datos iniciales del grano
     `humedad_inicial` DECIMAL(5,2),
     `temperatura_inicial` DECIMAL(5,2),
@@ -342,6 +343,7 @@ CREATE TABLE IF NOT EXISTS `registros_secado` (
     `variedad` VARCHAR(100),
     `estado` VARCHAR(50),
     `etapa_proceso` ENUM('PRE_SECADO','SECADO_FINAL') NULL,
+    `unidad_peso` ENUM('LB','KG','QQ') DEFAULT NULL,
     `cantidad_total_qq` DECIMAL(10,2),
     -- Revisión inicial
     `limpieza_area` TINYINT(1) DEFAULT 0,

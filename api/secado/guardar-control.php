@@ -16,6 +16,8 @@ $input = json_decode(file_get_contents('php://input'), true);
 
 $secadoId = $input['secado_id'] ?? null;
 $controles = $input['controles'] ?? [];
+$temperaturaMinimaSecado = 70.0;
+$temperaturaMaximaSecado = 130.0;
 
 if (!$secadoId) {
     Helpers::jsonResponse(['success' => false, 'error' => 'ID de secado requerido']);
@@ -55,6 +57,23 @@ if (!$secado) {
 
 if ($secado['fecha_fin']) {
     Helpers::jsonResponse(['success' => false, 'error' => 'El secado ya está finalizado']);
+}
+
+foreach ($controles as $control) {
+    $temperatura = isset($control['temperatura']) && $control['temperatura'] !== '' ? floatval($control['temperatura']) : null;
+    if ($temperatura !== null && ($temperatura < $temperaturaMinimaSecado || $temperatura > $temperaturaMaximaSecado)) {
+        $fechaControl = trim((string)($control['fecha'] ?? ''));
+        $horaControl = trim((string)($control['hora'] ?? ''));
+        $detalle = $fechaControl !== '' ? " en {$fechaControl}" : '';
+        if ($horaControl !== '') {
+            $detalle .= " a las {$horaControl}";
+        }
+
+        Helpers::jsonResponse([
+            'success' => false,
+            'error' => "Temperatura fuera de rango{$detalle}. Debe estar entre 70°C y 130°C."
+        ]);
+    }
 }
 
 try {
