@@ -273,13 +273,22 @@ ob_start();
                 <?php endif; ?>
             </form>
             
-            <button onclick="openModal('create')" 
-                    class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                </svg>
-                Nueva Secadora
-            </button>
+            <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                <a href="<?= APP_URL ?>/configuracion/parametrizacion-masiva.php?modulo=secadoras"
+                   class="px-6 py-2 border border-cyan-600 text-cyan-700 rounded-lg hover:bg-cyan-50 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
+                    </svg>
+                    Carga Masiva
+                </a>
+                <button onclick="openModal('create')"
+                        class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    Nueva Secadora
+                </button>
+            </div>
         </div>
     </div>
 

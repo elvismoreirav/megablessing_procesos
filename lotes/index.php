@@ -168,6 +168,12 @@ ob_start();
     </p>
     
     <div class="flex gap-3">
+        <a href="<?= APP_URL ?>/lotes/carga-masiva.php" class="btn btn-outline">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v12m0 0l-4-4m4 4l4-4"/>
+            </svg>
+            Carga Masiva
+        </a>
         <a href="<?= APP_URL ?>/lotes/crear.php" class="btn btn-primary">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>

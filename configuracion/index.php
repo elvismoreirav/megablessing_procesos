@@ -67,6 +67,20 @@ ob_start();
                 <p class="text-sm text-gray-500 mt-1">Gestione productores y proveedores de cacao</p>
             </a>
 
+            <!-- Parametrización Masiva -->
+            <a href="parametrizacion-masiva.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center group-hover:bg-cyan-200 transition-colors">
+                        <svg class="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
+                        </svg>
+                    </div>
+                    <span class="text-2xl font-bold text-cyan-600">XLSX</span>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800">Parametrización Masiva</h3>
+                <p class="text-sm text-gray-500 mt-1">Carga masiva agrupada de categorias, proveedores, variedades, secadoras y cajones</p>
+            </a>
+
             <!-- Variedades -->
             <a href="variedades.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">

@@ -1316,6 +1316,12 @@ ob_start();
                 </a>
             </div>
             <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <a href="<?= APP_URL ?>/configuracion/parametrizacion-masiva.php?modulo=proveedores" class="w-full sm:w-auto px-6 py-2 border border-cyan-600 text-cyan-700 rounded-lg hover:bg-cyan-50 transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
+                    </svg>
+                    Parametrización Masiva
+                </a>
                 <button type="button" onclick="openCategoriaModal('create')" class="w-full sm:w-auto px-6 py-2 border border-primary text-primary rounded-lg hover:bg-primary/10 transition-colors flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8m-8 5h8m-8 5h8M5 7h.01M5 12h.01M5 17h.01"/>

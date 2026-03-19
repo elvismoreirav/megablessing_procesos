@@ -27,6 +27,8 @@ $showRecepcionSection = $canRecepcion || $canPagos || $canCodificacion || $canEt
 $showPostcosechaSection = $canLotes || $canFermentacion || $canSecado || $canPruebaCorte || $canCalidadSalida;
 $showReportesSection = $canReportes || $canIndicadores;
 $showConfiguracionSection = $canProveedores || $canConfiguracion || $canUsuarios;
+$isLotesBulkPage = $currentDir === 'lotes' && in_array($currentPage, ['carga-masiva', 'formato-carga-masiva'], true);
+$isConfigBulkPage = $currentDir === 'configuracion' && in_array($currentPage, ['parametrizacion-masiva', 'parametrizacion-masiva-plantilla', 'plantilla-proveedores-masiva'], true);
 $assetVersion = static function (string $path): string {
     $mtime = @filemtime($path);
     return $mtime !== false ? (string) $mtime : date('YmdHis');
@@ -183,11 +185,17 @@ $requiresSheetJs = isset($requiresSheetJs)
             <?php if ($showPostcosechaSection): ?>
             <div class="sidebar-section-title">Procesos Post-cosecha</div>
             <?php if ($canLotes): ?>
-            <a href="<?= APP_URL ?>/lotes/index.php" class="sidebar-link <?= $currentDir === 'lotes' ? 'active' : '' ?>">
+            <a href="<?= APP_URL ?>/lotes/index.php" class="sidebar-link <?= $currentDir === 'lotes' && !$isLotesBulkPage ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                 </svg>
                 Verificación de Lote
+            </a>
+            <a href="<?= APP_URL ?>/lotes/carga-masiva.php" class="sidebar-link <?= $isLotesBulkPage ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
+                </svg>
+                Carga Masiva de Lotes
             </a>
             <?php endif; ?>
             <?php if ($canFermentacion): ?>
@@ -258,6 +266,14 @@ $requiresSheetJs = isset($requiresSheetJs)
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
                 Proveedores
+            </a>
+            <?php endif; ?>
+            <?php if ($canProveedores || $canConfiguracion): ?>
+            <a href="<?= APP_URL ?>/configuracion/parametrizacion-masiva.php" class="sidebar-link <?= $isConfigBulkPage ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
+                </svg>
+                Parametrización Masiva
             </a>
             <?php endif; ?>
             <?php if ($canConfiguracion): ?>
