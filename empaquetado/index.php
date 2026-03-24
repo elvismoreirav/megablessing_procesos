@@ -192,7 +192,7 @@ ob_start();
                     <th>Proveedor</th>
                     <th>Calidad</th>
                     <th class="text-center">Sacos</th>
-                    <th class="text-right">Peso Total</th>
+                    <th class="text-right">Peso Total (QQ)</th>
                     <th>Fecha Empaque</th>
                     <th>Estado</th>
                     <th class="text-center">Acciones</th>
@@ -232,7 +232,7 @@ ob_start();
                                 <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars((string)($reg['calidad_final'] ?? 'N/D')) ?></span>
                             </td>
                             <td class="text-center font-medium"><?= $reg['numero_sacos'] ?? '-' ?></td>
-                            <td class="text-right"><?= $reg['peso_total'] ? number_format($reg['peso_total'], 2) . ' kg' : '-' ?></td>
+                            <td class="text-right"><?= $reg['peso_total'] ? number_format(Helpers::kgToQQ((float)$reg['peso_total']), 2) . ' QQ' : '-' ?></td>
                             <td><?= $reg['fecha_empaquetado'] ? Helpers::formatDate($reg['fecha_empaquetado']) : '-' ?></td>
                             <td>
                                 <?php if ($reg['fecha_empaquetado']): ?>

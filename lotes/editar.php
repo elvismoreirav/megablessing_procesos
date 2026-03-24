@@ -207,6 +207,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $pageTitle = 'Editar Lote';
 $pageSubtitle = $lote['codigo'];
+$pesoInicialKgVisual = (float)($lote['peso_inicial_kg'] ?? 0);
+$pesoInicialQqVisual = Helpers::kgToQQ($pesoInicialKgVisual);
+$pesoInicialLbVisual = Helpers::kgToLb($pesoInicialKgVisual);
+$pesoActualKgVisual = (float)($lote['peso_actual_kg'] ?? 0);
+$pesoActualQqVisual = Helpers::kgToQQ($pesoActualKgVisual);
+$pesoActualLbVisual = Helpers::kgToLb($pesoActualKgVisual);
 
 ob_start();
 ?>
@@ -359,6 +365,11 @@ ob_start();
                         <label class="form-label">Peso Inicial (Kg)</label>
                         <input type="text" class="form-control bg-gray-50" readonly
                                value="<?= Helpers::formatNumber($lote['peso_inicial_kg'], 2) ?>">
+                        <p class="mt-2 text-xs text-warmgray">
+                            Equivalente: <?= Helpers::formatNumber($pesoInicialKgVisual, 2) ?> KG |
+                            <?= Helpers::formatNumber($pesoInicialQqVisual, 2) ?> QQ |
+                            <?= Helpers::formatNumber($pesoInicialLbVisual, 2) ?> LB
+                        </p>
                     </div>
 
                     <!-- Peso Actual -->
@@ -370,6 +381,11 @@ ob_start();
                                    value="<?= $lote['peso_actual_kg'] ?>">
                             <span class="absolute right-3 top-1/2 -translate-y-1/2 text-warmgray font-medium">Kg</span>
                         </div>
+                        <p id="peso_actual_equivalencias" class="mt-2 text-xs text-warmgray">
+                            Equivalente: <?= Helpers::formatNumber($pesoActualKgVisual, 2) ?> KG |
+                            <?= Helpers::formatNumber($pesoActualQqVisual, 2) ?> QQ |
+                            <?= Helpers::formatNumber($pesoActualLbVisual, 2) ?> LB
+                        </p>
                     </div>
 
                     <!-- Peso en Quintales (calculado) -->
@@ -534,15 +550,35 @@ document.addEventListener('DOMContentLoaded', function() {
     const pesoKgInput = document.getElementById('peso_kg');
     const pesoQQInput = document.getElementById('peso_qq');
     const mermaInput = document.getElementById('merma');
+    const pesoActualEquivalencias = document.getElementById('peso_actual_equivalencias');
     
     const pesoInicial = <?= $lote['peso_inicial_kg'] ?>;
+
+    function kgToQq(kg) {
+        return kg / 45.36;
+    }
+
+    function kgToLb(kg) {
+        return kg / 0.45359237;
+    }
+
+    function formatPeso(value) {
+        return new Intl.NumberFormat('es-EC', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    }
 
     function updateCalculations() {
         const pesoActual = parseFloat(pesoKgInput.value) || 0;
         
         // Calcular quintales
-        const qq = pesoActual / 45.36;
+        const qq = kgToQq(pesoActual);
         pesoQQInput.value = qq.toFixed(2);
+
+        if (pesoActualEquivalencias) {
+            pesoActualEquivalencias.textContent = `Equivalente: ${formatPeso(pesoActual)} KG | ${formatPeso(qq)} QQ | ${formatPeso(kgToLb(pesoActual))} LB`;
+        }
         
         // Calcular merma
         if (pesoInicial > 0) {

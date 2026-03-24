@@ -12,6 +12,7 @@ $db = Database::getInstance();
 $errors = [];
 
 // Compatibilidad de esquema para datos de fermentación
+Helpers::ensureFermentacionFinalColumns();
 $colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
 $hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
 $exprPesoFermentacion = $hasFerCol('peso_final')
@@ -90,7 +91,13 @@ if ($loteId) {
         FROM lotes l
         JOIN proveedores p ON l.proveedor_id = p.id
         JOIN variedades v ON l.variedad_id = v.id
-        LEFT JOIN registros_fermentacion rf ON rf.lote_id = l.id
+        LEFT JOIN registros_fermentacion rf ON rf.id = (
+            SELECT rf2.id
+            FROM registros_fermentacion rf2
+            WHERE rf2.lote_id = l.id
+            ORDER BY rf2.id DESC
+            LIMIT 1
+        )
         WHERE l.id = :id AND l.estado_proceso IN ('PRE_SECADO', 'SECADO')
     ", ['id' => $loteId]);
     

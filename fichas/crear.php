@@ -12,6 +12,8 @@ $db = Database::getInstance();
 $error = '';
 $success = '';
 
+Helpers::ensureFichaProveedorRutaColumn();
+
 // Obtener lote pre-seleccionado si viene de otro módulo
 $lotePreseleccionado = $_GET['lote_id'] ?? '';
 $etapaFormulario = strtolower(trim((string)($_GET['etapa'] ?? 'recepcion')));
@@ -1136,7 +1138,7 @@ ob_start();
                             <p class="text-xs text-gray-500 mt-1">Usa negativo para descuento y positivo para bonificación.</p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Precio unitario final (USD/KG)</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Precio unitario final (USD)</label>
                             <input type="number" name="precio_unitario_final" id="precio_unitario_final" step="0.0001" min="0"
                                    value="<?= htmlspecialchars($_POST['precio_unitario_final'] ?? '') ?>"
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
@@ -1146,7 +1148,7 @@ ob_start();
                             <input type="number" name="precio_total_pagar" id="precio_total_pagar" step="0.01" min="0"
                                    value="<?= htmlspecialchars($_POST['precio_total_pagar'] ?? '') ?>"
                                    class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                            <p class="text-xs text-gray-500 mt-1">Cálculo: precio unitario final (USD/KG) x cantidad convertida a KG.</p>
+                            <p class="text-xs text-gray-500 mt-1">Cálculo: precio unitario final x cantidad convertida a KG.</p>
                             <p id="peso_equiv_kg" class="text-xs text-emerald-700 mt-1"></p>
                             <p id="cantidad_calculo" class="text-xs text-emerald-700"></p>
                         </div>

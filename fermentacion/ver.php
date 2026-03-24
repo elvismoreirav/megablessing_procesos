@@ -9,6 +9,10 @@ require_once __DIR__ . '/../bootstrap.php';
 requireAuth();
 
 $db = Database::getInstance();
+Helpers::ensureFermentacionFinalColumns();
+Helpers::ensureFermentacionControlMedicionesColumns();
+$tempMinFermentacion = 35.0;
+$tempMaxFermentacion = 50.0;
 
 $id = $_GET['id'] ?? null;
 
@@ -108,14 +112,10 @@ $tempAmExpr = $hasCtrlCol('temperatura_am')
 $tempPmExpr = $hasCtrlCol('temperatura_pm')
     ? 'temperatura_pm'
     : ($hasCtrlCol('temp_pm') ? 'temp_pm' : ($hasCtrlCol('temp_ambiente') ? 'temp_ambiente' : 'NULL'));
-$temp20Expr = $hasCtrlCol('temp_20h') ? 'temp_20h' : 'NULL';
-$temp22Expr = $hasCtrlCol('temp_22h') ? 'temp_22h' : 'NULL';
-$temp24Expr = $hasCtrlCol('temp_24h') ? 'temp_24h' : 'NULL';
-$temp02Expr = $hasCtrlCol('temp_02h') ? 'temp_02h' : 'NULL';
-$temp04Expr = $hasCtrlCol('temp_04h') ? 'temp_04h' : 'NULL';
-$phAmExpr = $hasCtrlCol('ph_am') ? 'ph_am' : ($hasCtrlCol('ph_pulpa') ? 'ph_pulpa' : 'NULL');
-$phPmExpr = $hasCtrlCol('ph_pm') ? 'ph_pm' : ($hasCtrlCol('ph_cotiledon') ? 'ph_cotiledon' : 'NULL');
-$horaCtrlExpr = $hasCtrlCol('hora_volteo') ? 'hora_volteo' : ($hasCtrlCol('hora') ? 'hora' : 'NULL');
+$horaAmExpr = $hasCtrlCol('hora_am') ? 'hora_am' : 'NULL';
+$horaPmExpr = $hasCtrlCol('hora_pm') ? 'hora_pm' : 'NULL';
+$volteoAmExpr = $hasCtrlCol('volteo_am') ? 'volteo_am' : 'NULL';
+$volteoPmExpr = $hasCtrlCol('volteo_pm') ? 'volteo_pm' : 'NULL';
 $obsCtrlExpr = $hasCtrlCol('observaciones') ? 'observaciones' : 'NULL';
 
 $controlDiario = $db->fetchAll("
@@ -123,15 +123,10 @@ $controlDiario = $db->fetchAll("
            {$fechaCtrlExpr} as fecha,
            {$tempAmExpr} as temp_am,
            {$tempPmExpr} as temp_pm,
-           {$temp20Expr} as temp_20h,
-           {$temp22Expr} as temp_22h,
-           {$temp24Expr} as temp_24h,
-           {$temp02Expr} as temp_02h,
-           {$temp04Expr} as temp_04h,
-           {$phAmExpr} as ph_am,
-           {$phPmExpr} as ph_pm,
-           volteo,
-           {$horaCtrlExpr} as hora_volteo,
+           {$horaAmExpr} as hora_am,
+           {$volteoAmExpr} as volteo_am,
+           {$horaPmExpr} as hora_pm,
+           {$volteoPmExpr} as volteo_pm,
            {$obsCtrlExpr} as observaciones
     FROM fermentacion_control_diario
     WHERE {$fkControlCol} = :id
@@ -144,29 +139,17 @@ $stats = [
     'volteos_realizados' => $fermentacion['total_volteos'] ?? 0,
     'temp_promedio' => 0,
     'temp_max' => 0,
-    'ph_promedio' => 0
 ];
 
 if (!empty($controlDiario)) {
     $temps = [];
-    $phs = [];
     foreach ($controlDiario as $dia) {
         if ($dia['temp_am']) $temps[] = $dia['temp_am'];
         if ($dia['temp_pm']) $temps[] = $dia['temp_pm'];
-        if ($dia['temp_20h']) $temps[] = $dia['temp_20h'];
-        if ($dia['temp_22h']) $temps[] = $dia['temp_22h'];
-        if ($dia['temp_24h']) $temps[] = $dia['temp_24h'];
-        if ($dia['temp_02h']) $temps[] = $dia['temp_02h'];
-        if ($dia['temp_04h']) $temps[] = $dia['temp_04h'];
-        if ($dia['ph_am']) $phs[] = $dia['ph_am'];
-        if ($dia['ph_pm']) $phs[] = $dia['ph_pm'];
     }
     if (!empty($temps)) {
         $stats['temp_promedio'] = array_sum($temps) / count($temps);
         $stats['temp_max'] = max($temps);
-    }
-    if (!empty($phs)) {
-        $stats['ph_promedio'] = array_sum($phs) / count($phs);
     }
 }
 
@@ -181,8 +164,8 @@ $pesoFinalKg = isset($fermentacion['peso_final']) && $fermentacion['peso_final']
 
 $pageTitle = 'Fermentación: ' . $fermentacion['lote_codigo'];
 $pageSubtitle = 'Detalle del proceso de fermentación';
-$franjaDiurnaAmLabel = '08h-12h';
-$franjaDiurnaPmLabel = '12h-18h';
+$medicionMananaLabel = 'Mañana';
+$medicionTardeLabel = 'Tarde';
 
 ob_start();
 ?>
@@ -222,7 +205,7 @@ ob_start();
 </div>
 
 <!-- Estadísticas -->
-<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="card p-4 text-center">
         <p class="text-3xl font-bold text-primary"><?= $stats['dias_registrados'] ?></p>
         <p class="text-xs text-warmgray">Días Registrados</p>
@@ -232,16 +215,12 @@ ob_start();
         <p class="text-xs text-warmgray">Volteos Realizados</p>
     </div>
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= ($stats['temp_promedio'] >= 70 && $stats['temp_promedio'] <= 130) ? 'text-green-600' : 'text-gold' ?>"><?= number_format($stats['temp_promedio'], 1) ?>°C</p>
+        <p class="text-3xl font-bold <?= ($stats['temp_promedio'] >= $tempMinFermentacion && $stats['temp_promedio'] <= $tempMaxFermentacion) ? 'text-green-600' : 'text-gold' ?>"><?= number_format($stats['temp_promedio'], 1) ?>°C</p>
         <p class="text-xs text-warmgray">Temp. Promedio</p>
     </div>
     <div class="card p-4 text-center">
-        <p class="text-3xl font-bold <?= $stats['temp_max'] > 130 ? 'text-red-600' : 'text-green-600' ?>"><?= number_format($stats['temp_max'], 1) ?>°C</p>
+        <p class="text-3xl font-bold <?= $stats['temp_max'] > $tempMaxFermentacion ? 'text-red-600' : 'text-green-600' ?>"><?= number_format($stats['temp_max'], 1) ?>°C</p>
         <p class="text-xs text-warmgray">Temp. Máxima</p>
-    </div>
-    <div class="card p-4 text-center">
-        <p class="text-3xl font-bold text-warmgray"><?= number_format($stats['ph_promedio'], 1) ?></p>
-        <p class="text-xs text-warmgray">pH Promedio</p>
     </div>
 </div>
 
@@ -361,7 +340,7 @@ ob_start();
                 <div>
                     <h3 class="card-title">Control Diario de Fermentación</h3>
                     <p class="text-sm text-warmgray mt-1">
-                        Franja diurna visible: <?= htmlspecialchars($franjaDiurnaAmLabel) ?> y <?= htmlspecialchars($franjaDiurnaPmLabel) ?>. Franja nocturna: 20h, 22h, 24h, 02h y 04h.
+                        Se registran 2 mediciones por día: mañana y tarde. Cada una incluye hora, volteo y temperatura.
                     </p>
                 </div>
             </div>
@@ -371,24 +350,19 @@ ob_start();
                         <tr>
                             <th class="text-center">Día</th>
                             <th class="text-center">Fecha</th>
-                            <th class="text-center">20h</th>
-                            <th class="text-center">22h</th>
-                            <th class="text-center">24h</th>
-                            <th class="text-center">02h</th>
-                            <th class="text-center">04h</th>
-                            <th class="text-center"><?= htmlspecialchars($franjaDiurnaAmLabel) ?></th>
-                            <th class="text-center"><?= htmlspecialchars($franjaDiurnaPmLabel) ?></th>
-                            <th class="text-center">pH <?= htmlspecialchars($franjaDiurnaAmLabel) ?></th>
-                            <th class="text-center">pH <?= htmlspecialchars($franjaDiurnaPmLabel) ?></th>
-                            <th class="text-center">Volteo</th>
-                            <th class="text-center">Hora</th>
+                            <th class="text-center">Hora <?= htmlspecialchars($medicionMananaLabel) ?></th>
+                            <th class="text-center">Volteo <?= htmlspecialchars($medicionMananaLabel) ?></th>
+                            <th class="text-center">Temp. <?= htmlspecialchars($medicionMananaLabel) ?></th>
+                            <th class="text-center">Hora <?= htmlspecialchars($medicionTardeLabel) ?></th>
+                            <th class="text-center">Volteo <?= htmlspecialchars($medicionTardeLabel) ?></th>
+                            <th class="text-center">Temp. <?= htmlspecialchars($medicionTardeLabel) ?></th>
                             <th>Observaciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($controlDiario)): ?>
                             <tr>
-                                <td colspan="14" class="text-center py-8 text-warmgray">
+                                <td colspan="9" class="text-center py-8 text-warmgray">
                                     No hay registros de control diario
                                 </td>
                             </tr>
@@ -397,33 +371,25 @@ ob_start();
                             <tr>
                                 <td class="text-center font-medium"><?= $dia['dia'] ?></td>
                                 <td class="text-center"><?= $dia['fecha'] ? Helpers::formatDate($dia['fecha']) : '-' ?></td>
-                                <?php
-                                    $slotsNocturnos = ['temp_20h', 'temp_22h', 'temp_24h', 'temp_02h', 'temp_04h'];
-                                ?>
-                                <?php foreach ($slotsNocturnos as $slotTemp): ?>
                                 <td class="text-center">
-                                    <?php if ($dia[$slotTemp]): ?>
-                                        <?php
-                                            $tempSlot = (float)$dia[$slotTemp];
-                                            $slotClass = $tempSlot > 130
-                                                ? 'bg-red-100 text-red-600'
-                                                : ($tempSlot < 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
-                                        ?>
-                                        <span class="px-2 py-1 rounded <?= $slotClass ?>">
-                                            <?= number_format($tempSlot, 1) ?>°C
-                                        </span>
-                                    <?php else: ?>
+                                    <?= $dia['hora_am'] ? substr((string)$dia['hora_am'], 0, 5) : '-' ?>
+                                </td>
+                                <td class="text-center">
+                                    <?php if ($dia['volteo_am'] === null): ?>
                                         -
+                                    <?php elseif ((int)$dia['volteo_am'] === 1): ?>
+                                        <span class="badge badge-success">Sí</span>
+                                    <?php else: ?>
+                                        <span class="badge badge-secondary">No</span>
                                     <?php endif; ?>
                                 </td>
-                                <?php endforeach; ?>
                                 <td class="text-center">
                                     <?php if ($dia['temp_am']): ?>
                                         <?php
                                             $tempAm = (float)$dia['temp_am'];
-                                            $tempAmClass = $tempAm > 130
+                                            $tempAmClass = $tempAm > $tempMaxFermentacion
                                                 ? 'bg-red-100 text-red-600'
-                                                : ($tempAm < 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
+                                                : ($tempAm < $tempMinFermentacion ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
                                         ?>
                                         <span class="px-2 py-1 rounded <?= $tempAmClass ?>">
                                             <?= number_format($dia['temp_am'], 1) ?>°C
@@ -433,12 +399,24 @@ ob_start();
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-center">
+                                    <?= $dia['hora_pm'] ? substr((string)$dia['hora_pm'], 0, 5) : '-' ?>
+                                </td>
+                                <td class="text-center">
+                                    <?php if ($dia['volteo_pm'] === null): ?>
+                                        -
+                                    <?php elseif ((int)$dia['volteo_pm'] === 1): ?>
+                                        <span class="badge badge-success">Sí</span>
+                                    <?php else: ?>
+                                        <span class="badge badge-secondary">No</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-center">
                                     <?php if ($dia['temp_pm']): ?>
                                         <?php
                                             $tempPm = (float)$dia['temp_pm'];
-                                            $tempPmClass = $tempPm > 130
+                                            $tempPmClass = $tempPm > $tempMaxFermentacion
                                                 ? 'bg-red-100 text-red-600'
-                                                : ($tempPm < 70 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
+                                                : ($tempPm < $tempMinFermentacion ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600');
                                         ?>
                                         <span class="px-2 py-1 rounded <?= $tempPmClass ?>">
                                             <?= number_format($dia['temp_pm'], 1) ?>°C
@@ -447,16 +425,6 @@ ob_start();
                                         -
                                     <?php endif; ?>
                                 </td>
-                                <td class="text-center"><?= $dia['ph_am'] ? number_format($dia['ph_am'], 1) : '-' ?></td>
-                                <td class="text-center"><?= $dia['ph_pm'] ? number_format($dia['ph_pm'], 1) : '-' ?></td>
-                                <td class="text-center">
-                                    <?php if ($dia['volteo']): ?>
-                                        <span class="badge badge-success">Sí</span>
-                                    <?php else: ?>
-                                        <span class="badge badge-secondary">No</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-center"><?= $dia['hora_volteo'] ? substr($dia['hora_volteo'], 0, 5) : '-' ?></td>
                                 <td class="text-sm text-warmgray max-w-xs truncate"><?= htmlspecialchars($dia['observaciones'] ?? '') ?></td>
                             </tr>
                             <?php endforeach; ?>
@@ -490,11 +458,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const labels = data.map(d => 'Día ' + d.dia);
     const tempPromedio = data.map(d => {
         const valores = [
-            d.temp_20h,
-            d.temp_22h,
-            d.temp_24h,
-            d.temp_02h,
-            d.temp_04h,
             d.temp_am,
             d.temp_pm
         ].filter(v => v !== null && v !== '' && !Number.isNaN(Number(v)));
@@ -504,8 +467,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const suma = valores.reduce((acc, v) => acc + Number(v), 0);
         return suma / valores.length;
     });
-    const lineaMin = labels.map(() => 70);
-    const lineaMax = labels.map(() => 130);
+    const lineaMin = labels.map(() => <?= json_encode($tempMinFermentacion) ?>);
+    const lineaMax = labels.map(() => <?= json_encode($tempMaxFermentacion) ?>);
     
     new Chart(ctx, {
         type: 'line',
@@ -521,7 +484,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     fill: true
                 },
                 {
-                    label: 'Mínimo objetivo (70°C)',
+                    label: 'Mínimo objetivo (35°C)',
                     data: lineaMin,
                     borderColor: 'rgba(250, 173, 20, 0.8)',
                     borderWidth: 1,
@@ -530,7 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     borderDash: [4, 4]
                 },
                 {
-                    label: 'Máximo objetivo (130°C)',
+                    label: 'Máximo objetivo (50°C)',
                     data: lineaMax,
                     borderColor: 'rgba(239, 68, 68, 0.8)',
                     borderWidth: 1,
@@ -550,8 +513,8 @@ document.addEventListener('DOMContentLoaded', function() {
             scales: {
                 y: {
                     beginAtZero: false,
-                    min: 60,
-                    max: 140,
+                    min: 30,
+                    max: 55,
                     title: {
                         display: true,
                         text: 'Temperatura (°C)'

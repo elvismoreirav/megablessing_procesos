@@ -17,9 +17,11 @@ if (!$id) {
 }
 
 // Compatibilidad de esquema (instalaciones con columnas distintas)
+Helpers::ensureFermentacionFinalColumns();
 $colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
 $hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
 Helpers::ensureFermentacionPesoUnitColumn();
+Helpers::ensureFermentacionControlMedicionesColumns();
 $colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
 $hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
 
@@ -44,14 +46,10 @@ $fkControlCol = $hasCtrlCol('fermentacion_id') ? 'fermentacion_id' : 'registro_f
 $fechaCtrlExpr = $hasCtrlCol('fecha') ? 'fecha' : 'NULL';
 $tempAmExpr = $hasCtrlCol('temperatura_am') ? 'temperatura_am' : ($hasCtrlCol('temp_masa') ? 'temp_masa' : 'NULL');
 $tempPmExpr = $hasCtrlCol('temperatura_pm') ? 'temperatura_pm' : ($hasCtrlCol('temp_ambiente') ? 'temp_ambiente' : 'NULL');
-$temp20Expr = $hasCtrlCol('temp_20h') ? 'temp_20h' : 'NULL';
-$temp22Expr = $hasCtrlCol('temp_22h') ? 'temp_22h' : 'NULL';
-$temp24Expr = $hasCtrlCol('temp_24h') ? 'temp_24h' : 'NULL';
-$temp02Expr = $hasCtrlCol('temp_02h') ? 'temp_02h' : 'NULL';
-$temp04Expr = $hasCtrlCol('temp_04h') ? 'temp_04h' : 'NULL';
-$phAmExpr = $hasCtrlCol('ph_am') ? 'ph_am' : ($hasCtrlCol('ph_pulpa') ? 'ph_pulpa' : 'NULL');
-$phPmExpr = $hasCtrlCol('ph_pm') ? 'ph_pm' : ($hasCtrlCol('ph_cotiledon') ? 'ph_cotiledon' : 'NULL');
-$horaCtrlExpr = $hasCtrlCol('hora_volteo') ? 'hora_volteo' : ($hasCtrlCol('hora') ? 'hora' : 'NULL');
+$horaAmExpr = $hasCtrlCol('hora_am') ? 'hora_am' : 'NULL';
+$horaPmExpr = $hasCtrlCol('hora_pm') ? 'hora_pm' : 'NULL';
+$volteoAmExpr = $hasCtrlCol('volteo_am') ? 'volteo_am' : 'NULL';
+$volteoPmExpr = $hasCtrlCol('volteo_pm') ? 'volteo_pm' : 'NULL';
 $obsCtrlExpr = $hasCtrlCol('observaciones') ? 'observaciones' : 'NULL';
 
 // Obtener registro de fermentación
@@ -97,6 +95,8 @@ $registroSecado = $db->fetch(
     [$fermentacion['lote_id']]
 );
 $fermentacionFinalizada = !empty($fermentacion['fecha_fin']);
+$requiereCompletarDatosFinales = $fermentacionFinalizada
+    && ($pesoFinalKg === null || $fermentacion['humedad_final'] === null);
 $rutaSiguienteSecado = $registroSecado
     ? (APP_URL . '/secado/control.php?id=' . (int)$registroSecado['id'])
     : (APP_URL . '/secado/crear.php?lote_id=' . (int)$fermentacion['lote_id']);
@@ -111,15 +111,10 @@ $controlesDiarios = $db->fetchAll("
            {$fechaCtrlExpr} as fecha,
            {$tempAmExpr} as temperatura_am,
            {$tempPmExpr} as temperatura_pm,
-           {$temp20Expr} as temp_20h,
-           {$temp22Expr} as temp_22h,
-           {$temp24Expr} as temp_24h,
-           {$temp02Expr} as temp_02h,
-           {$temp04Expr} as temp_04h,
-           {$phAmExpr} as ph_am,
-           {$phPmExpr} as ph_pm,
-           volteo,
-           {$horaCtrlExpr} as hora_volteo,
+           {$horaAmExpr} as hora_am,
+           {$volteoAmExpr} as volteo_am,
+           {$horaPmExpr} as hora_pm,
+           {$volteoPmExpr} as volteo_pm,
            {$obsCtrlExpr} as observaciones
     FROM fermentacion_control_diario
     WHERE {$fkControlCol} = :id
@@ -142,26 +137,24 @@ for ($i = 1; $i <= 6; $i++) {
         'dia' => $i,
         'fecha' => $fechaDia->format('Y-m-d'),
         'fecha_display' => $fechaDia->format('d/m'),
+        'hora_am' => $control['hora_am'] ?? null,
+        'volteo_am' => isset($control['volteo_am']) && $control['volteo_am'] !== null ? (int)$control['volteo_am'] : null,
         'temp_am' => $control['temperatura_am'] ?? null,
+        'hora_pm' => $control['hora_pm'] ?? null,
+        'volteo_pm' => isset($control['volteo_pm']) && $control['volteo_pm'] !== null ? (int)$control['volteo_pm'] : null,
         'temp_pm' => $control['temperatura_pm'] ?? null,
-        'temp_20h' => $control['temp_20h'] ?? null,
-        'temp_22h' => $control['temp_22h'] ?? null,
-        'temp_24h' => $control['temp_24h'] ?? null,
-        'temp_02h' => $control['temp_02h'] ?? null,
-        'temp_04h' => $control['temp_04h'] ?? null,
-        'ph_am' => $control['ph_am'] ?? null,
-        'ph_pm' => $control['ph_pm'] ?? null,
-        'volteo' => $control['volteo'] ?? 0,
-        'hora_volteo' => $control['hora_volteo'] ?? null,
         'observaciones' => $control['observaciones'] ?? ''
     ];
 }
 
 $pageTitle = 'Control de Fermentación';
 $pageSubtitle = 'Lote: ' . $fermentacion['lote_codigo'];
-$franjaDiurnaAmLabel = '08h-12h';
-$franjaDiurnaPmLabel = '12h-18h';
-$horasVolteoDisponibles = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00'];
+$medicionMananaLabel = 'Mañana';
+$medicionTardeLabel = 'Tarde';
+$tempMinFermentacion = 35;
+$tempMaxFermentacion = 50;
+$horasMedicionMananaDisponibles = ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'];
+$horasMedicionTardeDisponibles = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
 
 // Estilos adicionales para Handsontable
 $extraHead = <<<HTML
@@ -292,45 +285,54 @@ ob_start();
         <div class="flex flex-wrap items-center gap-4 text-sm">
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #d4edda"></span>
-                <span>Temperatura en rango (70-130°C)</span>
+                <span>Temperatura en rango (35-50°C)</span>
             </div>
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #fff3cd"></span>
-                <span>Temperatura baja (&lt;70°C)</span>
+                <span>Temperatura baja (&lt;35°C)</span>
             </div>
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #f8d7da"></span>
-                <span>Temperatura alta (&gt;130°C)</span>
+                <span>Temperatura alta (&gt;50°C)</span>
             </div>
             <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded" style="background-color: #d4edda"></span>
                 <span>Volteo realizado</span>
             </div>
             <div class="w-full text-warmgray">
-                Franja diurna visible: <?= htmlspecialchars($franjaDiurnaAmLabel) ?> y <?= htmlspecialchars($franjaDiurnaPmLabel) ?>. Franja nocturna: 20h, 22h, 24h, 02h y 04h.
+                Registre 2 mediciones por día: mañana y tarde. En cada medición capture hora, volteo y temperatura.
             </div>
         </div>
     </div>
 </div>
 
 <!-- Acciones de Fermentación -->
-<?php if (!$fermentacion['fecha_fin']): ?>
+<?php if (!$fermentacion['fecha_fin'] || $requiereCompletarDatosFinales): ?>
 <div class="card mb-6">
     <div class="card-header">
-        <h3 class="card-title">Finalizar Fermentación</h3>
+        <h3 class="card-title"><?= $fermentacionFinalizada ? 'Completar Datos Finales' : 'Finalizar Fermentación' ?></h3>
     </div>
     <div class="card-body">
+        <?php if ($fermentacionFinalizada): ?>
+        <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Esta fermentación ya fue finalizada, pero aún faltan datos finales.
+            Registre el peso final para que secado tome la referencia correcta.
+        </div>
+        <?php endif; ?>
         <form id="finalizarForm" class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="form-group">
                 <label class="form-label required">Fecha de Fin</label>
                 <input type="date" name="fecha_fin" id="fecha_fin" class="form-control" 
-                       value="<?= date('Y-m-d') ?>" min="<?= $fermentacion['fecha_inicio'] ?>">
+                       value="<?= htmlspecialchars($fermentacion['fecha_fin'] ?: date('Y-m-d')) ?>"
+                       min="<?= $fermentacion['fecha_inicio'] ?>"
+                       <?= $fermentacionFinalizada ? 'readonly' : '' ?>>
             </div>
             <div class="form-group">
-                <label class="form-label">Peso Final</label>
+                <label class="form-label required">Peso Final</label>
                 <div class="flex gap-3">
                     <input type="number" name="peso_final" id="peso_final" class="form-control flex-1"
-                           step="0.01" min="0" placeholder="0.00">
+                           step="0.01" min="0" placeholder="0.00"
+                           value="<?= $pesoFinalKg !== null ? htmlspecialchars(number_format(Helpers::kgToPeso($pesoFinalKg, $unidadPesoProcesoFermentacion), 2, '.', '')) : '' ?>">
                     <select id="peso_final_unidad" class="form-control w-28">
                         <option value="QQ" <?= $unidadPesoProcesoFermentacion === 'QQ' ? 'selected' : '' ?>>QQ</option>
                         <option value="LB" <?= $unidadPesoProcesoFermentacion === 'LB' ? 'selected' : '' ?>>LB</option>
@@ -344,7 +346,8 @@ ob_start();
             <div class="form-group">
                 <label class="form-label">Humedad Final (%)</label>
                 <input type="number" name="humedad_final" id="humedad_final" class="form-control" 
-                       step="0.1" min="0" max="100">
+                       step="0.1" min="0" max="100"
+                       value="<?= $fermentacion['humedad_final'] !== null ? htmlspecialchars(number_format((float)$fermentacion['humedad_final'], 1, '.', '')) : '' ?>">
             </div>
         </form>
         <div class="mt-4">
@@ -352,7 +355,7 @@ ob_start();
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                Finalizar Fermentación
+                <?= $fermentacionFinalizada ? 'Guardar Datos Finales' : 'Finalizar Fermentación' ?>
             </button>
         </div>
     </div>
@@ -435,10 +438,14 @@ ob_start();
 <script>
 const fermentacionId = <?= $id ?>;
 const esFinalizado = <?= $fermentacion['fecha_fin'] ? 'true' : 'false' ?>;
-const franjaDiurnaAmLabel = <?= json_encode($franjaDiurnaAmLabel) ?>;
-const franjaDiurnaPmLabel = <?= json_encode($franjaDiurnaPmLabel) ?>;
-const horasVolteoDisponibles = <?= json_encode($horasVolteoDisponibles) ?>;
+const requiereCompletarDatosFinales = <?= $requiereCompletarDatosFinales ? 'true' : 'false' ?>;
+const medicionMananaLabel = <?= json_encode($medicionMananaLabel) ?>;
+const medicionTardeLabel = <?= json_encode($medicionTardeLabel) ?>;
+const horasMedicionMananaDisponibles = <?= json_encode($horasMedicionMananaDisponibles) ?>;
+const horasMedicionTardeDisponibles = <?= json_encode($horasMedicionTardeDisponibles) ?>;
 const pesoInicialKgReferencia = <?= json_encode($pesoInicialKg) ?>;
+const tempMinFermentacion = <?= json_encode($tempMinFermentacion) ?>;
+const tempMaxFermentacion = <?= json_encode($tempMaxFermentacion) ?>;
 
 // Datos iniciales
 const datosControl = <?= json_encode($diasControl) ?>;
@@ -497,52 +504,37 @@ const hot = new Handsontable(container, {
     data: datosControl.map(d => [
         d.dia,
         d.fecha_display,
-        d.temp_20h,
-        d.temp_22h,
-        d.temp_24h,
-        d.temp_02h,
-        d.temp_04h,
+        d.hora_am,
+        d.volteo_am === 1 ? 'Sí' : (d.volteo_am === 0 ? 'No' : ''),
         d.temp_am,
+        d.hora_pm,
+        d.volteo_pm === 1 ? 'Sí' : (d.volteo_pm === 0 ? 'No' : ''),
         d.temp_pm,
-        d.ph_am,
-        d.ph_pm,
-        d.volteo ? 'Sí' : 'No',
-        d.hora_volteo,
         d.observaciones
     ]),
     colHeaders: [
         'Día',
         'Fecha',
-        '20h (°C)',
-        '22h (°C)',
-        '24h (°C)',
-        '02h (°C)',
-        '04h (°C)',
-        `${franjaDiurnaAmLabel} (°C)`,
-        `${franjaDiurnaPmLabel} (°C)`,
-        `pH ${franjaDiurnaAmLabel}`,
-        `pH ${franjaDiurnaPmLabel}`,
-        'Volteo',
-        'Hora Volteo',
+        `Hora ${medicionMananaLabel}`,
+        `Volteo ${medicionMananaLabel}`,
+        `Temp. ${medicionMananaLabel} (°C)`,
+        `Hora ${medicionTardeLabel}`,
+        `Volteo ${medicionTardeLabel}`,
+        `Temp. ${medicionTardeLabel} (°C)`,
         'Observaciones'
     ],
     columns: [
         { data: 0, type: 'numeric', readOnly: true, className: 'htCenter htDimmed' },
         { data: 1, type: 'text', readOnly: true, className: 'htCenter htDimmed' },
-        { data: 2, type: 'numeric', numericFormat: { pattern: '0.0' } },
-        { data: 3, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 2, type: 'dropdown', source: ['', ...horasMedicionMananaDisponibles], strict: false, allowInvalid: false, className: 'htCenter' },
+        { data: 3, type: 'dropdown', source: ['', 'Sí', 'No'], className: 'htCenter' },
         { data: 4, type: 'numeric', numericFormat: { pattern: '0.0' } },
-        { data: 5, type: 'numeric', numericFormat: { pattern: '0.0' } },
-        { data: 6, type: 'numeric', numericFormat: { pattern: '0.0' } },
+        { data: 5, type: 'dropdown', source: ['', ...horasMedicionTardeDisponibles], strict: false, allowInvalid: false, className: 'htCenter' },
+        { data: 6, type: 'dropdown', source: ['', 'Sí', 'No'], className: 'htCenter' },
         { data: 7, type: 'numeric', numericFormat: { pattern: '0.0' } },
-        { data: 8, type: 'numeric', numericFormat: { pattern: '0.0' } },
-        { data: 9, type: 'numeric', numericFormat: { pattern: '0.00' } },
-        { data: 10, type: 'numeric', numericFormat: { pattern: '0.00' } },
-        { data: 11, type: 'dropdown', source: ['Sí', 'No'], className: 'htCenter' },
-        { data: 12, type: 'dropdown', source: ['', ...horasVolteoDisponibles], strict: false, allowInvalid: false, className: 'htCenter' },
-        { data: 13, type: 'text', width: 220 }
+        { data: 8, type: 'text', width: 220 }
     ],
-    colWidths: [50, 80, 85, 85, 85, 85, 85, 110, 110, 95, 95, 70, 110, 220],
+    colWidths: [50, 80, 100, 100, 120, 100, 100, 120, 220],
     rowHeaders: false,
     height: 'auto',
     licenseKey: 'non-commercial-and-evaluation',
@@ -552,12 +544,12 @@ const hot = new Handsontable(container, {
         const data = this.instance.getData();
         
         // Colorear celdas de temperatura
-        if (col >= 2 && col <= 8) {
+        if (col === 4 || col === 7) {
             const val = data[row][col];
             if (val !== null && val !== '') {
-                if (val > 130) {
+                if (val > tempMaxFermentacion) {
                     cellProperties.className = 'htCenter temp-alta';
-                } else if (val < 70) {
+                } else if (val < tempMinFermentacion) {
                     cellProperties.className = 'htCenter temp-baja';
                 } else {
                     cellProperties.className = 'htCenter temp-optima';
@@ -565,8 +557,8 @@ const hot = new Handsontable(container, {
             }
         }
         
-        // Colorear columna de volteo
-        if (col === 11) {
+        // Colorear columnas de volteo
+        if (col === 3 || col === 6) {
             const val = data[row][col];
             if (val === 'Sí') {
                 cellProperties.className = 'htCenter volteo-si';
@@ -590,18 +582,13 @@ async function guardarControl() {
     const controles = data.map((row, idx) => ({
         dia: row[0],
         fecha: datosControl[idx].fecha,
-        temp_20h: row[2],
-        temp_22h: row[3],
-        temp_24h: row[4],
-        temp_02h: row[5],
-        temp_04h: row[6],
-        temp_am: row[7],
-        temp_pm: row[8],
-        ph_am: row[9],
-        ph_pm: row[10],
-        volteo: row[11] === 'Sí' ? 1 : 0,
-        hora_volteo: row[12],
-        observaciones: row[13]
+        hora_am: row[2],
+        volteo_am: row[3] === 'Sí' ? 1 : (row[3] === 'No' ? 0 : null),
+        temp_am: row[4],
+        hora_pm: row[5],
+        volteo_pm: row[6] === 'Sí' ? 1 : (row[6] === 'No' ? 0 : null),
+        temp_pm: row[7],
+        observaciones: row[8]
     }));
     
     try {
@@ -631,17 +618,26 @@ async function finalizarFermentacion() {
         App.toast('Ingrese la fecha de fin', 'warning');
         return;
     }
+
+    if (!pesoFinal) {
+        App.toast('Ingrese el peso final de fermentación', 'warning');
+        return;
+    }
     
     const confirmed = await App.confirm(
-        '¿Está seguro de finalizar la fermentación? Esta acción no se puede deshacer.',
-        'Finalizar fermentación'
+        esFinalizado
+            ? 'Se actualizarán los datos finales faltantes para que secado use el peso correcto.'
+            : '¿Está seguro de finalizar la fermentación? Esta acción no se puede deshacer.',
+        esFinalizado ? 'Guardar datos finales' : 'Finalizar fermentación'
     );
     if (!confirmed) {
         return;
     }
     
     // Primero guardar el control actual
-    await guardarControl();
+    if (!esFinalizado) {
+        await guardarControl();
+    }
     
     try {
         const response = await App.post('/api/fermentacion/finalizar.php', {

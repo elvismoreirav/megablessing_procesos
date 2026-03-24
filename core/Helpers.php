@@ -538,6 +538,36 @@ class Helpers {
     }
 
     /**
+     * Asegura capacidad suficiente para proveedor_ruta en fichas_registro.
+     */
+    public static function ensureFichaProveedorRutaColumn(): bool {
+        $db = Database::getInstance();
+
+        try {
+            $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'fichas_registro'");
+            if (!$tablaExiste) {
+                return false;
+            }
+
+            $columna = $db->fetch("SHOW COLUMNS FROM fichas_registro LIKE 'proveedor_ruta'");
+            if (!$columna) {
+                $db->query("ALTER TABLE fichas_registro ADD COLUMN proveedor_ruta TEXT NULL AFTER codificacion");
+                return true;
+            }
+
+            $tipo = strtolower(trim((string)($columna['Type'] ?? $columna['type'] ?? '')));
+            if (str_contains($tipo, 'text')) {
+                return true;
+            }
+
+            $db->query("ALTER TABLE fichas_registro MODIFY COLUMN proveedor_ruta TEXT NULL");
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Verifica si una columna existe en una tabla.
      */
     public static function hasTableColumn(string $table, string $column): bool {
@@ -579,6 +609,154 @@ class Helpers {
         }
 
         return in_array('unidad_peso', self::getTableColumns('registros_fermentacion'), true);
+    }
+
+    /**
+     * Asegura columnas finales de fermentacion necesarias para cierre y traspaso a secado.
+     */
+    public static function ensureFermentacionFinalColumns(): bool {
+        $db = Database::getInstance();
+        $cols = self::getTableColumns('registros_fermentacion');
+        if (empty($cols)) {
+            return false;
+        }
+
+        $alterQueries = [];
+        if (!in_array('peso_final', $cols, true)) {
+            if (in_array('unidad_peso', $cols, true)) {
+                $alterQueries[] = "ALTER TABLE registros_fermentacion ADD COLUMN peso_final DECIMAL(10,2) NULL AFTER unidad_peso";
+            } elseif (in_array('peso_lote_kg', $cols, true)) {
+                $alterQueries[] = "ALTER TABLE registros_fermentacion ADD COLUMN peso_final DECIMAL(10,2) NULL AFTER peso_lote_kg";
+            } else {
+                $alterQueries[] = "ALTER TABLE registros_fermentacion ADD COLUMN peso_final DECIMAL(10,2) NULL";
+            }
+        }
+
+        if (!in_array('humedad_final', $cols, true)) {
+            if (in_array('porcentaje_mohosos', $cols, true)) {
+                $alterQueries[] = "ALTER TABLE registros_fermentacion ADD COLUMN humedad_final DECIMAL(5,2) NULL AFTER porcentaje_mohosos";
+            } elseif (in_array('humedad_inicial', $cols, true)) {
+                $alterQueries[] = "ALTER TABLE registros_fermentacion ADD COLUMN humedad_final DECIMAL(5,2) NULL AFTER humedad_inicial";
+            } else {
+                $alterQueries[] = "ALTER TABLE registros_fermentacion ADD COLUMN humedad_final DECIMAL(5,2) NULL";
+            }
+        }
+
+        foreach ($alterQueries as $sql) {
+            try {
+                $db->query($sql);
+            } catch (Throwable $e) {
+                // Continuar con lo disponible si el esquema no puede alterarse.
+            }
+        }
+
+        $cols = self::getTableColumns('registros_fermentacion');
+        return in_array('peso_final', $cols, true) && in_array('humedad_final', $cols, true);
+    }
+
+    /**
+     * Asegura columnas para registrar dos mediciones diarias en fermentación.
+     */
+    public static function ensureFermentacionControlMedicionesColumns(): bool {
+        $db = Database::getInstance();
+        $cols = self::getTableColumns('fermentacion_control_diario');
+        if (empty($cols)) {
+            return false;
+        }
+
+        $alterQueries = [];
+        if (!in_array('hora_am', $cols, true)) {
+            $alterQueries[] = "ALTER TABLE fermentacion_control_diario ADD COLUMN hora_am TIME NULL AFTER dia";
+        }
+        if (!in_array('volteo_am', $cols, true)) {
+            $alterQueries[] = "ALTER TABLE fermentacion_control_diario ADD COLUMN volteo_am TINYINT(1) NULL DEFAULT NULL AFTER hora_am";
+        }
+        if (!in_array('hora_pm', $cols, true)) {
+            $alterQueries[] = "ALTER TABLE fermentacion_control_diario ADD COLUMN hora_pm TIME NULL AFTER volteo_am";
+        }
+        if (!in_array('volteo_pm', $cols, true)) {
+            $alterQueries[] = "ALTER TABLE fermentacion_control_diario ADD COLUMN volteo_pm TINYINT(1) NULL DEFAULT NULL AFTER hora_pm";
+        }
+
+        foreach ($alterQueries as $sql) {
+            try {
+                $db->query($sql);
+            } catch (Throwable $e) {
+                // Continuar con lo disponible si el esquema no puede alterarse.
+            }
+        }
+
+        $cols = self::getTableColumns('fermentacion_control_diario');
+        $tieneMinimoNuevo = in_array('hora_am', $cols, true)
+            && in_array('hora_pm', $cols, true)
+            && in_array('volteo_am', $cols, true)
+            && in_array('volteo_pm', $cols, true);
+
+        if (!$tieneMinimoNuevo) {
+            return false;
+        }
+
+        $horaLegacyCol = in_array('hora_volteo', $cols, true)
+            ? 'hora_volteo'
+            : (in_array('hora', $cols, true) ? 'hora' : null);
+        $volteoLegacyCol = in_array('volteo', $cols, true) ? 'volteo' : null;
+
+        if ($horaLegacyCol !== null || $volteoLegacyCol !== null) {
+            $updates = [];
+
+            if ($horaLegacyCol !== null) {
+                $updates[] = "hora_am = CASE
+                    WHEN hora_am IS NULL
+                     AND {$horaLegacyCol} IS NOT NULL
+                     AND TIME({$horaLegacyCol}) < '12:00:00'
+                    THEN {$horaLegacyCol}
+                    ELSE hora_am
+                END";
+                $updates[] = "hora_pm = CASE
+                    WHEN hora_pm IS NULL
+                     AND {$horaLegacyCol} IS NOT NULL
+                     AND TIME({$horaLegacyCol}) >= '12:00:00'
+                    THEN {$horaLegacyCol}
+                    ELSE hora_pm
+                END";
+            }
+
+            if ($volteoLegacyCol !== null && $horaLegacyCol !== null) {
+                $updates[] = "volteo_am = CASE
+                    WHEN volteo_am IS NULL
+                     AND {$volteoLegacyCol} = 1
+                     AND {$horaLegacyCol} IS NOT NULL
+                     AND TIME({$horaLegacyCol}) < '12:00:00'
+                    THEN 1
+                    ELSE volteo_am
+                END";
+                $updates[] = "volteo_pm = CASE
+                    WHEN volteo_pm IS NULL
+                     AND {$volteoLegacyCol} = 1
+                     AND (
+                        {$horaLegacyCol} IS NULL
+                        OR TIME({$horaLegacyCol}) >= '12:00:00'
+                     )
+                    THEN 1
+                    ELSE volteo_pm
+                END";
+            } elseif ($volteoLegacyCol !== null) {
+                $updates[] = "volteo_pm = CASE
+                    WHEN volteo_pm IS NULL AND {$volteoLegacyCol} = 1 THEN 1
+                    ELSE volteo_pm
+                END";
+            }
+
+            if (!empty($updates)) {
+                try {
+                    $db->query("UPDATE fermentacion_control_diario SET " . implode(', ', $updates));
+                } catch (Throwable $e) {
+                    // Mantener compatibilidad aunque no se pueda migrar historial anterior.
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

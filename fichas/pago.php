@@ -272,6 +272,9 @@ $pesoFinalKg = Helpers::pesoToKg($pesoFinalOriginal, $unidadPesoFicha);
 $pesoFinalLb = Helpers::kgToLb($pesoFinalKg);
 $pesoFinalQq = Helpers::kgToQQ($pesoFinalKg);
 $resumenFormulario = Helpers::getFichaPagoResumen($formDetalles);
+$cantidadResumenKg = (float)($resumenFormulario['cantidad_total_kg'] ?? 0);
+$cantidadResumenQq = Helpers::kgToQQ($cantidadResumenKg);
+$cantidadResumenLb = Helpers::kgToLb($cantidadResumenKg);
 $nombresParticipantes = array_values(array_filter(array_map(
     static fn(array $item): string => trim((string)($item['proveedor_nombre'] ?? '')),
     $participantesPago
@@ -443,7 +446,7 @@ ob_start();
                     <p class="text-xs text-gray-500 mt-1">Usa negativo para descuento y positivo para bonificación.</p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Precio unitario final (USD/KG)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Precio unitario final (USD)</label>
                     <input type="number"
                            name="pago_detalle[<?= $indice ?>][precio_unitario_final]"
                            value="<?= htmlspecialchars((string)($detalle['precio_unitario_final'] ?? '')) ?>"
@@ -472,8 +475,12 @@ ob_start();
                     <p class="text-2xl font-bold text-gray-900" id="resumen_detalles"><?= number_format((float)($resumenFormulario['detalle_count'] ?? 0), 0) ?></p>
                 </div>
                 <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
-                    <p class="text-xs text-gray-500">Cantidad total convertida</p>
-                    <p class="text-2xl font-bold text-gray-900" id="resumen_cantidad_kg"><?= number_format((float)($resumenFormulario['cantidad_total_kg'] ?? 0), 2) ?> kg</p>
+                    <p class="text-xs text-gray-500">Cantidad total equivalente</p>
+                    <p class="text-2xl font-bold text-gray-900"><span id="resumen_cantidad_kg"><?= number_format($cantidadResumenKg, 2) ?></span> kg</p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        <span id="resumen_cantidad_qq"><?= number_format($cantidadResumenQq, 2) ?></span> QQ ·
+                        <span id="resumen_cantidad_lb"><?= number_format($cantidadResumenLb, 2) ?></span> LB
+                    </p>
                 </div>
                 <div class="p-4 rounded-lg bg-gray-50 border border-gray-100">
                     <p class="text-xs text-gray-500">Total a pagar</p>
@@ -498,6 +505,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const detalleCards = Array.from(document.querySelectorAll('.js-pago-detalle'));
     const resumenDetalles = document.getElementById('resumen_detalles');
     const resumenCantidadKg = document.getElementById('resumen_cantidad_kg');
+    const resumenCantidadQq = document.getElementById('resumen_cantidad_qq');
+    const resumenCantidadLb = document.getElementById('resumen_cantidad_lb');
     const resumenTotalPago = document.getElementById('resumen_total_pago');
 
     function toNumber(input) {
@@ -578,7 +587,13 @@ document.addEventListener('DOMContentLoaded', function() {
             resumenDetalles.textContent = String(detalleCards.length);
         }
         if (resumenCantidadKg) {
-            resumenCantidadKg.textContent = `${formatNumber(totalKg, 2)} kg`;
+            resumenCantidadKg.textContent = formatNumber(totalKg, 2);
+        }
+        if (resumenCantidadQq) {
+            resumenCantidadQq.textContent = formatNumber(kgToQq(totalKg), 2);
+        }
+        if (resumenCantidadLb) {
+            resumenCantidadLb.textContent = formatNumber(kgToLb(totalKg), 2);
         }
         if (resumenTotalPago) {
             resumenTotalPago.textContent = `$ ${formatNumber(totalPago, 2)}`;

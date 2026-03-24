@@ -116,6 +116,12 @@ if ($loteEmpaque === '') {
 }
 
 $completado = !empty($empaquetado['fecha_empaquetado']);
+$pesoTotalKg = is_numeric($empaquetado['peso_total'] ?? null) ? (float)$empaquetado['peso_total'] : null;
+$pesoTotalQQ = $pesoTotalKg !== null ? Helpers::kgToQQ($pesoTotalKg) : null;
+$pesoDisponibleKg = is_numeric($empaquetado['peso_disponible'] ?? null) ? (float)$empaquetado['peso_disponible'] : null;
+$pesoDisponibleQQ = $pesoDisponibleKg !== null ? Helpers::kgToQQ($pesoDisponibleKg) : null;
+$pesoSacoKg = is_numeric($empaquetado['peso_saco'] ?? null) ? (float)$empaquetado['peso_saco'] : null;
+$pesoSacoQQ = $pesoSacoKg !== null ? Helpers::kgToQQ($pesoSacoKg) : null;
 
 $pageTitle = 'Detalle de Empaquetado';
 $pageSubtitle = 'Lote: ' . $empaquetado['lote_codigo'];
@@ -190,7 +196,8 @@ ob_start();
             </div>
             <div>
                 <p class="text-xs text-warmgray">Peso por saco</p>
-                <p class="font-medium"><?= isset($empaquetado['peso_saco']) ? number_format((float)$empaquetado['peso_saco'], 2) . ' kg' : 'N/R' ?></p>
+                <p class="font-medium"><?= $pesoSacoQQ !== null ? number_format($pesoSacoQQ, 2) . ' QQ' : 'N/R' ?></p>
+                <p class="text-xs text-warmgray"><?= $pesoSacoKg !== null ? number_format($pesoSacoKg, 2) . ' kg' : '' ?></p>
             </div>
             <div>
                 <p class="text-xs text-warmgray">Operador</p>
@@ -206,11 +213,13 @@ ob_start();
             </div>
             <div>
                 <p class="text-xs text-warmgray">Peso total</p>
-                <p class="font-medium"><?= $empaquetado['peso_total'] !== null ? number_format((float)$empaquetado['peso_total'], 2) . ' kg' : 'N/R' ?></p>
+                <p class="font-medium"><?= $pesoTotalQQ !== null ? number_format($pesoTotalQQ, 2) . ' QQ' : 'N/R' ?></p>
+                <p class="text-xs text-warmgray"><?= $pesoTotalKg !== null ? number_format($pesoTotalKg, 2) . ' kg' : '' ?></p>
             </div>
             <div>
                 <p class="text-xs text-warmgray">Peso disponible (secado)</p>
-                <p class="font-medium"><?= $empaquetado['peso_disponible'] !== null ? number_format((float)$empaquetado['peso_disponible'], 2) . ' kg' : 'N/R' ?></p>
+                <p class="font-medium"><?= $pesoDisponibleQQ !== null ? number_format($pesoDisponibleQQ, 2) . ' QQ' : 'N/R' ?></p>
+                <p class="text-xs text-warmgray"><?= $pesoDisponibleKg !== null ? number_format($pesoDisponibleKg, 2) . ' kg' : '' ?></p>
             </div>
             <div>
                 <p class="text-xs text-warmgray">Humedad final</p>

@@ -118,6 +118,10 @@ if ($empaquetado['fecha_empaquetado']) {
 }
 
 $errors = [];
+$pesoDisponibleKg = is_numeric($empaquetado['peso_disponible'] ?? null) ? (float)$empaquetado['peso_disponible'] : null;
+$pesoDisponibleQQ = $pesoDisponibleKg !== null ? Helpers::kgToQQ($pesoDisponibleKg) : null;
+$pesoSacoKg = is_numeric($empaquetado['peso_saco'] ?? null) ? (float)$empaquetado['peso_saco'] : 0.0;
+$pesoSacoQQ = $pesoSacoKg > 0 ? Helpers::kgToQQ($pesoSacoKg) : 0.0;
 
 // Procesar formulario
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -125,7 +129,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $fechaEmpaquetado = $_POST['fecha_empaquetado'] ?? '';
     $numeroSacos = intval($_POST['numero_sacos'] ?? 0);
-    $pesoTotal = floatval($_POST['peso_total'] ?? 0);
+    $pesoTotalQQ = floatval($_POST['peso_total'] ?? 0);
+    $pesoTotal = Helpers::qqToKg($pesoTotalQQ);
     $loteEmpaque = $loteEmpaqueAuto;
     $destino = trim($_POST['destino'] ?? '');
     $observaciones = trim($_POST['observaciones'] ?? '');
@@ -133,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Validaciones
     if (!$fechaEmpaquetado) $errors[] = 'La fecha de empaquetado es requerida';
     if ($numeroSacos <= 0) $errors[] = 'El número de sacos debe ser mayor a 0';
-    if ($pesoTotal <= 0) $errors[] = 'El peso total debe ser mayor a 0';
+    if ($pesoTotalQQ <= 0) $errors[] = 'El peso total debe ser mayor a 0';
     
     if (empty($errors)) {
         try {
@@ -160,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Helpers::logHistory(
                 $empaquetado['lote_id'], 
                 'FINALIZADO', 
-                "Empaquetado completado: {$numeroSacos} sacos, {$pesoTotal} kg" . ($destino ? " - Destino: {$destino}" : ''),
+                "Empaquetado completado: {$numeroSacos} sacos, " . number_format($pesoTotalQQ, 2) . " QQ (" . number_format($pesoTotal, 2) . " kg)" . ($destino ? " - Destino: {$destino}" : ''),
                 getCurrentUserId()
             );
             
@@ -221,12 +226,13 @@ ob_start();
             </div>
             <div class="text-center">
                 <p class="text-xs text-warmgray">Peso Disponible</p>
-                <p class="font-bold text-lg"><?= $empaquetado['peso_disponible'] ? number_format($empaquetado['peso_disponible'], 2) . ' kg' : 'N/R' ?></p>
+                <p class="font-bold text-lg"><?= $pesoDisponibleKg !== null ? number_format($pesoDisponibleQQ, 2) . ' QQ' : 'N/R' ?></p>
+                <p class="text-xs text-warmgray"><?= $pesoDisponibleKg !== null ? number_format($pesoDisponibleKg, 2) . ' kg' : '' ?></p>
             </div>
             <div class="text-center">
                 <p class="text-xs text-warmgray">Tipo Empaque</p>
                 <p class="font-medium"><?= htmlspecialchars(Helpers::formatTipoEmpaque($empaquetado['tipo_empaque'] ?? '', $empaquetado['peso_saco'] ?? null)) ?></p>
-                <p class="text-xs text-warmgray"><?= $empaquetado['peso_saco'] ?> kg/saco</p>
+                <p class="text-xs text-warmgray"><?= number_format($pesoSacoKg, 2) ?> kg/saco · <?= number_format($pesoSacoQQ, 2) ?> QQ/saco</p>
             </div>
         </div>
     </div>
@@ -260,20 +266,20 @@ ob_start();
                     <input type="number" name="numero_sacos" id="numero_sacos" class="form-control" required
                            min="1" value="<?= $_POST['numero_sacos'] ?? '' ?>"
                            onchange="calcularPesoTotal()">
-                    <?php if ($empaquetado['peso_disponible']): ?>
+                    <?php if ($pesoDisponibleKg !== null): ?>
                         <p class="text-xs text-warmgray mt-1">
-                            Estimado: <?= floor($empaquetado['peso_disponible'] / $empaquetado['peso_saco']) ?> sacos de <?= $empaquetado['peso_saco'] ?> kg
+                            Estimado: <?= floor($pesoDisponibleKg / $pesoSacoKg) ?> sacos de <?= number_format($pesoSacoKg, 2) ?> kg
                         </p>
                     <?php endif; ?>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label required">Peso Total (kg)</label>
+                    <label class="form-label required">Peso Total (QQ)</label>
                     <input type="number" name="peso_total" id="peso_total" class="form-control" required
                            step="0.01" min="0.1" value="<?= $_POST['peso_total'] ?? '' ?>">
                     <p class="text-xs text-warmgray mt-1" id="peso_sugerido">
-                        <?php if ($empaquetado['peso_disponible']): ?>
-                            Peso disponible: <?= number_format($empaquetado['peso_disponible'], 2) ?> kg
+                        <?php if ($pesoDisponibleKg !== null): ?>
+                            Peso disponible: <?= number_format($pesoDisponibleQQ, 2) ?> QQ | <?= number_format($pesoDisponibleKg, 2) ?> kg
                         <?php endif; ?>
                     </p>
                 </div>
@@ -358,11 +364,12 @@ ob_start();
 <script>
 function calcularPesoTotal() {
     const numeroSacos = parseInt(document.getElementById('numero_sacos').value) || 0;
-    const pesoSaco = <?= $empaquetado['peso_saco'] ?>;
+    const pesoSacoKg = <?= json_encode($pesoSacoKg) ?>;
     
     if (numeroSacos > 0) {
-        const pesoSugerido = numeroSacos * pesoSaco;
-        document.getElementById('peso_total').value = pesoSugerido.toFixed(2);
+        const pesoSugeridoKg = numeroSacos * pesoSacoKg;
+        const pesoSugeridoQq = pesoSugeridoKg / 45.36;
+        document.getElementById('peso_total').value = pesoSugeridoQq.toFixed(2);
     }
 }
 </script>

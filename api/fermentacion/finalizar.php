@@ -24,13 +24,14 @@ if ($pesoFinalIngresado !== null && $pesoFinalIngresado !== '') {
 }
 $humedadFinal = isset($input['humedad_final']) ? floatval($input['humedad_final']) : null;
 
-if (!$fermentacionId || !$fechaFin) {
+if (!$fermentacionId) {
     Helpers::jsonResponse(['success' => false, 'error' => 'Datos incompletos']);
 }
 
 $db = Database::getInstance();
 
 // Compatibilidad de esquema
+Helpers::ensureFermentacionFinalColumns();
 Helpers::ensureFermentacionPesoUnitColumn();
 $colsFermentacion = array_column($db->fetchAll("SHOW COLUMNS FROM registros_fermentacion"), 'Field');
 $hasFerCol = static fn(string $name): bool => in_array($name, $colsFermentacion, true);
@@ -50,8 +51,17 @@ if (!$fermentacion) {
     Helpers::jsonResponse(['success' => false, 'error' => 'Fermentación no encontrada']);
 }
 
-if (!empty($fermentacion['fecha_cierre'])) {
-    Helpers::jsonResponse(['success' => false, 'error' => 'La fermentación ya está finalizada']);
+$fermentacionYaFinalizada = !empty($fermentacion['fecha_cierre']);
+$pesoFinalActual = isset($fermentacion['peso_final']) && $fermentacion['peso_final'] !== null
+    ? (float)$fermentacion['peso_final']
+    : null;
+
+if (!$fermentacionYaFinalizada && !$fechaFin) {
+    Helpers::jsonResponse(['success' => false, 'error' => 'La fecha de fin es requerida']);
+}
+
+if ($fermentacionYaFinalizada) {
+    $fechaFin = $fermentacion['fecha_cierre'];
 }
 
 // Validar fecha
@@ -59,21 +69,29 @@ if ($fechaFin < $fermentacion['fecha_inicio']) {
     Helpers::jsonResponse(['success' => false, 'error' => 'La fecha de fin no puede ser anterior a la fecha de inicio']);
 }
 
+if ($pesoFinal !== null && $pesoFinal <= 0) {
+    Helpers::jsonResponse(['success' => false, 'error' => 'El peso final debe ser mayor a 0']);
+}
+
+if ($pesoFinalActual === null && $pesoFinal === null) {
+    Helpers::jsonResponse(['success' => false, 'error' => 'Debe registrar el peso final de fermentación']);
+}
+
 try {
     $db->beginTransaction();
     
     // Actualizar registro de fermentación
     $datosActualizacion = [];
-    if ($colFechaCierre) {
+    if ($colFechaCierre && !$fermentacionYaFinalizada) {
         $datosActualizacion[$colFechaCierre] = $fechaFin;
     }
-    if ($hasFerCol('peso_final')) {
+    if ($hasFerCol('peso_final') && $pesoFinal !== null) {
         $datosActualizacion['peso_final'] = $pesoFinal;
     }
-    if ($hasFerCol('unidad_peso')) {
+    if ($hasFerCol('unidad_peso') && $pesoFinal !== null) {
         $datosActualizacion['unidad_peso'] = $pesoFinalUnidad;
     }
-    if ($hasFerCol('humedad_final')) {
+    if ($hasFerCol('humedad_final') && $humedadFinal !== null) {
         $datosActualizacion['humedad_final'] = $humedadFinal;
     }
     if ($hasFerCol('aprobado_secado')) {
@@ -83,14 +101,16 @@ try {
         $db->update('registros_fermentacion', $datosActualizacion, 'id = :id', ['id' => $fermentacionId]);
     }
     
-    // Actualizar estado del lote a SECADO
-    $db->update('lotes', [
-        'estado_proceso' => 'SECADO',
-        'estado_fermentacion_id' => 2 // Fermentado
-    ], 'id = :id', ['id' => $fermentacion['lote_id']]);
-    
-    // Registrar historial
-    Helpers::logHistory($fermentacion['lote_id'], 'SECADO', 'Fermentación finalizada, pasa a secado');
+    if (!$fermentacionYaFinalizada) {
+        // Actualizar estado del lote a SECADO
+        $db->update('lotes', [
+            'estado_proceso' => 'SECADO',
+            'estado_fermentacion_id' => 2 // Fermentado
+        ], 'id = :id', ['id' => $fermentacion['lote_id']]);
+
+        // Registrar historial
+        Helpers::logHistory($fermentacion['lote_id'], 'SECADO', 'Fermentación finalizada, pasa a secado');
+    }
     
     $db->commit();
 
@@ -107,9 +127,11 @@ try {
     $redirectUrl = $secadoExistente
         ? (APP_URL . '/secado/control.php?id=' . (int)$secadoExistente['id'])
         : (APP_URL . '/secado/crear.php?lote_id=' . (int)$fermentacion['lote_id']);
-    $message = $requiereRecepcion
+    $message = $fermentacionYaFinalizada
+        ? 'Datos finales de fermentación actualizados. Redirigiendo a secado.'
+        : ($requiereRecepcion
         ? 'Fermentación finalizada. Para continuar con secado, complete primero la ficha de recepción.'
-        : 'Fermentación finalizada correctamente. Redirigiendo a secado.';
+        : 'Fermentación finalizada correctamente. Redirigiendo a secado.');
     
     Helpers::jsonResponse([
         'success' => true, 
