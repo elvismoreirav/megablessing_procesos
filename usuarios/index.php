@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../bootstrap.php';
 requireAuth();
 
-if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
+if (!Auth::canManageUsers()) {
     setFlash('danger', 'No tiene permisos para acceder a esta sección.');
     redirect('/dashboard.php');
 }

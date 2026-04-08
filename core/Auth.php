@@ -68,40 +68,29 @@ class Auth {
             ],
             [
                 'nombre' => 'Supervisor Planta',
-                'descripcion' => 'Acceso a todos los módulos, excepto registro de pagos.',
+                'descripcion' => 'Supervisa los procesos operativos de planta.',
                 'permisos' => [
-                    'recepcion' => true,
-                    'codificacion' => true,
-                    'etiqueta' => true,
-                    'proveedores' => true,
                     'lotes' => true,
                     'fermentacion' => true,
                     'secado' => true,
                     'prueba_corte' => true,
                     'calidad_salida' => true,
-                    'reportes' => true,
-                    'indicadores' => true,
-                    'configuracion' => true,
-                    'usuarios' => true,
+                    'configuracion_panel' => true,
+                    'configuracion_variedades' => true,
+                    'configuracion_cajones' => true,
+                    'configuracion_secadoras' => true,
                 ],
             ],
             [
                 'nombre' => 'Supervisor Centro de Acopio',
-                'descripcion' => 'Acceso a todos los módulos, excepto registro de pagos.',
+                'descripcion' => 'Supervisa recepción y abastecimiento del centro de acopio.',
                 'permisos' => [
                     'recepcion' => true,
                     'codificacion' => true,
                     'etiqueta' => true,
                     'proveedores' => true,
-                    'lotes' => true,
-                    'fermentacion' => true,
-                    'secado' => true,
-                    'prueba_corte' => true,
-                    'calidad_salida' => true,
-                    'reportes' => true,
-                    'indicadores' => true,
-                    'configuracion' => true,
-                    'usuarios' => true,
+                    'configuracion_panel' => true,
+                    'configuracion_variedades' => true,
                 ],
             ],
         ];
@@ -123,12 +112,55 @@ class Auth {
             'reportes',
             'indicadores',
             'configuracion',
+            'configuracion_panel',
+            'configuracion_admin',
+            'configuracion_variedades',
+            'configuracion_cajones',
+            'configuracion_secadoras',
             'usuarios',
         ];
     }
 
     public static function roleKey(): string {
         return self::normalizeRoleKey((string)($_SESSION['user_rol'] ?? ''));
+    }
+
+    public static function isSupervisorPlanta(): bool {
+        return self::roleKey() === 'supervisor planta';
+    }
+
+    public static function isSupervisorCentroAcopio(): bool {
+        return self::roleKey() === 'supervisor centro de acopio';
+    }
+
+    public static function canManageUsers(): bool {
+        return self::isAdmin();
+    }
+
+    public static function canManageAdminConfiguration(): bool {
+        return self::isAdmin();
+    }
+
+    public static function canManageVariedades(): bool {
+        return self::hasModuleAccess('configuracion_variedades');
+    }
+
+    public static function canManageCajones(): bool {
+        return self::hasModuleAccess('configuracion_cajones');
+    }
+
+    public static function canManageSecadoras(): bool {
+        return self::hasModuleAccess('configuracion_secadoras');
+    }
+
+    public static function canAccessConfigurationPanel(): bool {
+        return self::isAdmin() || self::hasAnyModuleAccess([
+            'configuracion_panel',
+            'configuracion_variedades',
+            'configuracion_cajones',
+            'configuracion_secadoras',
+            'proveedores',
+        ]);
     }
 
     public static function modulesForRole(?string $roleName = null): array {
@@ -166,8 +198,31 @@ class Auth {
             return ['dashboard', 'pagos', 'codificacion', 'etiqueta', 'proveedores'];
         }
 
-        if ($roleKey === 'supervisor planta' || $roleKey === 'supervisor centro de acopio') {
-            return array_values(array_diff(self::managedModules(), ['pagos']));
+        if ($roleKey === 'supervisor planta') {
+            return [
+                'dashboard',
+                'lotes',
+                'fermentacion',
+                'secado',
+                'prueba_corte',
+                'calidad_salida',
+                'configuracion_panel',
+                'configuracion_variedades',
+                'configuracion_cajones',
+                'configuracion_secadoras',
+            ];
+        }
+
+        if ($roleKey === 'supervisor centro de acopio') {
+            return [
+                'dashboard',
+                'recepcion',
+                'codificacion',
+                'etiqueta',
+                'proveedores',
+                'configuracion_panel',
+                'configuracion_variedades',
+            ];
         }
 
         return [];
@@ -299,12 +354,49 @@ class Auth {
             return ['reportes'];
         }
 
+        if ($matches('/configuracion/index.php')) {
+            return [
+                'configuracion_panel',
+                'configuracion_variedades',
+                'configuracion_cajones',
+                'configuracion_secadoras',
+                'proveedores',
+                'configuracion_admin',
+                'usuarios',
+            ];
+        }
+
         if ($matches('/configuracion/proveedores.php')) {
             return ['proveedores'];
         }
 
+        if ($matches('/configuracion/variedades.php')) {
+            return ['configuracion_variedades'];
+        }
+
+        if ($matches('/configuracion/cajones.php')) {
+            return ['configuracion_cajones'];
+        }
+
+        if ($matches('/configuracion/secadoras.php')) {
+            return ['configuracion_secadoras'];
+        }
+
+        if ($matches('/configuracion/parametros.php')
+            || $matches('/configuracion/empresa.php')
+            || $matches('/configuracion/estados.php')
+            || $matches('/configuracion/backup.php')) {
+            return ['configuracion_admin'];
+        }
+
         if ($matches('/usuarios/') || $matches('/configuracion/usuarios.php') || $matches('/configuracion/roles.php')) {
             return ['usuarios'];
+        }
+
+        if ($matches('/configuracion/parametrizacion-masiva.php')
+            || $matches('/configuracion/parametrizacion-masiva-plantilla.php')
+            || $matches('/configuracion/plantilla-proveedores-masiva.php')) {
+            return [];
         }
 
         if ($matches('/configuracion/')) {
@@ -456,7 +548,8 @@ class Auth {
     
     public static function isAdmin() {
         $permisos = $_SESSION['user_permisos'] ?? [];
-        return isset($permisos['all']) && $permisos['all'] === true;
+        return self::roleKey() === 'administrador'
+            || (isset($permisos['all']) && $permisos['all'] === true);
     }
     
     public static function hasPermission($permission) {

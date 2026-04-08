@@ -7,8 +7,7 @@
 require_once __DIR__ . '/../bootstrap.php';
 requireAuth();
 
-$rolActual = strtolower((string)(Auth::user()['rol'] ?? ''));
-if (!Auth::isAdmin() && !Auth::hasPermission('configuracion') && $rolActual !== 'supervisor') {
+if (!Auth::canManageSecadoras()) {
     setFlash('danger', 'No tiene permisos para acceder a esta sección.');
     redirect('/dashboard.php');
 }

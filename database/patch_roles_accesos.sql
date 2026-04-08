@@ -86,8 +86,8 @@ WHERE LOWER(nombre) = 'pagos';
 INSERT INTO roles (nombre, descripcion, permisos, activo)
 SELECT
     'Supervisor Planta',
-    'Acceso a todos los módulos, excepto registro de pagos.',
-    '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}',
+    'Supervisa los procesos operativos de planta.',
+    '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}',
     1
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'supervisor planta'
@@ -96,8 +96,8 @@ WHERE NOT EXISTS (
 UPDATE roles
 SET
     nombre = 'Supervisor Planta',
-    descripcion = 'Acceso a todos los módulos, excepto registro de pagos.',
-    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}',
+    descripcion = 'Supervisa los procesos operativos de planta.',
+    permisos = '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}',
     activo = 1
 WHERE LOWER(nombre) = 'supervisor planta';
 
@@ -105,8 +105,8 @@ WHERE LOWER(nombre) = 'supervisor planta';
 INSERT INTO roles (nombre, descripcion, permisos, activo)
 SELECT
     'Supervisor Centro de Acopio',
-    'Acceso a todos los módulos, excepto registro de pagos.',
-    '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}',
+    'Supervisa recepción y abastecimiento del centro de acopio.',
+    '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "configuracion_panel": true, "configuracion_variedades": true}',
     1
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'supervisor centro de acopio'
@@ -115,8 +115,8 @@ WHERE NOT EXISTS (
 UPDATE roles
 SET
     nombre = 'Supervisor Centro de Acopio',
-    descripcion = 'Acceso a todos los módulos, excepto registro de pagos.',
-    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}',
+    descripcion = 'Supervisa recepción y abastecimiento del centro de acopio.',
+    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "configuracion_panel": true, "configuracion_variedades": true}',
     activo = 1
 WHERE LOWER(nombre) = 'supervisor centro de acopio';
 

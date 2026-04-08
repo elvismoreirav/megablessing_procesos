@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../bootstrap.php';
 requireAuth();
 
-if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
+if (!Auth::canManageUsers()) {
     setFlash('danger', 'No tiene permisos para acceder a esta sección.');
     redirect('/dashboard.php');
 }
@@ -114,22 +114,30 @@ $rolesDefinition = [
     ],
     'supervisor_planta' => [
         'nombre' => 'Supervisor Planta',
-        'descripcion' => 'Acceso a todos los módulos, excepto registro de pagos.',
+        'descripcion' => 'Supervisa los procesos operativos de planta.',
         'color' => 'blue',
         'icono' => 'fa-user-tie',
         'permisos' => [
-            'Todos los módulos',
-            'No puede acceder a Registro de pagos',
+            'Verificación de lote',
+            'Fermentación',
+            'Secado',
+            'Prueba de corte',
+            'Calidad de salida',
+            'Configuración: Variedades, cajones y secadoras',
+            'No puede gestionar usuarios ni parámetros globales',
         ]
     ],
     'supervisor_centro_de_acopio' => [
         'nombre' => 'Supervisor Centro de Acopio',
-        'descripcion' => 'Acceso a todos los módulos, excepto registro de pagos.',
+        'descripcion' => 'Supervisa recepción y abastecimiento del centro de acopio.',
         'color' => 'indigo',
         'icono' => 'fa-warehouse',
         'permisos' => [
-            'Todos los módulos',
-            'No puede acceder a Registro de pagos',
+            'Recepción',
+            'Codificación de lote',
+            'Imprimir etiqueta',
+            'Configuración: Proveedores y variedades',
+            'No puede gestionar usuarios ni parámetros globales',
         ]
     ],
 ];
@@ -241,17 +249,18 @@ ob_start();
                 <tbody class="divide-y divide-gray-100">
                     <?php
                     $permisoMatrix = [
-                        'Ficha de recepción' => [true, true, true, false, true, true],
-                        'Imprimir etiqueta' => [true, true, true, true, true, true],
-                        'Codificación de lote' => [true, true, true, true, true, true],
+                        'Ficha de recepción' => [true, true, true, false, false, true],
+                        'Imprimir etiqueta' => [true, true, true, true, false, true],
+                        'Codificación de lote' => [true, true, true, true, false, true],
                         'Registro de pagos' => [true, false, false, true, false, false],
-                        'Configuración - Proveedores' => [true, false, false, true, true, true],
-                        'Verificación de lote' => [true, false, true, false, true, true],
-                        'Fermentación y secado' => [true, false, true, false, true, true],
-                        'Prueba de corte / Calidad salida' => [true, false, true, false, true, true],
-                        'Reportes e indicadores' => [true, false, false, false, true, true],
-                        'Configuración operativa' => [true, false, false, false, true, true],
-                        'Usuarios y roles' => [true, false, false, false, true, true],
+                        'Configuración - Proveedores' => [true, false, false, true, false, true],
+                        'Configuración - Variedades' => [true, false, false, false, true, true],
+                        'Configuración - Cajones/Secadoras' => [true, false, false, false, true, false],
+                        'Verificación de lote' => [true, false, true, false, true, false],
+                        'Fermentación y secado' => [true, false, true, false, true, false],
+                        'Prueba de corte / Calidad salida' => [true, false, true, false, true, false],
+                        'Parámetros globales / empresa' => [true, false, false, false, false, false],
+                        'Usuarios y roles' => [true, false, false, false, false, false],
                     ];
                     foreach ($permisoMatrix as $permiso => $roles):
                     ?>

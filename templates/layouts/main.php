@@ -21,12 +21,17 @@ $canCalidadSalida = Auth::hasModuleAccess('calidad_salida');
 $canReportes = Auth::hasModuleAccess('reportes');
 $canIndicadores = Auth::hasModuleAccess('indicadores');
 $canProveedores = Auth::hasModuleAccess('proveedores');
-$canConfiguracion = Auth::hasModuleAccess('configuracion');
-$canUsuarios = Auth::hasModuleAccess('usuarios');
+$canConfigurationPanel = Auth::canAccessConfigurationPanel();
+$canAdminConfiguration = Auth::canManageAdminConfiguration();
+$canConfigVariedades = Auth::canManageVariedades();
+$canConfigCajones = Auth::canManageCajones();
+$canConfigSecadoras = Auth::canManageSecadoras();
+$canUsuarios = Auth::canManageUsers();
+$canConfigBulkImport = ConfigBulkImportRegistry::canAccessAnyModule();
 $showRecepcionSection = $canRecepcion || $canPagos || $canCodificacion || $canEtiqueta;
 $showPostcosechaSection = $canLotes || $canFermentacion || $canSecado || $canPruebaCorte || $canCalidadSalida;
 $showReportesSection = $canReportes || $canIndicadores;
-$showConfiguracionSection = $canProveedores || $canConfiguracion || $canUsuarios;
+$showConfiguracionSection = $canConfigurationPanel || $canProveedores || $canAdminConfiguration || $canConfigVariedades || $canConfigCajones || $canConfigSecadoras || $canConfigBulkImport || $canUsuarios;
 $isLotesBulkPage = $currentDir === 'lotes' && in_array($currentPage, ['carga-masiva', 'formato-carga-masiva'], true);
 $isConfigBulkPage = $currentDir === 'configuracion' && in_array($currentPage, ['parametrizacion-masiva', 'parametrizacion-masiva-plantilla', 'plantilla-proveedores-masiva'], true);
 $assetVersion = static function (string $path): string {
@@ -260,6 +265,14 @@ $requiresSheetJs = isset($requiresSheetJs)
 
             <?php if ($showConfiguracionSection): ?>
             <div class="sidebar-section-title">Configuración</div>
+            <?php if ($canConfigurationPanel): ?>
+            <a href="<?= APP_URL ?>/configuracion/index.php" class="sidebar-link <?= $currentDir === 'configuracion' && $currentPage === 'index' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h18M3 12h18M3 17h18"/>
+                </svg>
+                Panel de Configuración
+            </a>
+            <?php endif; ?>
             <?php if ($canProveedores): ?>
             <a href="<?= APP_URL ?>/configuracion/proveedores.php" class="sidebar-link <?= $currentPage === 'proveedores' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -268,7 +281,31 @@ $requiresSheetJs = isset($requiresSheetJs)
                 Proveedores
             </a>
             <?php endif; ?>
-            <?php if ($canProveedores || $canConfiguracion): ?>
+            <?php if ($canConfigVariedades): ?>
+            <a href="<?= APP_URL ?>/configuracion/variedades.php" class="sidebar-link <?= $currentPage === 'variedades' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                </svg>
+                Variedades
+            </a>
+            <?php endif; ?>
+            <?php if ($canConfigCajones): ?>
+            <a href="<?= APP_URL ?>/configuracion/cajones.php" class="sidebar-link <?= $currentPage === 'cajones' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                </svg>
+                Cajones
+            </a>
+            <?php endif; ?>
+            <?php if ($canConfigSecadoras): ?>
+            <a href="<?= APP_URL ?>/configuracion/secadoras.php" class="sidebar-link <?= $currentPage === 'secadoras' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                </svg>
+                Secadoras
+            </a>
+            <?php endif; ?>
+            <?php if ($canConfigBulkImport): ?>
             <a href="<?= APP_URL ?>/configuracion/parametrizacion-masiva.php" class="sidebar-link <?= $isConfigBulkPage ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
@@ -276,7 +313,7 @@ $requiresSheetJs = isset($requiresSheetJs)
                 Parametrización Masiva
             </a>
             <?php endif; ?>
-            <?php if ($canConfiguracion): ?>
+            <?php if ($canAdminConfiguration): ?>
             <a href="<?= APP_URL ?>/configuracion/parametros.php" class="sidebar-link <?= $currentPage === 'parametros' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>

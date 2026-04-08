@@ -8,14 +8,20 @@ require_once __DIR__ . '/../bootstrap.php';
 
 requireAuth();
 
-// Verificar permisos de administrador/configuración.
-if (!Auth::isAdmin() && !Auth::hasPermission('configuracion')) {
+if (!Auth::canAccessConfigurationPanel()) {
     setFlash('danger', 'No tiene permisos para acceder a esta sección.');
     redirect('/dashboard.php');
 }
 
 $pageTitle = 'Configuración del Sistema';
 $db = Database::getInstance();
+$canAdminConfiguration = Auth::canManageAdminConfiguration();
+$canUsers = Auth::canManageUsers();
+$canProveedores = Auth::hasModuleAccess('proveedores');
+$canVariedades = Auth::canManageVariedades();
+$canCajones = Auth::canManageCajones();
+$canSecadoras = Auth::canManageSecadoras();
+$canBulkImport = ConfigBulkImportRegistry::canAccessAnyModule();
 Helpers::ensureCajonesFermentacionCatalog((int)(Helpers::getParametros('GENERAL')['cajones_fermentacion_objetivo'] ?? 6));
 $tableExists = static function (string $table) use ($db): bool {
     return (bool)$db->fetchOne("SHOW TABLES LIKE ?", [$table]);
@@ -54,6 +60,7 @@ ob_start();
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
             <!-- Proveedores -->
+            <?php if ($canProveedores): ?>
             <a href="proveedores.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
@@ -66,8 +73,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Proveedores</h3>
                 <p class="text-sm text-gray-500 mt-1">Gestione productores y proveedores de cacao</p>
             </a>
+            <?php endif; ?>
 
             <!-- Parametrización Masiva -->
+            <?php if ($canBulkImport): ?>
             <a href="parametrizacion-masiva.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center group-hover:bg-cyan-200 transition-colors">
@@ -80,8 +89,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Parametrización Masiva</h3>
                 <p class="text-sm text-gray-500 mt-1">Carga masiva agrupada de categorias, proveedores, variedades, secadoras y cajones</p>
             </a>
+            <?php endif; ?>
 
             <!-- Variedades -->
+            <?php if ($canVariedades): ?>
             <a href="variedades.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
@@ -94,8 +105,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Variedades</h3>
                 <p class="text-sm text-gray-500 mt-1">Tipos y variedades de cacao</p>
             </a>
+            <?php endif; ?>
 
             <!-- Cajones de Fermentación -->
+            <?php if ($canCajones): ?>
             <a href="cajones.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center group-hover:bg-orange-200 transition-colors">
@@ -108,8 +121,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Cajones</h3>
                 <p class="text-sm text-gray-500 mt-1">Cajones de fermentación disponibles</p>
             </a>
+            <?php endif; ?>
 
             <!-- Secadoras -->
+            <?php if ($canSecadoras): ?>
             <a href="secadoras.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
@@ -122,8 +137,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Secadoras</h3>
                 <p class="text-sm text-gray-500 mt-1">Equipos y áreas de secado</p>
             </a>
+            <?php endif; ?>
 
             <!-- Estados -->
+            <?php if ($canAdminConfiguration): ?>
             <a href="estados.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
@@ -136,8 +153,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Estados</h3>
                 <p class="text-sm text-gray-500 mt-1">Estados de fermentación y calidad</p>
             </a>
+            <?php endif; ?>
 
             <!-- Parámetros -->
+            <?php if ($canAdminConfiguration): ?>
             <a href="parametros.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 transition-colors">
@@ -150,10 +169,12 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Parámetros</h3>
                 <p class="text-sm text-gray-500 mt-1">Parámetros de proceso configurables</p>
             </a>
+            <?php endif; ?>
         </div>
     </div>
 
     <!-- Administración -->
+    <?php if ($canUsers || $canAdminConfiguration): ?>
     <div class="mb-8">
         <h2 class="text-lg font-semibold text-primary-dark mb-4 flex items-center">
             <span class="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center mr-3">
@@ -167,6 +188,7 @@ ob_start();
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
             <!-- Usuarios -->
+            <?php if ($canUsers): ?>
             <a href="/usuarios/index.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
@@ -179,8 +201,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Usuarios</h3>
                 <p class="text-sm text-gray-500 mt-1">Gestión de usuarios del sistema</p>
             </a>
+            <?php endif; ?>
 
             <!-- Roles -->
+            <?php if ($canUsers): ?>
             <a href="roles.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center group-hover:bg-pink-200 transition-colors">
@@ -193,8 +217,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Roles y Permisos</h3>
                 <p class="text-sm text-gray-500 mt-1">Configuración de roles y permisos</p>
             </a>
+            <?php endif; ?>
 
             <!-- Backup -->
+            <?php if ($canAdminConfiguration): ?>
             <a href="backup.php" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center group-hover:bg-gray-200 transition-colors">
@@ -207,8 +233,10 @@ ob_start();
                 <h3 class="text-lg font-semibold text-gray-800">Respaldos</h3>
                 <p class="text-sm text-gray-500 mt-1">Respaldo y restauración de datos</p>
             </a>
+            <?php endif; ?>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Acciones Rápidas -->
     <div class="bg-olive/20 rounded-xl p-6">

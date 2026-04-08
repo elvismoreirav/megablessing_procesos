@@ -58,7 +58,7 @@ class ConfigBulkImportRegistry
                 'title' => 'Carga masiva de variedades',
                 'description' => 'Registre variedades de cacao en bloque con codigo, nombre, descripcion y estado activo.',
                 'short_description' => 'Catalogo de variedades de cacao',
-                'scope' => 'configuracion',
+                'scope' => 'configuracion_variedades',
                 'importer_class' => VariedadBulkImporter::class,
                 'target_path' => APP_URL . '/configuracion/variedades.php',
                 'target_label' => 'Volver a variedades',
@@ -79,7 +79,7 @@ class ConfigBulkImportRegistry
                 'title' => 'Carga masiva de secadoras',
                 'description' => 'Cree secadoras y tendales con numero, tipo, capacidad, ubicacion y estado desde una sola plantilla.',
                 'short_description' => 'Catalogo operativo de secadoras',
-                'scope' => 'configuracion',
+                'scope' => 'configuracion_secadoras',
                 'importer_class' => SecadoraBulkImporter::class,
                 'target_path' => APP_URL . '/configuracion/secadoras.php',
                 'target_label' => 'Volver a secadoras',
@@ -101,7 +101,7 @@ class ConfigBulkImportRegistry
                 'title' => 'Carga masiva de cajones de fermentacion',
                 'description' => 'Registre cajones en bloque con numero, capacidad, material, ubicacion y estado activo.',
                 'short_description' => 'Catalogo de cajones de fermentacion',
-                'scope' => 'configuracion',
+                'scope' => 'configuracion_cajones',
                 'importer_class' => CajonBulkImporter::class,
                 'target_path' => APP_URL . '/configuracion/cajones.php',
                 'target_label' => 'Volver a cajones',
@@ -155,7 +155,9 @@ class ConfigBulkImportRegistry
 
         return match ($module['scope']) {
             'proveedores' => Auth::isAdmin() || Auth::hasModuleAccess('proveedores'),
-            'configuracion' => self::canAccessConfigurationModules(),
+            'configuracion_variedades' => Auth::canManageVariedades(),
+            'configuracion_secadoras' => Auth::canManageSecadoras(),
+            'configuracion_cajones' => Auth::canManageCajones(),
             default => false,
         };
     }
@@ -174,11 +176,5 @@ class ConfigBulkImportRegistry
 
         $className = (string) $module['importer_class'];
         return new $className();
-    }
-
-    public static function canAccessConfigurationModules(): bool
-    {
-        $rolActual = strtolower((string) (Auth::user()['rol'] ?? ''));
-        return Auth::isAdmin() || Auth::hasPermission('configuracion') || Auth::hasModuleAccess('configuracion') || $rolActual === 'supervisor';
     }
 }
