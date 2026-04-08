@@ -568,6 +568,141 @@ class Helpers {
     }
 
     /**
+     * Asegura la tabla con el peso individual preliminar por proveedor en recepción.
+     */
+    public static function ensureFichaProveedorPesosTable(): bool {
+        $db = Database::getInstance();
+
+        try {
+            $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'fichas_proveedor_pesos'");
+            if (!$tablaExiste) {
+                $db->query("
+                    CREATE TABLE IF NOT EXISTS fichas_proveedor_pesos (
+                        id INT PRIMARY KEY AUTO_INCREMENT,
+                        ficha_id INT NOT NULL,
+                        proveedor_id INT NULL,
+                        proveedor_nombre VARCHAR(150) NOT NULL,
+                        peso DECIMAL(10,2) NOT NULL,
+                        unidad_peso ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG',
+                        peso_kg DECIMAL(10,4) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_fichas_proveedor_pesos_ficha (ficha_id),
+                        INDEX idx_fichas_proveedor_pesos_proveedor (proveedor_id),
+                        CONSTRAINT fk_fichas_proveedor_pesos_ficha FOREIGN KEY (ficha_id) REFERENCES fichas_registro(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_fichas_proveedor_pesos_proveedor FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                ");
+            }
+
+            $cols = self::getTableColumns('fichas_proveedor_pesos');
+            $hasCol = static fn(string $name): bool => in_array($name, $cols, true);
+
+            $alterQueries = [];
+            if (!$hasCol('proveedor_id')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN proveedor_id INT NULL AFTER ficha_id";
+            if (!$hasCol('proveedor_nombre')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN proveedor_nombre VARCHAR(150) NOT NULL AFTER proveedor_id";
+            if (!$hasCol('peso')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN peso DECIMAL(10,2) NOT NULL AFTER proveedor_nombre";
+            if (!$hasCol('unidad_peso')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN unidad_peso ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG' AFTER peso";
+            if (!$hasCol('peso_kg')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN peso_kg DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER unidad_peso";
+            if (!$hasCol('created_at')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+            if (!$hasCol('updated_at')) $alterQueries[] = "ALTER TABLE fichas_proveedor_pesos ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP";
+
+            foreach ($alterQueries as $sql) {
+                try {
+                    $db->query($sql);
+                } catch (Throwable $e) {
+                    // Mantener compatibilidad aun si alguna alteración puntual falla.
+                }
+            }
+
+            return (bool)$db->fetch("SHOW TABLES LIKE 'fichas_proveedor_pesos'");
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Obtiene el peso individual registrado por proveedor para una ficha.
+     */
+    public static function getFichaProveedorPesos(int $fichaId): array {
+        if ($fichaId <= 0 || !self::ensureFichaProveedorPesosTable()) {
+            return [];
+        }
+
+        $db = Database::getInstance();
+
+        try {
+            $rows = $db->fetchAll(
+                "SELECT *
+                 FROM fichas_proveedor_pesos
+                 WHERE ficha_id = ?
+                 ORDER BY id ASC",
+                [$fichaId]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(static function (array $row) use ($fichaId): array {
+            $unidad = self::normalizePesoUnit($row['unidad_peso'] ?? 'KG');
+            $peso = isset($row['peso']) ? (float)$row['peso'] : 0.0;
+            $pesoKg = isset($row['peso_kg']) ? (float)$row['peso_kg'] : 0.0;
+            if ($pesoKg <= 0 && $peso > 0) {
+                $pesoKg = self::pesoToKg($peso, $unidad);
+            }
+
+            return [
+                'id' => (int)($row['id'] ?? 0),
+                'ficha_id' => (int)($row['ficha_id'] ?? $fichaId),
+                'proveedor_id' => (int)($row['proveedor_id'] ?? 0),
+                'proveedor_nombre' => trim((string)($row['proveedor_nombre'] ?? 'Proveedor')),
+                'peso' => $peso,
+                'unidad_peso' => $unidad,
+                'peso_kg' => $pesoKg,
+            ];
+        }, $rows), static function (array $row): bool {
+            return $row['peso'] > 0;
+        }));
+    }
+
+    /**
+     * Reemplaza el desglose preliminar de peso por proveedor de una ficha.
+     */
+    public static function syncFichaProveedorPesos(int $fichaId, array $detalles): void {
+        if ($fichaId <= 0) {
+            return;
+        }
+
+        if (!self::ensureFichaProveedorPesosTable()) {
+            throw new RuntimeException('No se pudo preparar la tabla de pesos por proveedor.');
+        }
+
+        $db = Database::getInstance();
+        $db->delete('fichas_proveedor_pesos', 'ficha_id = ?', [$fichaId]);
+
+        foreach ($detalles as $detalle) {
+            $peso = isset($detalle['peso']) ? (float)$detalle['peso'] : 0.0;
+            if ($peso <= 0) {
+                continue;
+            }
+
+            $unidad = self::normalizePesoUnit($detalle['unidad_peso'] ?? 'KG');
+            $pesoKg = isset($detalle['peso_kg']) && $detalle['peso_kg'] !== null
+                ? (float)$detalle['peso_kg']
+                : self::pesoToKg($peso, $unidad);
+
+            $db->insert('fichas_proveedor_pesos', [
+                'ficha_id' => $fichaId,
+                'proveedor_id' => (int)($detalle['proveedor_id'] ?? 0) > 0 ? (int)$detalle['proveedor_id'] : null,
+                'proveedor_nombre' => trim((string)($detalle['proveedor_nombre'] ?? 'Proveedor')),
+                'peso' => $peso,
+                'unidad_peso' => $unidad,
+                'peso_kg' => $pesoKg,
+            ]);
+        }
+    }
+
+    /**
      * Verifica si una columna existe en una tabla.
      */
     public static function hasTableColumn(string $table, string $column): bool {
@@ -1291,21 +1426,58 @@ class Helpers {
         $precioTotalBase = isset($ficha['precio_total_pagar']) && $ficha['precio_total_pagar'] !== null
             ? (float)$ficha['precio_total_pagar']
             : null;
+        $toLower = static function (string $value): string {
+            $value = trim($value);
+            if ($value === '') {
+                return '';
+            }
+            return function_exists('mb_strtolower')
+                ? mb_strtolower($value, 'UTF-8')
+                : strtolower($value);
+        };
+        $pesosRecepcion = self::getFichaProveedorPesos($fichaId);
+        $pesosRecepcionPorId = [];
+        $pesosRecepcionPorNombre = [];
+        foreach ($pesosRecepcion as $pesoRecepcion) {
+            $proveedorId = (int)($pesoRecepcion['proveedor_id'] ?? 0);
+            $proveedorNombre = trim((string)($pesoRecepcion['proveedor_nombre'] ?? ''));
+            if ($proveedorId > 0) {
+                $pesosRecepcionPorId[$proveedorId] = $pesoRecepcion;
+            }
+            if ($proveedorNombre !== '') {
+                $pesosRecepcionPorNombre[$toLower($proveedorNombre)] = $pesoRecepcion;
+            }
+        }
 
         $resultado = [];
         foreach ($participantes as $indice => $participante) {
             $esUnicoParticipante = $cantidadParticipantes === 1;
+            $proveedorParticipanteId = (int)($participante['proveedor_id'] ?? 0);
+            $proveedorParticipanteNombre = trim((string)($participante['proveedor_nombre'] ?? ''));
+            $pesoRecepcion = null;
+            if ($proveedorParticipanteId > 0 && isset($pesosRecepcionPorId[$proveedorParticipanteId])) {
+                $pesoRecepcion = $pesosRecepcionPorId[$proveedorParticipanteId];
+            } elseif ($proveedorParticipanteNombre !== '') {
+                $pesoRecepcion = $pesosRecepcionPorNombre[$toLower($proveedorParticipanteNombre)] ?? null;
+            }
+
             $resultado[] = [
                 'id' => 0,
                 'ficha_id' => $fichaId,
-                'proveedor_id' => (int)($participante['proveedor_id'] ?? 0),
-                'proveedor_nombre' => trim((string)($participante['proveedor_nombre'] ?? 'Proveedor')),
+                'proveedor_id' => $proveedorParticipanteId,
+                'proveedor_nombre' => $proveedorParticipanteNombre !== '' ? $proveedorParticipanteNombre : 'Proveedor',
                 'fecha_pago' => $fechaPagoBase,
                 'tipo_comprobante' => $tipoComprobanteBase,
                 'factura_compra' => $esUnicoParticipante ? $facturaBase : '',
-                'cantidad_comprada_unidad' => in_array($cantidadUnidadBase, ['LB', 'KG', 'QQ'], true) ? $cantidadUnidadBase : 'KG',
-                'cantidad_comprada' => $esUnicoParticipante ? $cantidadBase : null,
-                'cantidad_comprada_kg' => $esUnicoParticipante ? $cantidadBaseKg : null,
+                'cantidad_comprada_unidad' => $pesoRecepcion !== null
+                    ? self::normalizePesoUnit($pesoRecepcion['unidad_peso'] ?? 'KG')
+                    : (in_array($cantidadUnidadBase, ['LB', 'KG', 'QQ'], true) ? $cantidadUnidadBase : 'KG'),
+                'cantidad_comprada' => $pesoRecepcion !== null
+                    ? (float)($pesoRecepcion['peso'] ?? 0)
+                    : ($esUnicoParticipante ? $cantidadBase : null),
+                'cantidad_comprada_kg' => $pesoRecepcion !== null
+                    ? (float)($pesoRecepcion['peso_kg'] ?? 0)
+                    : ($esUnicoParticipante ? $cantidadBaseKg : null),
                 'forma_pago' => $formaPagoBase,
                 'precio_base_dia' => $precioBaseDia,
                 'diferencial_usd' => $diferencialBase,

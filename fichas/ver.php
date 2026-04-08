@@ -174,6 +174,10 @@ if ($tablaCalidadSalida && $tieneLoteAsociado) {
 }
 
 $detallesPago = Helpers::getFichaPagoDetalles($id, $ficha);
+$pesosProveedorRecepcionMostrar = array_values(array_filter(
+    Helpers::getFichaProveedorPesos($id),
+    static fn(array $detalle): bool => isset($detalle['peso']) && (float)$detalle['peso'] > 0
+));
 $detallesPagoMostrar = array_values(array_filter($detallesPago, static function (array $detalle): bool {
     $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : 0.0;
     $precioTotal = isset($detalle['precio_total_pagar']) ? (float)$detalle['precio_total_pagar'] : 0.0;
@@ -199,6 +203,7 @@ $precioTotalPago = ($resumenPago['detalle_count'] ?? 0) > 0
     : (isset($ficha['precio_total_pagar']) ? (float)$ficha['precio_total_pagar'] : null);
 $detallePagoMultiple = count($detallesPagoMostrar) > 1;
 $tienePago = Helpers::fichaTienePagoRegistrado($ficha, $detallesPagoMostrar);
+$etiquetaPrecioBase = $tienePago ? 'Precio base día' : 'Precio sugerido';
 $tieneCodificacion = trim((string)($ficha['codificacion'] ?? '')) !== '';
 $rutaPago = APP_URL . '/fichas/pago.php?id=' . (int)$id;
 $rutaCodificacion = APP_URL . '/fichas/codificacion.php?id=' . (int)$id;
@@ -337,37 +342,7 @@ ob_start();
                     </div>
 
                     <div>
-                        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Revisión de calidad visual</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <?php
-                            $revisionItems = [
-                                'Impurezas' => $ficha['revision_limpieza'] ?? null,
-                                'Olor normal (sin olores extraños)' => $ficha['revision_olor_normal'] ?? null,
-                                'Ausencia de moho visible' => $ficha['revision_ausencia_moho'] ?? null,
-                            ];
-                            foreach ($revisionItems as $label => $valor):
-                                $ok = $valor === 'CUMPLE';
-                                $badgeClass = $ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
-                            ?>
-                            <div class="p-3 rounded-lg border border-gray-100">
-                                <p class="text-sm text-gray-600"><?= $label ?></p>
-                                <?php if ($valor): ?>
-                                <span class="inline-flex mt-2 px-2 py-1 text-xs rounded-full <?= $badgeClass ?>">
-                                    <?= $ok ? 'Cumple' : 'No cumple' ?>
-                                </span>
-                                <?php else: ?>
-                                <span class="inline-flex mt-2 px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">No registrado</span>
-                                <?php endif; ?>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Registros y precio</h3>
-                        <p class="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 mb-3">
-                            Precio oficial de compra: USD/kg
-                        </p>
+                        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">I. Registros</h3>
                         <dl class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <dt class="text-sm text-gray-500">Peso bruto</dt>
@@ -404,27 +379,92 @@ ob_start();
                                     <?= isset($ficha['presencia_defectos']) ? number_format((float)$ficha['presencia_defectos'], 2) . '%' : '—' ?>
                                 </dd>
                             </div>
+                        </dl>
+
+                        <?php if (!empty($pesosProveedorRecepcionMostrar)): ?>
+                        <div class="mt-4 rounded-xl border border-amber-100 bg-amber-50/70 p-4">
+                            <div class="flex items-center justify-between gap-3 mb-3">
+                                <div>
+                                    <h4 class="text-sm font-semibold text-amber-900">Distribución por proveedor</h4>
+                                    <p class="text-xs text-amber-800 mt-1">Peso individual registrado en recepción para efectos de pago.</p>
+                                </div>
+                                <span class="inline-flex px-2.5 py-1 rounded-full bg-white text-amber-700 text-xs font-semibold border border-amber-200">
+                                    <?= htmlspecialchars((string)($ficha['unidad_peso'] ?? 'KG')) ?>
+                                </span>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-left text-gray-500">
+                                            <th class="pb-2 pr-4 font-medium">Proveedor</th>
+                                            <th class="pb-2 pr-4 font-medium">Peso registrado</th>
+                                            <th class="pb-2 font-medium">Equivalente KG</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-amber-100">
+                                        <?php foreach ($pesosProveedorRecepcionMostrar as $detalleProveedorPeso): ?>
+                                        <tr>
+                                            <td class="py-2 pr-4 font-medium text-gray-900"><?= htmlspecialchars((string)($detalleProveedorPeso['proveedor_nombre'] ?? 'Proveedor')) ?></td>
+                                            <td class="py-2 pr-4 text-gray-800">
+                                                <?= number_format((float)($detalleProveedorPeso['peso'] ?? 0), 2) ?>
+                                                <?= htmlspecialchars((string)($detalleProveedorPeso['unidad_peso'] ?? 'KG')) ?>
+                                            </td>
+                                            <td class="py-2 text-gray-800"><?= number_format((float)($detalleProveedorPeso['peso_kg'] ?? 0), 2) ?> KG</td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">II. Revisión de calidad visual</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <?php
+                            $revisionItems = [
+                                'Impurezas' => $ficha['revision_limpieza'] ?? null,
+                                'Olor normal (sin olores extraños)' => $ficha['revision_olor_normal'] ?? null,
+                                'Ausencia de moho visible' => $ficha['revision_ausencia_moho'] ?? null,
+                            ];
+                            foreach ($revisionItems as $label => $valor):
+                                $ok = $valor === 'CUMPLE';
+                                $badgeClass = $ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+                            ?>
+                            <div class="p-3 rounded-lg border border-gray-100">
+                                <p class="text-sm text-gray-600"><?= $label ?></p>
+                                <?php if ($valor): ?>
+                                <span class="inline-flex mt-2 px-2 py-1 text-xs rounded-full <?= $badgeClass ?>">
+                                    <?= $ok ? 'Cumple' : 'No cumple' ?>
+                                </span>
+                                <?php else: ?>
+                                <span class="inline-flex mt-2 px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">No registrado</span>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">III. Determinación de precio</h3>
+                        <p class="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 mb-3">
+                            Precio oficial de compra: USD/kg
+                        </p>
+                        <dl class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                                 <dt class="text-sm text-gray-500">Clasificación compra</dt>
                                 <dd class="font-medium text-gray-900"><?= htmlspecialchars($ficha['clasificacion_compra'] ?? '—') ?></dd>
                             </div>
                             <div>
-                                <dt class="text-sm text-gray-500">Precio base día</dt>
+                                <dt class="text-sm text-gray-500">Calidad asignada</dt>
+                                <dd class="font-medium text-gray-900"><?= htmlspecialchars($ficha['calidad_asignada'] ?? '—') ?></dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm text-gray-500"><?= $etiquetaPrecioBase ?></dt>
                                 <dd class="font-medium text-gray-900">
                                     <?php if ($precioBasePago !== null): ?>
                                         $ <?= number_format((float)$precioBasePago, 4) ?>
-                                    <?php elseif ($detallePagoMultiple): ?>
-                                        <span class="text-gray-500">Múltiple según proveedor</span>
-                                    <?php else: ?>
-                                        —
-                                    <?php endif; ?>
-                                </dd>
-                            </div>
-                            <div>
-                                <dt class="text-sm text-gray-500">Diferencial</dt>
-                                <dd class="font-medium text-gray-900">
-                                    <?php if ($diferencialPago !== null): ?>
-                                        $ <?= number_format((float)$diferencialPago, 4) ?>
                                     <?php elseif ($detallePagoMultiple): ?>
                                         <span class="text-gray-500">Múltiple según proveedor</span>
                                     <?php else: ?>
@@ -448,6 +488,18 @@ ob_start();
                                 <dt class="text-sm text-gray-500">Precio total a pagar</dt>
                                 <dd class="font-bold text-emerald-700">
                                     <?= $precioTotalPago !== null ? '$ ' . number_format((float)$precioTotalPago, 2) : '—' ?>
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm text-gray-500">Diferencial</dt>
+                                <dd class="font-medium text-gray-900">
+                                    <?php if ($diferencialPago !== null): ?>
+                                        $ <?= number_format((float)$diferencialPago, 4) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                 </dd>
                             </div>
                             <div>

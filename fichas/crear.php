@@ -13,6 +13,7 @@ $error = '';
 $success = '';
 
 Helpers::ensureFichaProveedorRutaColumn();
+Helpers::ensureFichaProveedorPesosTable();
 
 // Obtener lote pre-seleccionado si viene de otro módulo
 $lotePreseleccionado = $_GET['lote_id'] ?? '';
@@ -160,6 +161,58 @@ foreach ($proveedores as $proveedorItem) {
     }
 }
 
+$normalizarProveedorPesosFormulario = static function (array $input, array $proveedoresPorId, string $unidadPeso): array {
+    $unidadNormalizada = Helpers::normalizePesoUnit($unidadPeso);
+    $resultado = [];
+
+    foreach ($input as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $proveedorId = (int)($row['proveedor_id'] ?? 0);
+        $proveedorNombre = trim((string)($row['proveedor_nombre'] ?? ''));
+        if ($proveedorNombre === '' && $proveedorId > 0 && isset($proveedoresPorId[$proveedorId])) {
+            $proveedorNombre = trim((string)($proveedoresPorId[$proveedorId]['nombre'] ?? ''));
+        }
+
+        $clave = $proveedorId > 0 ? 'id:' . $proveedorId : 'nombre:' . strtolower($proveedorNombre);
+        if ($clave === 'nombre:') {
+            continue;
+        }
+
+        $peso = is_numeric($row['peso'] ?? null) ? (float)$row['peso'] : null;
+        $resultado[$clave] = [
+            'proveedor_id' => $proveedorId,
+            'proveedor_nombre' => $proveedorNombre !== '' ? $proveedorNombre : 'Proveedor',
+            'peso' => $peso,
+            'unidad_peso' => $unidadNormalizada,
+            'peso_kg' => $peso !== null && $peso > 0 ? Helpers::pesoToKg($peso, $unidadNormalizada) : null,
+        ];
+    }
+
+    return array_values($resultado);
+};
+
+$buscarProveedorPeso = static function (array $proveedor, array $pesosProveedor): ?array {
+    $proveedorId = (int)($proveedor['id'] ?? 0);
+    $proveedorNombre = trim((string)($proveedor['nombre'] ?? ''));
+    $claveNombre = strtolower($proveedorNombre);
+
+    foreach ($pesosProveedor as $pesoProveedor) {
+        $pesoProveedorId = (int)($pesoProveedor['proveedor_id'] ?? 0);
+        $pesoProveedorNombre = strtolower(trim((string)($pesoProveedor['proveedor_nombre'] ?? '')));
+        if ($proveedorId > 0 && $pesoProveedorId === $proveedorId) {
+            return $pesoProveedor;
+        }
+        if ($claveNombre !== '' && $pesoProveedorNombre === $claveNombre) {
+            return $pesoProveedor;
+        }
+    }
+
+    return null;
+};
+
 $loteSeleccionadoId = (int)($_POST['lote_id'] ?? $lotePreseleccionado ?? 0);
 $loteSeleccionado = null;
 foreach ($lotes as $loteTemp) {
@@ -241,6 +294,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $peso_final_registro = is_numeric($_POST['peso_final_registro'] ?? null) ? (float)$_POST['peso_final_registro'] : null;
     $unidad_peso = strtoupper(trim($_POST['unidad_peso'] ?? 'KG'));
+    $proveedorPesosDetalle = $normalizarProveedorPesosFormulario(
+        array_values(array_filter((array)($_POST['proveedor_pesos'] ?? []), static fn($row): bool => is_array($row))),
+        $proveedoresPorId,
+        $unidad_peso
+    );
+    $proveedorPesosGuardar = [];
     $calificacion_humedad = isset($_POST['calificacion_humedad']) && $_POST['calificacion_humedad'] !== '' ? (int)$_POST['calificacion_humedad'] : null;
     $calidad_registro = trim($_POST['calidad_registro'] ?? '');
     $presencia_defectos = is_numeric($_POST['presencia_defectos'] ?? null) ? (float)$_POST['presencia_defectos'] : null;
@@ -340,7 +399,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Debe seleccionar la clasificación de compra';
     }
 
-    if (!$error && !$esFormularioRecepcion && ($precio_base_dia === null || $precio_base_dia < 0)) {
+    if (!$error && $precio_base_dia !== null && $precio_base_dia < 0) {
+        $error = $esFormularioRecepcion
+            ? 'El precio sugerido no puede ser negativo'
+            : 'El precio base no puede ser negativo';
+    }
+
+    if (!$error && !$esFormularioRecepcion && $precio_base_dia === null) {
         $error = 'Debe registrar un precio base válido';
     }
 
@@ -414,7 +479,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (!$error && $esFormularioRecepcion && $lote_id <= 0) {
+    if (!$error && $esFormularioRecepcion) {
         $proveedoresSeleccionados = [];
         foreach ($proveedor_ids as $idProveedorSeleccionado) {
             if (isset($proveedoresPorId[$idProveedorSeleccionado])) {
@@ -459,7 +524,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($proveedor_ruta === '' && $proveedorNombre !== '') {
                 $proveedor_ruta = $proveedorNombre;
             }
+        }
 
+        if (!$error && $tipo_entrega === 'ENTREGA_INDIVIDUAL' && count($proveedoresSeleccionados) > 1) {
+            $error = 'La entrega individual solo puede registrar un proveedor';
+        }
+
+        if (!$error) {
+            $requierePesosProveedor = in_array($tipo_entrega, ['RUTAS', 'COMERCIANTE'], true)
+                && count($proveedoresSeleccionados) > 1;
+
+            if ($requierePesosProveedor) {
+                $sumaPesosProveedor = 0.0;
+                foreach ($proveedoresSeleccionados as $proveedorSeleccionado) {
+                    $detallePeso = $buscarProveedorPeso($proveedorSeleccionado, $proveedorPesosDetalle);
+                    $nombreProveedorDetalle = trim((string)($proveedorSeleccionado['nombre'] ?? 'Proveedor'));
+                    $pesoProveedor = $detallePeso['peso'] ?? null;
+
+                    if ($detallePeso === null || $pesoProveedor === null || $pesoProveedor <= 0) {
+                        $error = 'Debe registrar un peso individual válido para ' . $nombreProveedorDetalle;
+                        break;
+                    }
+
+                    $detallePeso['proveedor_id'] = (int)($proveedorSeleccionado['id'] ?? 0);
+                    $detallePeso['proveedor_nombre'] = $nombreProveedorDetalle;
+                    $detallePeso['unidad_peso'] = Helpers::normalizePesoUnit($unidad_peso);
+                    $detallePeso['peso_kg'] = Helpers::pesoToKg((float)$pesoProveedor, $detallePeso['unidad_peso']);
+                    $proveedorPesosGuardar[] = $detallePeso;
+                    $sumaPesosProveedor += (float)$pesoProveedor;
+                }
+
+                if (!$error && abs($sumaPesosProveedor - (float)$peso_final_registro) > 0.05) {
+                    $error = 'La suma de pesos por proveedor debe coincidir con el peso final registrado';
+                }
+            }
+        }
+
+        if (!$error && $lote_id <= 0) {
             $variedadDefaultId = 0;
             if ($hasLoteCol('variedad_id')) {
                 $variedadDefault = $db->fetchOne("SELECT id FROM variedades WHERE activo = 1 ORDER BY id ASC LIMIT 1");
@@ -611,6 +712,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$error) {
         try {
+            $db->beginTransaction();
+
             $dataFicha = [
                 'lote_id' => $lote_id,
                 'producto' => $producto ?: null,
@@ -665,9 +768,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $fichaId = $db->insert('fichas_registro', $dataFicha);
+            if ($esFormularioRecepcion) {
+                Helpers::syncFichaProveedorPesos($fichaId, $proveedorPesosGuardar);
+            }
 
             // Registrar en historial
             Helpers::registrarHistorial($lote_id, 'ficha_creada', "Ficha de registro #{$fichaId} creada");
+            $db->commit();
 
             if ($siguienteFlujo !== '') {
                 $redirectPorFlujo = [
@@ -689,10 +796,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/fichas/ver.php?id=' . urlencode((string)$fichaId) . '&created=1');
 
         } catch (Exception $e) {
+            if ($db->getConnection()->inTransaction()) {
+                $db->rollback();
+            }
             $error = 'Error al crear la ficha: ' . $e->getMessage();
         }
     }
 }
+
+$proveedorPesosFormSeed = array_values(array_map(static function (array $row): array {
+    return [
+        'proveedor_id' => (int)($row['proveedor_id'] ?? 0),
+        'proveedor_nombre' => trim((string)($row['proveedor_nombre'] ?? '')),
+        'peso' => is_numeric($row['peso'] ?? null) ? (float)$row['peso'] : null,
+        'unidad_peso' => Helpers::normalizePesoUnit($_POST['unidad_peso'] ?? 'KG'),
+    ];
+}, array_values(array_filter((array)($_POST['proveedor_pesos'] ?? []), static fn($row): bool => is_array($row)))));
 
 $pageTitle = $esFormularioRecepcion ? 'Nueva Ficha de Recepción' : 'Nueva Ficha de Registro';
 ob_start();
@@ -829,7 +948,7 @@ ob_start();
                                 $codigoProv = trim((string)($provItem['codigo'] ?? ''));
                                 $labelProv = ($codigoProv !== '' ? $codigoProv . ' - ' : '') . $nombreProv;
                                 ?>
-                                <option value="<?= $idProv ?>" data-id="<?= $idProv ?>" <?= in_array($idProv, $proveedorIdsSeleccionados, true) ? 'selected' : '' ?>>
+                                <option value="<?= $idProv ?>" data-id="<?= $idProv ?>" data-nombre="<?= htmlspecialchars($nombreProv) ?>" <?= in_array($idProv, $proveedorIdsSeleccionados, true) ? 'selected' : '' ?>>
                                     <?= htmlspecialchars($labelProv) ?>
                                 </option>
                             <?php endforeach; ?>
@@ -974,45 +1093,7 @@ ob_start();
                 </div>
 
                 <div>
-                    <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">I. Revisión de calidad visual</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full border border-gray-200 rounded-lg overflow-hidden">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Parámetro</th>
-                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">Cumple</th>
-                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">No cumple</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                <?php
-                                $revisiones = [
-                                    'revision_limpieza' => 'Impurezas',
-                                    'revision_olor_normal' => 'Olor normal (sin olores extraños)',
-                                    'revision_ausencia_moho' => 'Ausencia de moho visible',
-                                ];
-                                foreach ($revisiones as $name => $label):
-                                $actual = $_POST[$name] ?? '';
-                                ?>
-                                <tr>
-                                    <td class="px-3 py-2 text-sm text-gray-800 font-medium"><?= $label ?></td>
-                                    <td class="px-3 py-2 text-center">
-                                        <input type="radio" name="<?= $name ?>" value="CUMPLE" class="text-emerald-600 focus:ring-emerald-500"
-                                               <?= $actual === 'CUMPLE' ? 'checked' : '' ?>>
-                                    </td>
-                                    <td class="px-3 py-2 text-center">
-                                        <input type="radio" name="<?= $name ?>" value="NO_CUMPLE" class="text-red-600 focus:ring-red-500"
-                                               <?= $actual === 'NO_CUMPLE' ? 'checked' : '' ?>>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div>
-                    <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">II. Registros</h3>
+                    <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">I. Registros</h3>
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Peso bruto</label>
@@ -1050,6 +1131,35 @@ ob_start();
                         </div>
                     </div>
 
+                    <?php if ($esFormularioRecepcion): ?>
+                    <script type="application/json" id="proveedor_pesos_seed"><?= json_encode($proveedorPesosFormSeed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
+                    <div id="proveedor_pesos_panel" class="hidden mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h4 class="text-sm font-semibold text-amber-900">Peso individual por proveedor</h4>
+                                <p class="text-xs text-amber-800 mt-1">Disponible cuando la entrega es de rutas o comerciante y participan varios proveedores. Este desglose se reutiliza luego en pagos.</p>
+                            </div>
+                            <span id="proveedor_pesos_unidad_badge" class="inline-flex px-2.5 py-1 rounded-full bg-white text-amber-700 text-xs font-semibold border border-amber-200"></span>
+                        </div>
+                        <div id="proveedor_pesos_rows" class="space-y-3"></div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                            <div class="rounded-lg bg-white border border-amber-100 p-3">
+                                <p class="text-xs text-gray-500">Peso final de referencia</p>
+                                <p class="font-semibold text-gray-900" id="proveedor_pesos_total_referencia">0.00</p>
+                            </div>
+                            <div class="rounded-lg bg-white border border-amber-100 p-3">
+                                <p class="text-xs text-gray-500">Suma individual</p>
+                                <p class="font-semibold text-gray-900" id="proveedor_pesos_total_ingresado">0.00</p>
+                            </div>
+                            <div class="rounded-lg bg-white border border-amber-100 p-3">
+                                <p class="text-xs text-gray-500">Diferencia</p>
+                                <p class="font-semibold text-gray-900" id="proveedor_pesos_total_diferencia">0.00</p>
+                            </div>
+                        </div>
+                        <p id="proveedor_pesos_estado" class="text-xs text-amber-800"></p>
+                    </div>
+                    <?php endif; ?>
+
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Calificación aparente (%)</label>
@@ -1086,6 +1196,44 @@ ob_start();
                 </div>
 
                 <div>
+                    <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">II. Revisión de calidad visual</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full border border-gray-200 rounded-lg overflow-hidden">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Parámetro</th>
+                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">Cumple</th>
+                                    <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">No cumple</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <?php
+                                $revisiones = [
+                                    'revision_limpieza' => 'Impurezas',
+                                    'revision_olor_normal' => 'Olor normal (sin olores extraños)',
+                                    'revision_ausencia_moho' => 'Ausencia de moho visible',
+                                ];
+                                foreach ($revisiones as $name => $label):
+                                $actual = $_POST[$name] ?? '';
+                                ?>
+                                <tr>
+                                    <td class="px-3 py-2 text-sm text-gray-800 font-medium"><?= $label ?></td>
+                                    <td class="px-3 py-2 text-center">
+                                        <input type="radio" name="<?= $name ?>" value="CUMPLE" class="text-emerald-600 focus:ring-emerald-500"
+                                               <?= $actual === 'CUMPLE' ? 'checked' : '' ?>>
+                                    </td>
+                                    <td class="px-3 py-2 text-center">
+                                        <input type="radio" name="<?= $name ?>" value="NO_CUMPLE" class="text-red-600 focus:ring-red-500"
+                                               <?= $actual === 'NO_CUMPLE' ? 'checked' : '' ?>>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div>
                     <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">III. Determinación de precio</h3>
                     <p class="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-700 mb-3">
                         Precio oficial de compra: USD/kg
@@ -1110,6 +1258,16 @@ ob_start();
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <?php if ($esFormularioRecepcion): ?>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Precio sugerido (USD/kg)</label>
+                            <input type="number" name="precio_base_dia" id="precio_base_dia" step="0.0001" min="0"
+                                   value="<?= htmlspecialchars($_POST['precio_base_dia'] ?? '') ?>"
+                                   placeholder="0.0000"
+                                   class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                            <p class="text-xs text-gray-500 mt-1">Valor referencial para recepción. El precio comercial definitivo se confirma en pago.</p>
+                        </div>
+                        <?php endif; ?>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">Calidad asignada</label>
                             <?php $calidadAsignada = $_POST['calidad_asignada'] ?? ''; ?>
@@ -1385,6 +1543,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const loteSelect = document.getElementById('lote_id');
     const proveedorSelect = document.getElementById('proveedor_ruta');
     const proveedoresMultiSelect = document.getElementById('proveedor_ids');
+    const proveedorPesosSeed = document.getElementById('proveedor_pesos_seed');
     if (loteSelect && loteSelect.tagName === 'SELECT' && loteSelect.value) {
         sincronizarDatosLote(loteSelect);
     }
@@ -1396,6 +1555,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (proveedoresMultiSelect && proveedoresMultiSelect.tagName === 'SELECT') {
         proveedoresMultiSelect.addEventListener('change', function() {
             actualizarProveedorSeleccionado();
+            renderizarProveedorPesos();
         });
     }
 
@@ -1414,9 +1574,162 @@ document.addEventListener('DOMContentLoaded', function() {
     const cantidadCalculo = document.getElementById('cantidad_calculo');
     const clasificacionRadios = document.querySelectorAll('input[name=\"clasificacion_compra\"]');
     const calidadAsignada = document.getElementById('calidad_asignada');
+    const tipoEntregaRadios = document.querySelectorAll('input[name="tipo_entrega"]');
+    const proveedorPesosPanel = document.getElementById('proveedor_pesos_panel');
+    const proveedorPesosRows = document.getElementById('proveedor_pesos_rows');
+    const proveedorPesosUnidadBadge = document.getElementById('proveedor_pesos_unidad_badge');
+    const proveedorPesosTotalReferencia = document.getElementById('proveedor_pesos_total_referencia');
+    const proveedorPesosTotalIngresado = document.getElementById('proveedor_pesos_total_ingresado');
+    const proveedorPesosTotalDiferencia = document.getElementById('proveedor_pesos_total_diferencia');
+    const proveedorPesosEstado = document.getElementById('proveedor_pesos_estado');
+    let proveedorPesosState = {};
+
+    if (proveedorPesosSeed?.textContent) {
+        try {
+            JSON.parse(proveedorPesosSeed.textContent).forEach(function(row) {
+                const proveedorId = String(parseInt(row?.proveedor_id || 0, 10) || 0);
+                if (!proveedorId || proveedorId === '0') {
+                    return;
+                }
+                proveedorPesosState[proveedorId] = {
+                    proveedor_id: proveedorId,
+                    proveedor_nombre: String(row?.proveedor_nombre || ''),
+                    peso: row?.peso ?? '',
+                };
+            });
+        } catch (error) {
+            proveedorPesosState = {};
+        }
+    }
 
     function toNumber(input) {
         return parseFloat(input?.value || '0') || 0;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function obtenerTipoEntregaActual() {
+        return Array.from(tipoEntregaRadios).find(radio => radio.checked)?.value || '';
+    }
+
+    function obtenerProveedoresSeleccionados() {
+        if (!proveedoresMultiSelect) {
+            return [];
+        }
+
+        return Array.from(proveedoresMultiSelect.selectedOptions).map(function(option) {
+            const proveedorId = String(option.dataset?.id || option.value || '').trim();
+            return {
+                id: proveedorId,
+                nombre: String(option.dataset?.nombre || option.textContent || '').trim(),
+            };
+        }).filter(function(proveedor) {
+            return proveedor.id !== '';
+        });
+    }
+
+    function actualizarResumenProveedorPesos() {
+        if (!proveedorPesosPanel || proveedorPesosPanel.classList.contains('hidden')) {
+            return;
+        }
+
+        const unidadPeso = unidadPesoSelect?.value || 'KG';
+        const pesoReferencia = toNumber(pesoFinalInput);
+        const filas = Array.from(proveedorPesosRows?.querySelectorAll('[data-proveedor-peso-row]') || []);
+        let suma = 0;
+
+        filas.forEach(function(fila) {
+            const proveedorId = String(fila.dataset?.proveedorId || '');
+            const input = fila.querySelector('.js-proveedor-peso');
+            const peso = parseFloat(input?.value || '');
+            const pesoNormalizado = Number.isFinite(peso) ? peso : 0;
+
+            if (proveedorId !== '' && proveedorPesosState[proveedorId]) {
+                proveedorPesosState[proveedorId].peso = input?.value ?? '';
+            }
+
+            suma += pesoNormalizado;
+        });
+
+        const diferencia = pesoReferencia - suma;
+        if (proveedorPesosTotalReferencia) {
+            proveedorPesosTotalReferencia.textContent = `${pesoReferencia.toFixed(2)} ${unidadPeso}`;
+        }
+        if (proveedorPesosTotalIngresado) {
+            proveedorPesosTotalIngresado.textContent = `${suma.toFixed(2)} ${unidadPeso}`;
+        }
+        if (proveedorPesosTotalDiferencia) {
+            proveedorPesosTotalDiferencia.textContent = `${diferencia.toFixed(2)} ${unidadPeso}`;
+            proveedorPesosTotalDiferencia.className = Math.abs(diferencia) <= 0.05
+                ? 'font-semibold text-emerald-700'
+                : 'font-semibold text-red-700';
+        }
+        if (proveedorPesosEstado) {
+            proveedorPesosEstado.textContent = Math.abs(diferencia) <= 0.05
+                ? 'La suma individual coincide con el peso final registrado.'
+                : 'La suma individual debe coincidir con el peso final registrado.';
+            proveedorPesosEstado.className = Math.abs(diferencia) <= 0.05
+                ? 'text-xs text-emerald-700'
+                : 'text-xs text-red-700';
+        }
+    }
+
+    function renderizarProveedorPesos() {
+        if (!proveedorPesosPanel || !proveedorPesosRows || !proveedoresMultiSelect) {
+            return;
+        }
+
+        const tipoEntrega = obtenerTipoEntregaActual();
+        const proveedoresSeleccionados = obtenerProveedoresSeleccionados();
+        const requierePesos = proveedoresSeleccionados.length > 1 && ['RUTAS', 'COMERCIANTE'].includes(tipoEntrega);
+        const unidadPeso = unidadPesoSelect?.value || 'KG';
+
+        if (!requierePesos) {
+            proveedorPesosPanel.classList.add('hidden');
+            proveedorPesosRows.innerHTML = '';
+            return;
+        }
+
+        proveedorPesosPanel.classList.remove('hidden');
+        if (proveedorPesosUnidadBadge) {
+            proveedorPesosUnidadBadge.textContent = unidadPeso;
+        }
+
+        proveedorPesosRows.innerHTML = proveedoresSeleccionados.map(function(proveedor, index) {
+            const estadoActual = proveedorPesosState[proveedor.id] || {};
+            const pesoActual = estadoActual.peso ?? '';
+            proveedorPesosState[proveedor.id] = {
+                proveedor_id: proveedor.id,
+                proveedor_nombre: proveedor.nombre,
+                peso: pesoActual,
+            };
+
+            return `
+                <div class="rounded-lg border border-amber-100 bg-white p-4" data-proveedor-peso-row data-proveedor-id="${escapeHtml(proveedor.id)}">
+                    <div class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_180px] gap-4 items-end">
+                        <div>
+                            <p class="text-sm font-semibold text-gray-900">${escapeHtml(proveedor.nombre)}</p>
+                            <p class="text-xs text-gray-500 mt-1">Proveedor ${index + 1} de ${proveedoresSeleccionados.length}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Peso individual (${escapeHtml(unidadPeso)})</label>
+                            <input type="hidden" name="proveedor_pesos[${escapeHtml(proveedor.id)}][proveedor_id]" value="${escapeHtml(proveedor.id)}">
+                            <input type="hidden" name="proveedor_pesos[${escapeHtml(proveedor.id)}][proveedor_nombre]" value="${escapeHtml(proveedor.nombre)}">
+                            <input type="number" name="proveedor_pesos[${escapeHtml(proveedor.id)}][peso]" value="${escapeHtml(pesoActual)}" step="0.01" min="0" class="js-proveedor-peso w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        actualizarResumenProveedorPesos();
     }
 
     function pesoToKg(peso, unidad) {
@@ -1453,6 +1766,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         calcularTotalPagar();
+        actualizarResumenProveedorPesos();
     }
 
     function calcularPrecioUnitarioFinal() {
@@ -1511,23 +1825,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    proveedorPesosRows?.addEventListener('input', function(event) {
+        if (event.target instanceof HTMLElement && event.target.classList.contains('js-proveedor-peso')) {
+            actualizarResumenProveedorPesos();
+        }
+    });
+
     pesoBrutoInput?.addEventListener('input', calcularPesoFinal);
     taraNoAplicaCheckbox?.addEventListener('change', calcularPesoFinal);
     taraEnvaseInput?.addEventListener('input', calcularPesoFinal);
-    pesoFinalInput?.addEventListener('input', calcularTotalPagar);
+    pesoFinalInput?.addEventListener('input', function() {
+        calcularTotalPagar();
+        actualizarResumenProveedorPesos();
+    });
     precioBaseInput?.addEventListener('input', calcularPrecioUnitarioFinal);
     diferencialInput?.addEventListener('input', calcularPrecioUnitarioFinal);
     precioUnitarioInput?.addEventListener('input', calcularTotalPagar);
-    unidadPesoSelect?.addEventListener('change', calcularTotalPagar);
+    unidadPesoSelect?.addEventListener('change', function() {
+        calcularTotalPagar();
+        renderizarProveedorPesos();
+    });
     cantidadCompradaInput?.addEventListener('input', calcularTotalPagar);
     cantidadCompradaUnidad?.addEventListener('change', calcularTotalPagar);
     clasificacionRadios.forEach(r => r.addEventListener('change', sincronizarCalidad));
+    tipoEntregaRadios.forEach(radio => radio.addEventListener('change', renderizarProveedorPesos));
 
     calcularPesoFinal();
     calcularPrecioUnitarioFinal();
     calcularTotalPagar();
     sincronizarCalidad();
     actualizarProveedorSeleccionado();
+    renderizarProveedorPesos();
 });
 
 function sincronizarDatosLote(select) {
