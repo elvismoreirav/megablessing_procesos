@@ -24,6 +24,7 @@ $mostrarFiltroLote = $vistaActual !== 'recepcion';
 if (!$mostrarFiltroLote) {
     $filtroLote = '';
 }
+$puedeImprimirTicketCompra = Auth::hasModuleAccess('recepcion');
 
 $vistaConfig = [
     'recepcion' => [
@@ -460,6 +461,13 @@ ob_start();
                                    title="<?= $vistaActual === 'pagos' ? 'Registrar pago' : ($vistaActual === 'codificacion' ? 'Codificar lote' : ($vistaActual === 'etiqueta' ? 'Imprimir etiqueta' : 'Editar')) ?>">
                                     <?= $vistaActual === 'codificacion' ? 'Codificar' : ($vistaActual === 'etiqueta' ? 'Imprimir' : 'Editar') ?>
                                 </a>
+                                <?php if ($vistaActual === 'recepcion' && $puedeImprimirTicketCompra): ?>
+                                <a href="<?= APP_URL ?>/fichas/ticket_compra.php?id=<?= (int)$ficha['id'] ?>" 
+                                   class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition-colors"
+                                   title="Imprimir ticket de compra">
+                                    Ticket
+                                </a>
+                                <?php endif; ?>
                                 <?php if ($vistaActual !== 'etiqueta'): ?>
                                 <a href="<?= APP_URL ?>/fichas/etiqueta.php?id=<?= (int)$ficha['id'] ?>" 
                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors"

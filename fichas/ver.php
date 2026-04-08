@@ -205,6 +205,8 @@ $detallePagoMultiple = count($detallesPagoMostrar) > 1;
 $tienePago = Helpers::fichaTienePagoRegistrado($ficha, $detallesPagoMostrar);
 $etiquetaPrecioBase = $tienePago ? 'Precio base día' : 'Precio sugerido';
 $tieneCodificacion = trim((string)($ficha['codificacion'] ?? '')) !== '';
+$puedeImprimirTicketCompra = Auth::hasModuleAccess('recepcion');
+$rutaTicketCompra = APP_URL . '/fichas/ticket_compra.php?id=' . (int)$id;
 $rutaPago = APP_URL . '/fichas/pago.php?id=' . (int)$id;
 $rutaCodificacion = APP_URL . '/fichas/codificacion.php?id=' . (int)$id;
 $rutaEtiqueta = APP_URL . '/fichas/etiqueta.php?id=' . (int)$id;
@@ -228,6 +230,12 @@ ob_start();
             <p class="text-gray-600">Ficha de recepción y verificación visual</p>
         </div>
         <div class="flex items-center gap-3">
+            <?php if ($puedeImprimirTicketCompra): ?>
+            <a href="<?= $rutaTicketCompra ?>"
+               class="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors">
+                <i class="fas fa-receipt mr-2"></i>Imprimir Ticket
+            </a>
+            <?php endif; ?>
             <a href="<?= APP_URL ?>/fichas/editar.php?id=<?= (int)$id ?>&etapa=recepcion" 
                class="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition-colors">
                 <i class="fas fa-edit mr-2"></i>Editar Recepción
@@ -240,9 +248,17 @@ ob_start();
 
     <?php if ($created): ?>
     <div class="bg-green-50 border border-green-200 rounded-xl p-4">
-        <div class="flex items-center gap-3">
-            <i class="fas fa-check-circle text-green-600"></i>
-            <span class="text-green-800">Ficha creada exitosamente</span>
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-check-circle text-green-600"></i>
+                <span class="text-green-800">Ficha creada exitosamente</span>
+            </div>
+            <?php if ($puedeImprimirTicketCompra): ?>
+            <a href="<?= $rutaTicketCompra ?>"
+               class="inline-flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                <i class="fas fa-print mr-2"></i>Generar Ticket de Compra
+            </a>
+            <?php endif; ?>
         </div>
     </div>
     <?php endif; ?>

@@ -318,6 +318,10 @@ class Auth {
             return ['etiqueta'];
         }
 
+        if ($matches('/fichas/ticket_compra.php')) {
+            return ['recepcion'];
+        }
+
         if ($matches('/fichas/crear.php') || $matches('/fichas/editar.php') || $matches('/fichas/eliminar.php')) {
             return ['recepcion'];
         }
