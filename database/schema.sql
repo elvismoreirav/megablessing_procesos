@@ -226,9 +226,10 @@ CREATE TABLE IF NOT EXISTS `fichas_registro` (
     `fecha_pago` DATE,
     `tipo_comprobante` ENUM('FACTURA','NOTA_COMPRA'),
     `factura_compra` VARCHAR(80),
+    `fuente_pago` ENUM('MEGABLESSING','BELLA'),
     `cantidad_comprada_unidad` ENUM('LB','KG','QQ') DEFAULT 'KG',
     `cantidad_comprada` DECIMAL(10,2),
-    `forma_pago` ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS'),
+    `forma_pago` VARCHAR(120),
     `fermentacion_estado` VARCHAR(50),
     `secado_inicio` DATETIME,
     `secado_fin` DATETIME,
@@ -254,10 +255,11 @@ CREATE TABLE IF NOT EXISTS `fichas_pago_detalle` (
     `fecha_pago` DATE NOT NULL,
     `tipo_comprobante` ENUM('FACTURA','NOTA_COMPRA') NOT NULL,
     `factura_compra` VARCHAR(80) NOT NULL,
+    `fuente_pago` ENUM('MEGABLESSING','BELLA') NULL,
     `cantidad_comprada_unidad` ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG',
     `cantidad_comprada` DECIMAL(10,2) NOT NULL,
     `cantidad_comprada_kg` DECIMAL(10,4) NOT NULL,
-    `forma_pago` ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS') NOT NULL,
+    `forma_pago` VARCHAR(120) NOT NULL,
     `precio_base_dia` DECIMAL(10,4) NOT NULL,
     `diferencial_usd` DECIMAL(10,4) DEFAULT 0,
     `precio_unitario_final` DECIMAL(10,4) NOT NULL,
@@ -531,8 +533,8 @@ INSERT INTO `roles` (`nombre`, `descripcion`, `permisos`) VALUES
 ('Recepción', 'Gestiona ficha de recepción, codificación e impresión de etiqueta.', '{"recepcion": true, "codificacion": true, "etiqueta": true}'),
 ('Operaciones', 'Gestiona procesos de centro de acopio y planta.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true}'),
 ('Pagos', 'Gestiona registro de pagos y acceso a proveedores.', '{"pagos": true, "codificacion": true, "etiqueta": true, "proveedores": true}'),
-('Supervisor Planta', 'Acceso a todos los módulos, excepto registro de pagos.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}'),
-('Supervisor Centro de Acopio', 'Acceso a todos los módulos, excepto registro de pagos.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "reportes": true, "indicadores": true, "configuracion": true, "usuarios": true}');
+('Supervisor Planta', 'Supervisa los procesos operativos de planta.', '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}'),
+('Supervisor Centro de Acopio', 'Supervisa recepción y abastecimiento del centro de acopio.', '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "configuracion_panel": true, "configuracion_variedades": true}');
 
 -- Usuario administrador por defecto (password: admin123)
 INSERT INTO `usuarios` (`nombre`, `email`, `password`, `rol_id`) VALUES
@@ -610,7 +612,7 @@ INSERT INTO `indicadores` (`etapa_proceso`, `nombre`, `meta`, `formula`, `frecue
 -- Parámetros de proceso configurables
 INSERT INTO `parametros_proceso` (`categoria`, `clave`, `valor`, `tipo`, `descripcion`) VALUES
 ('FERMENTACION', 'dias_minimos', '5', 'NUMBER', 'Días mínimos de fermentación'),
-('FERMENTACION', 'dias_maximos', '7', 'NUMBER', 'Días máximos de fermentación'),
+('FERMENTACION', 'dias_maximos', '10', 'NUMBER', 'Días máximos de fermentación'),
 ('FERMENTACION', 'temp_min', '35', 'NUMBER', 'Temperatura mínima esperada (°C)'),
 ('FERMENTACION', 'temp_max', '50', 'NUMBER', 'Temperatura máxima esperada (°C)'),
 ('FERMENTACION', 'ph_min', '3.5', 'NUMBER', 'pH mínimo esperado'),

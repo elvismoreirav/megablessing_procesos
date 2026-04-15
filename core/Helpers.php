@@ -568,6 +568,68 @@ class Helpers {
     }
 
     /**
+     * Asegura columnas usadas por el registro de pagos en fichas_registro.
+     */
+    public static function ensureFichaRegistroPagoColumns(): bool {
+        $db = Database::getInstance();
+
+        try {
+            $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'fichas_registro'");
+            if (!$tablaExiste) {
+                return false;
+            }
+
+            $columns = self::getTableColumns('fichas_registro');
+            $hasCol = static fn(string $name): bool => in_array($name, $columns, true);
+            $columnDefs = [
+                ['fecha_pago', 'DATE NULL', 'precio_total_pagar'],
+                ['tipo_comprobante', "ENUM('FACTURA','NOTA_COMPRA') NULL", 'fecha_pago'],
+                ['factura_compra', 'VARCHAR(80) NULL', 'tipo_comprobante'],
+                ['fuente_pago', "ENUM('MEGABLESSING','BELLA') NULL", 'factura_compra'],
+                ['cantidad_comprada_unidad', "ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG'", 'factura_compra'],
+                ['cantidad_comprada', 'DECIMAL(10,2) NULL', 'cantidad_comprada_unidad'],
+                ['forma_pago', 'VARCHAR(120) NULL', 'cantidad_comprada'],
+            ];
+
+            foreach ($columnDefs as [$name, $definition, $after]) {
+                if ($hasCol($name)) {
+                    continue;
+                }
+
+                $afterClause = $hasCol($after) ? " AFTER {$after}" : '';
+                try {
+                    $db->query("ALTER TABLE fichas_registro ADD COLUMN {$name} {$definition}{$afterClause}");
+                } catch (Throwable $e) {
+                    // La validación del formulario reportará columnas faltantes si no se pudieron crear.
+                }
+
+                $columns = self::getTableColumns('fichas_registro');
+                $hasCol = static fn(string $col): bool => in_array($col, $columns, true);
+            }
+
+            foreach ($columnDefs as [$name]) {
+                if (!$hasCol($name)) {
+                    return false;
+                }
+            }
+
+            $formaPagoCol = $db->fetch("SHOW COLUMNS FROM fichas_registro LIKE 'forma_pago'");
+            $formaPagoType = strtolower(trim((string)($formaPagoCol['Type'] ?? $formaPagoCol['type'] ?? '')));
+            if (str_starts_with($formaPagoType, 'enum(')) {
+                try {
+                    $db->query("ALTER TABLE fichas_registro MODIFY COLUMN forma_pago VARCHAR(120) NULL");
+                } catch (Throwable $e) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
      * Asegura la tabla con el peso individual preliminar por proveedor en recepción.
      */
     public static function ensureFichaProveedorPesosTable(): bool {
@@ -1194,10 +1256,11 @@ class Helpers {
                         fecha_pago DATE NOT NULL,
                         tipo_comprobante ENUM('FACTURA','NOTA_COMPRA') NOT NULL,
                         factura_compra VARCHAR(80) NOT NULL,
+                        fuente_pago ENUM('MEGABLESSING','BELLA') NULL,
                         cantidad_comprada_unidad ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG',
                         cantidad_comprada DECIMAL(10,2) NOT NULL,
                         cantidad_comprada_kg DECIMAL(10,4) NOT NULL,
-                        forma_pago ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS') NOT NULL,
+                        forma_pago VARCHAR(120) NOT NULL,
                         precio_base_dia DECIMAL(10,4) NOT NULL,
                         diferencial_usd DECIMAL(10,4) DEFAULT 0,
                         precio_unitario_final DECIMAL(10,4) NOT NULL,
@@ -1221,10 +1284,11 @@ class Helpers {
             if (!$hasCol('fecha_pago')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN fecha_pago DATE NOT NULL AFTER proveedor_nombre";
             if (!$hasCol('tipo_comprobante')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN tipo_comprobante ENUM('FACTURA','NOTA_COMPRA') NOT NULL AFTER fecha_pago";
             if (!$hasCol('factura_compra')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN factura_compra VARCHAR(80) NOT NULL AFTER tipo_comprobante";
+            if (!$hasCol('fuente_pago')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN fuente_pago ENUM('MEGABLESSING','BELLA') NULL AFTER factura_compra";
             if (!$hasCol('cantidad_comprada_unidad')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN cantidad_comprada_unidad ENUM('LB','KG','QQ') NOT NULL DEFAULT 'KG' AFTER factura_compra";
             if (!$hasCol('cantidad_comprada')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN cantidad_comprada DECIMAL(10,2) NOT NULL AFTER cantidad_comprada_unidad";
             if (!$hasCol('cantidad_comprada_kg')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN cantidad_comprada_kg DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER cantidad_comprada";
-            if (!$hasCol('forma_pago')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN forma_pago ENUM('EFECTIVO','TRANSFERENCIA','CHEQUE','OTROS') NOT NULL AFTER cantidad_comprada_kg";
+            if (!$hasCol('forma_pago')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN forma_pago VARCHAR(120) NOT NULL AFTER cantidad_comprada_kg";
             if (!$hasCol('precio_base_dia')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN precio_base_dia DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER forma_pago";
             if (!$hasCol('diferencial_usd')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN diferencial_usd DECIMAL(10,4) DEFAULT 0 AFTER precio_base_dia";
             if (!$hasCol('precio_unitario_final')) $alterQueries[] = "ALTER TABLE fichas_pago_detalle ADD COLUMN precio_unitario_final DECIMAL(10,4) NOT NULL DEFAULT 0 AFTER diferencial_usd";
@@ -1237,6 +1301,16 @@ class Helpers {
                     $db->query($sql);
                 } catch (Throwable $e) {
                     // Continuar con lo disponible para no bloquear la operación.
+                }
+            }
+
+            $formaPagoCol = $db->fetch("SHOW COLUMNS FROM fichas_pago_detalle LIKE 'forma_pago'");
+            $formaPagoType = strtolower(trim((string)($formaPagoCol['Type'] ?? $formaPagoCol['type'] ?? '')));
+            if (str_starts_with($formaPagoType, 'enum(')) {
+                try {
+                    $db->query("ALTER TABLE fichas_pago_detalle MODIFY COLUMN forma_pago VARCHAR(120) NOT NULL");
+                } catch (Throwable $e) {
+                    // Mantener compatibilidad si el motor no permite modificar la columna.
                 }
             }
 
@@ -1338,6 +1412,50 @@ class Helpers {
         return $participantes;
     }
 
+    public static function normalizePagoFormas($value): array {
+        $rawItems = is_array($value)
+            ? $value
+            : preg_split('/[,;|]+/', (string)$value);
+        $allowed = ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS', 'REMANENTE'];
+        $normalized = [];
+
+        foreach ((array)$rawItems as $item) {
+            $forma = strtoupper(trim((string)$item));
+            if ($forma === '') {
+                continue;
+            }
+            if ($forma === 'REMANENTES') {
+                $forma = 'REMANENTE';
+            }
+            if (in_array($forma, $allowed, true) && !in_array($forma, $normalized, true)) {
+                $normalized[] = $forma;
+            }
+        }
+
+        return $normalized;
+    }
+
+    public static function normalizePagoFormaValue($value): string {
+        return implode(',', self::normalizePagoFormas($value));
+    }
+
+    public static function formatPagoFormas($value): string {
+        $labels = [
+            'EFECTIVO' => 'Efectivo',
+            'TRANSFERENCIA' => 'Transferencia',
+            'CHEQUE' => 'Cheque',
+            'OTROS' => 'Otros',
+            'REMANENTE' => 'Remanente',
+        ];
+        $formas = self::normalizePagoFormas($value);
+        $textos = [];
+        foreach ($formas as $forma) {
+            $textos[] = $labels[$forma] ?? ucfirst(strtolower($forma));
+        }
+
+        return implode(', ', $textos);
+    }
+
     /**
      * Obtiene los pagos detallados de una ficha, con compatibilidad hacia registros antiguos.
      */
@@ -1376,10 +1494,11 @@ class Helpers {
                     'fecha_pago' => trim((string)($detalle['fecha_pago'] ?? '')),
                     'tipo_comprobante' => strtoupper(trim((string)($detalle['tipo_comprobante'] ?? ''))),
                     'factura_compra' => trim((string)($detalle['factura_compra'] ?? '')),
+                    'fuente_pago' => strtoupper(trim((string)($detalle['fuente_pago'] ?? ''))),
                     'cantidad_comprada_unidad' => in_array($unidad, ['LB', 'KG', 'QQ'], true) ? $unidad : 'KG',
                     'cantidad_comprada' => $cantidad,
                     'cantidad_comprada_kg' => $cantidadKg,
-                    'forma_pago' => strtoupper(trim((string)($detalle['forma_pago'] ?? ''))),
+                    'forma_pago' => self::normalizePagoFormaValue($detalle['forma_pago'] ?? ''),
                     'precio_base_dia' => isset($detalle['precio_base_dia']) ? (float)$detalle['precio_base_dia'] : null,
                     'diferencial_usd' => isset($detalle['diferencial_usd']) ? (float)$detalle['diferencial_usd'] : 0.0,
                     'precio_unitario_final' => isset($detalle['precio_unitario_final']) ? (float)$detalle['precio_unitario_final'] : null,
@@ -1406,6 +1525,7 @@ class Helpers {
         $fechaPagoBase = trim((string)($ficha['fecha_pago'] ?? ''));
         $tipoComprobanteBase = strtoupper(trim((string)($ficha['tipo_comprobante'] ?? '')));
         $facturaBase = trim((string)($ficha['factura_compra'] ?? ''));
+        $fuentePagoBase = strtoupper(trim((string)($ficha['fuente_pago'] ?? '')));
         $cantidadUnidadBase = strtoupper(trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')));
         $cantidadBase = isset($ficha['cantidad_comprada']) && $ficha['cantidad_comprada'] !== null
             ? (float)$ficha['cantidad_comprada']
@@ -1413,7 +1533,7 @@ class Helpers {
         $cantidadBaseKg = $cantidadBase !== null && $cantidadBase > 0
             ? self::pesoToKg($cantidadBase, $cantidadUnidadBase)
             : null;
-        $formaPagoBase = strtoupper(trim((string)($ficha['forma_pago'] ?? '')));
+        $formaPagoBase = self::normalizePagoFormaValue($ficha['forma_pago'] ?? '');
         $precioBaseDia = isset($ficha['precio_base_dia']) && $ficha['precio_base_dia'] !== null
             ? (float)$ficha['precio_base_dia']
             : null;
@@ -1469,6 +1589,7 @@ class Helpers {
                 'fecha_pago' => $fechaPagoBase,
                 'tipo_comprobante' => $tipoComprobanteBase,
                 'factura_compra' => $esUnicoParticipante ? $facturaBase : '',
+                'fuente_pago' => in_array($fuentePagoBase, ['MEGABLESSING', 'BELLA'], true) ? $fuentePagoBase : '',
                 'cantidad_comprada_unidad' => $pesoRecepcion !== null
                     ? self::normalizePesoUnit($pesoRecepcion['unidad_peso'] ?? 'KG')
                     : (in_array($cantidadUnidadBase, ['LB', 'KG', 'QQ'], true) ? $cantidadUnidadBase : 'KG'),
@@ -1500,6 +1621,7 @@ class Helpers {
             'fecha_pago' => null,
             'tipo_comprobante' => null,
             'factura_compra' => null,
+            'fuente_pago' => null,
             'cantidad_comprada_unidad' => 'KG',
             'cantidad_comprada' => null,
             'forma_pago' => null,
@@ -1515,6 +1637,7 @@ class Helpers {
 
         $primerDetalle = null;
         $tipos = [];
+        $fuentes = [];
         $formas = [];
         $preciosBase = [];
         $diferenciales = [];
@@ -1525,12 +1648,13 @@ class Helpers {
             $fechaPago = trim((string)($detalle['fecha_pago'] ?? ''));
             $tipoComprobante = strtoupper(trim((string)($detalle['tipo_comprobante'] ?? '')));
             $facturaCompra = trim((string)($detalle['factura_compra'] ?? ''));
+            $fuentePago = strtoupper(trim((string)($detalle['fuente_pago'] ?? '')));
             $unidadCantidad = strtoupper(trim((string)($detalle['cantidad_comprada_unidad'] ?? 'KG')));
             $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : null;
             $cantidadKg = isset($detalle['cantidad_comprada_kg']) && $detalle['cantidad_comprada_kg'] !== null
                 ? (float)$detalle['cantidad_comprada_kg']
                 : (($cantidad !== null && $cantidad > 0) ? self::pesoToKg($cantidad, $unidadCantidad) : 0.0);
-            $formaPago = strtoupper(trim((string)($detalle['forma_pago'] ?? '')));
+            $formaPago = self::normalizePagoFormaValue($detalle['forma_pago'] ?? '');
             $precioBase = isset($detalle['precio_base_dia']) && $detalle['precio_base_dia'] !== null
                 ? (float)$detalle['precio_base_dia']
                 : null;
@@ -1550,6 +1674,7 @@ class Helpers {
                     'fecha_pago' => $fechaPago,
                     'tipo_comprobante' => $tipoComprobante,
                     'factura_compra' => $facturaCompra,
+                    'fuente_pago' => $fuentePago,
                     'forma_pago' => $formaPago,
                     'precio_base_dia' => $precioBase,
                     'diferencial_usd' => $diferencial,
@@ -1570,6 +1695,9 @@ class Helpers {
             }
             if ($tipoComprobante !== '') {
                 $tipos[$tipoComprobante] = true;
+            }
+            if ($fuentePago !== '') {
+                $fuentes[$fuentePago] = true;
             }
             if ($formaPago !== '') {
                 $formas[$formaPago] = true;
@@ -1595,6 +1723,7 @@ class Helpers {
         if ($primerDetalle !== null) {
             $resumen['tipo_comprobante'] = count($tipos) === 1 ? $primerDetalle['tipo_comprobante'] : null;
             $resumen['factura_compra'] = $resumen['detalle_count'] === 1 ? $primerDetalle['factura_compra'] : null;
+            $resumen['fuente_pago'] = count($fuentes) === 1 ? $primerDetalle['fuente_pago'] : null;
             $resumen['forma_pago'] = count($formas) === 1 ? $primerDetalle['forma_pago'] : null;
             $resumen['precio_base_dia'] = count($preciosBase) === 1 ? $primerDetalle['precio_base_dia'] : null;
             $resumen['diferencial_usd'] = count($diferenciales) === 1 ? $primerDetalle['diferencial_usd'] : null;
@@ -1620,7 +1749,7 @@ class Helpers {
                 $facturaCompra = trim((string)($detalle['factura_compra'] ?? ''));
                 $unidadCantidad = strtoupper(trim((string)($detalle['cantidad_comprada_unidad'] ?? 'KG')));
                 $cantidad = isset($detalle['cantidad_comprada']) ? (float)$detalle['cantidad_comprada'] : 0.0;
-                $formaPago = strtoupper(trim((string)($detalle['forma_pago'] ?? '')));
+                $formasPago = self::normalizePagoFormas($detalle['forma_pago'] ?? '');
                 $precioTotal = isset($detalle['precio_total_pagar']) ? (float)$detalle['precio_total_pagar'] : 0.0;
 
                 if ($fechaPago !== ''
@@ -1628,7 +1757,7 @@ class Helpers {
                     && $facturaCompra !== ''
                     && in_array($unidadCantidad, ['LB', 'KG', 'QQ'], true)
                     && $cantidad > 0
-                    && in_array($formaPago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)
+                    && !empty($formasPago)
                     && $precioTotal > 0
                 ) {
                     return true;
@@ -1641,14 +1770,14 @@ class Helpers {
         $facturaCompra = trim((string)($ficha['factura_compra'] ?? ''));
         $unidadCantidad = strtoupper(trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')));
         $cantidad = isset($ficha['cantidad_comprada']) ? (float)$ficha['cantidad_comprada'] : 0.0;
-        $formaPago = strtoupper(trim((string)($ficha['forma_pago'] ?? '')));
+        $formasPago = self::normalizePagoFormas($ficha['forma_pago'] ?? '');
 
         if ($fechaPago !== ''
             && in_array($tipoComprobante, ['FACTURA', 'NOTA_COMPRA'], true)
             && $facturaCompra !== ''
             && in_array($unidadCantidad, ['LB', 'KG', 'QQ'], true)
             && $cantidad > 0
-            && in_array($formaPago, ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)
+            && !empty($formasPago)
         ) {
             return true;
         }

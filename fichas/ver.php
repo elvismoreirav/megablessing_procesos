@@ -190,11 +190,13 @@ $resumenPago = Helpers::getFichaPagoResumen($detallesPagoMostrar);
 $fechaPago = $resumenPago['fecha_pago'] ?? ($hasFichaCol('fecha_pago') ? ($ficha['fecha_pago'] ?? null) : null);
 $tipoComprobante = trim((string)($resumenPago['tipo_comprobante'] ?? ($hasFichaCol('tipo_comprobante') ? ($ficha['tipo_comprobante'] ?? '') : '')));
 $facturaCompra = trim((string)($resumenPago['factura_compra'] ?? ($hasFichaCol('factura_compra') ? ($ficha['factura_compra'] ?? '') : '')));
+$fuentePago = trim((string)($resumenPago['fuente_pago'] ?? ($hasFichaCol('fuente_pago') ? ($ficha['fuente_pago'] ?? '') : '')));
 $cantidadCompradaUnidad = $resumenPago['cantidad_comprada'] !== null
     ? 'KG'
     : ($hasFichaCol('cantidad_comprada_unidad') ? trim((string)($ficha['cantidad_comprada_unidad'] ?? 'KG')) : 'KG');
 $cantidadComprada = $resumenPago['cantidad_comprada'] ?? ($hasFichaCol('cantidad_comprada') ? ($ficha['cantidad_comprada'] ?? null) : null);
 $formaPago = trim((string)($resumenPago['forma_pago'] ?? ($hasFichaCol('forma_pago') ? ($ficha['forma_pago'] ?? '') : '')));
+$formaPagoTexto = Helpers::formatPagoFormas($formaPago);
 $precioBasePago = $resumenPago['precio_base_dia'] ?? (isset($ficha['precio_base_dia']) ? (float)$ficha['precio_base_dia'] : null);
 $diferencialPago = $resumenPago['diferencial_usd'] ?? (isset($ficha['diferencial_usd']) ? (float)$ficha['diferencial_usd'] : null);
 $precioUnitarioPago = $resumenPago['precio_unitario_final'] ?? (isset($ficha['precio_unitario_final']) ? (float)$ficha['precio_unitario_final'] : null);
@@ -555,10 +557,22 @@ ob_start();
                                 </dd>
                             </div>
                             <div>
+                                <dt class="text-sm text-gray-500">Fuente de pago</dt>
+                                <dd class="font-medium text-gray-900">
+                                    <?php if ($fuentePago !== ''): ?>
+                                        <?= htmlspecialchars(ucfirst(strtolower($fuentePago))) ?>
+                                    <?php elseif ($detallePagoMultiple): ?>
+                                        <span class="text-gray-500">Múltiple según proveedor</span>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
+                                </dd>
+                            </div>
+                            <div>
                                 <dt class="text-sm text-gray-500">Forma de pago</dt>
                                 <dd class="font-medium text-gray-900">
-                                    <?php if ($formaPago !== ''): ?>
-                                        <?= htmlspecialchars(ucfirst(strtolower($formaPago))) ?>
+                                    <?php if ($formaPagoTexto !== ''): ?>
+                                        <?= htmlspecialchars($formaPagoTexto) ?>
                                     <?php elseif ($detallePagoMultiple): ?>
                                         <span class="text-gray-500">Múltiple según proveedor</span>
                                     <?php else: ?>
@@ -579,6 +593,7 @@ ob_start();
                                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Fecha</th>
                                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Comprobante</th>
                                             <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Factura</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Fuente</th>
                                             <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Cantidad</th>
                                             <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Equiv. KG</th>
                                             <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Unitario</th>
@@ -608,6 +623,9 @@ ob_start();
                                             <td class="px-3 py-2 text-sm text-gray-700">
                                                 <?= !empty($detallePago['factura_compra']) ? htmlspecialchars((string)$detallePago['factura_compra']) : '—' ?>
                                             </td>
+                                            <td class="px-3 py-2 text-sm text-gray-700">
+                                                <?= !empty($detallePago['fuente_pago']) ? htmlspecialchars(ucfirst(strtolower((string)$detallePago['fuente_pago']))) : '—' ?>
+                                            </td>
                                             <td class="px-3 py-2 text-sm text-right text-gray-700">
                                                 <?= $cantidadDetalle !== null ? number_format($cantidadDetalle, 2) . ' ' . htmlspecialchars($cantidadDetalleUnidad) : '—' ?>
                                             </td>
@@ -621,7 +639,7 @@ ob_start();
                                                 <?= $precioDetalle !== null ? '$ ' . number_format($precioDetalle, 2) : '—' ?>
                                             </td>
                                             <td class="px-3 py-2 text-sm text-gray-700">
-                                                <?= !empty($detallePago['forma_pago']) ? htmlspecialchars(ucfirst(strtolower((string)$detallePago['forma_pago']))) : '—' ?>
+                                                <?= !empty($detallePago['forma_pago']) ? htmlspecialchars(Helpers::formatPagoFormas($detallePago['forma_pago'])) : '—' ?>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>

@@ -702,11 +702,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Verificar codificación única si se proporciona
+    // Verificar codificación única fuera del lote actual si se proporciona.
     if (!$error && $codificacion) {
-        $existe = $db->fetchOne("SELECT id FROM fichas_registro WHERE codificacion = ?", [$codificacion]);
+        $existe = $db->fetchOne(
+            "SELECT id FROM fichas_registro WHERE codificacion = ? AND lote_id <> ?",
+            [$codificacion, $lote_id]
+        );
         if ($existe) {
-            $error = 'Ya existe una ficha con esta codificación';
+            $error = 'Ya existe una ficha de otro lote con esta codificación';
         }
     }
 

@@ -32,6 +32,10 @@ $showRecepcionSection = $canRecepcion || $canPagos || $canCodificacion || $canEt
 $showPostcosechaSection = $canLotes || $canFermentacion || $canSecado || $canPruebaCorte || $canCalidadSalida;
 $showReportesSection = $canReportes || $canIndicadores;
 $showConfiguracionSection = $canConfigurationPanel || $canProveedores || $canAdminConfiguration || $canConfigVariedades || $canConfigCajones || $canConfigSecadoras || $canConfigBulkImport || $canUsuarios;
+$isRecepcionBulkPage = $currentDir === 'fichas' && in_array($currentPage, ['carga-masiva', 'formato-carga-masiva'], true);
+$currentFichaVista = ($currentDir === 'fichas' && $currentPage === 'index')
+    ? strtolower(trim((string)($_GET['vista'] ?? 'recepcion')))
+    : '';
 $isLotesBulkPage = $currentDir === 'lotes' && in_array($currentPage, ['carga-masiva', 'formato-carga-masiva'], true);
 $isConfigBulkPage = $currentDir === 'configuracion' && in_array($currentPage, ['parametrizacion-masiva', 'parametrizacion-masiva-plantilla', 'plantilla-proveedores-masiva'], true);
 $assetVersion = static function (string $path): string {
@@ -154,15 +158,21 @@ $requiresSheetJs = isset($requiresSheetJs)
             <?php if ($showRecepcionSection): ?>
             <div class="sidebar-section-title">Procesos de Recepción</div>
             <?php if ($canRecepcion): ?>
-            <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="sidebar-link <?= $currentFichaVista === 'recepcion' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
                 </svg>
                 Recepción (Ficha de Recepción)
             </a>
+            <a href="<?= APP_URL ?>/fichas/carga-masiva.php" class="sidebar-link <?= $isRecepcionBulkPage ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v10m0 0l-4-4m4 4l4-4"/>
+                </svg>
+                Carga Masiva de Recepción
+            </a>
             <?php endif; ?>
             <?php if ($canPagos): ?>
-            <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="sidebar-link <?= $currentFichaVista === 'pagos' || $currentPage === 'pago' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1m0-1a3 3 0 01-3-3m3 3a3 3 0 003-3"/>
                 </svg>
@@ -170,7 +180,7 @@ $requiresSheetJs = isset($requiresSheetJs)
             </a>
             <?php endif; ?>
             <?php if ($canCodificacion): ?>
-            <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="sidebar-link <?= $currentFichaVista === 'codificacion' || $currentPage === 'codificacion' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
                 </svg>
@@ -178,7 +188,7 @@ $requiresSheetJs = isset($requiresSheetJs)
             </a>
             <?php endif; ?>
             <?php if ($canEtiqueta): ?>
-            <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="sidebar-link <?= $currentDir === 'fichas' ? 'active' : '' ?>">
+            <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="sidebar-link <?= $currentFichaVista === 'etiqueta' || $currentPage === 'etiqueta' ? 'active' : '' ?>">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2z"/>
                 </svg>

@@ -134,7 +134,7 @@ class Auth {
     }
 
     public static function canManageUsers(): bool {
-        return self::isAdmin();
+        return self::roleKey() === 'administrador';
     }
 
     public static function canManageAdminConfiguration(): bool {
@@ -306,6 +306,10 @@ class Auth {
             };
         }
 
+        if ($matches('/fichas/carga-masiva.php') || $matches('/fichas/formato-carga-masiva.php')) {
+            return ['recepcion'];
+        }
+
         if ($matches('/fichas/pago.php')) {
             return ['pagos'];
         }
@@ -411,6 +415,14 @@ class Auth {
     }
 
     public static function canAccessRoute(?string $scriptPath = null, ?array $query = null): bool {
+        $script = str_replace('\\', '/', (string)($scriptPath ?? ($_SERVER['SCRIPT_NAME'] ?? '')));
+        $script = '/' . ltrim($script, '/');
+        if (str_contains($script, '/usuarios/')
+            || str_contains($script, '/configuracion/usuarios.php')
+            || str_contains($script, '/configuracion/roles.php')) {
+            return self::canManageUsers();
+        }
+
         $modules = self::modulesForRoute($scriptPath, $query);
         if (empty($modules)) {
             return true;

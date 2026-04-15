@@ -126,9 +126,9 @@ $fechaInicio = new DateTime($fermentacion['fecha_inicio']);
 $hoy = new DateTime();
 $diasTranscurridos = $fechaInicio->diff($hoy)->days + 1;
 
-// Preparar datos para Handsontable (6 días de control)
+// Preparar datos para Handsontable (10 días de control)
 $diasControl = [];
-for ($i = 1; $i <= 6; $i++) {
+for ($i = 1; $i <= 10; $i++) {
     $fechaDia = (clone $fechaInicio)->modify('+' . ($i - 1) . ' days');
     $controlExistente = array_filter($controlesDiarios, fn($c) => $c['dia'] == $i);
     $control = !empty($controlExistente) ? array_values($controlExistente)[0] : null;

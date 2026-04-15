@@ -14,9 +14,10 @@ if ($id <= 0) {
     redirect('/fichas/index.php?vista=pagos');
 }
 
+Helpers::ensureFichaRegistroPagoColumns();
 $colsFichas = array_column($db->fetchAll("SHOW COLUMNS FROM fichas_registro"), 'Field');
 $hasFichaCol = static fn(string $name): bool => in_array($name, $colsFichas, true);
-$columnasPago = ['fecha_pago', 'tipo_comprobante', 'factura_compra', 'cantidad_comprada_unidad', 'cantidad_comprada', 'forma_pago'];
+$columnasPago = ['fecha_pago', 'tipo_comprobante', 'factura_compra', 'fuente_pago', 'cantidad_comprada_unidad', 'cantidad_comprada', 'forma_pago'];
 $faltantesPago = array_values(array_filter($columnasPago, static fn(string $col): bool => !$hasFichaCol($col)));
 $columnasPrecio = ['precio_base_dia', 'diferencial_usd', 'precio_unitario_final', 'precio_total_pagar'];
 $faltantesPrecio = array_values(array_filter($columnasPrecio, static fn(string $col): bool => !$hasFichaCol($col)));
@@ -85,10 +86,11 @@ $normalizarFilaPago = static function (array $row, array $proveedoresPorId) use 
         'fecha_pago' => trim((string)($row['fecha_pago'] ?? '')),
         'tipo_comprobante' => strtoupper(trim((string)($row['tipo_comprobante'] ?? ''))),
         'factura_compra' => trim((string)($row['factura_compra'] ?? '')),
+        'fuente_pago' => strtoupper(trim((string)($row['fuente_pago'] ?? ''))),
         'cantidad_comprada_unidad' => $unidad,
         'cantidad_comprada' => $cantidad,
         'cantidad_comprada_kg' => $cantidadKg,
-        'forma_pago' => strtoupper(trim((string)($row['forma_pago'] ?? ''))),
+        'forma_pago' => Helpers::normalizePagoFormaValue($row['forma_pago'] ?? ''),
         'precio_base_dia' => is_numeric($row['precio_base_dia'] ?? null) ? (float)$row['precio_base_dia'] : null,
         'diferencial_usd' => is_numeric($row['diferencial_usd'] ?? null) ? (float)$row['diferencial_usd'] : 0.0,
         'precio_unitario_final' => is_numeric($row['precio_unitario_final'] ?? null) ? (float)$row['precio_unitario_final'] : null,
@@ -98,7 +100,7 @@ $normalizarFilaPago = static function (array $row, array $proveedoresPorId) use 
 
 $formDetalles = $detallesBase;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!empty($faltantesPrecio)) {
         $error = 'Faltan columnas de precio en fichas_registro. Ejecute database/patch_fase_planta_fichas.sql';
     } elseif (!empty($faltantesPago)) {
@@ -136,6 +138,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Debe ingresar la factura o comprobante para {$nombreProveedor}";
                 break;
             }
+            if (!in_array($detalle['fuente_pago'], ['MEGABLESSING', 'BELLA'], true)) {
+                $error = "Debe seleccionar una fuente de pago válida para {$nombreProveedor}";
+                break;
+            }
             if ($detalle['cantidad_comprada'] === null || $detalle['cantidad_comprada'] <= 0) {
                 $error = "Debe ingresar una cantidad comprada mayor a 0 para {$nombreProveedor}";
                 break;
@@ -144,8 +150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Debe seleccionar una unidad válida para {$nombreProveedor}";
                 break;
             }
-            if (!in_array($detalle['forma_pago'], ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE', 'OTROS'], true)) {
-                $error = "Debe seleccionar una forma de pago válida para {$nombreProveedor}";
+            if (empty(Helpers::normalizePagoFormas($detalle['forma_pago']))) {
+                $error = "Debe seleccionar al menos una forma de pago válida para {$nombreProveedor}";
                 break;
             }
             if ($detalle['precio_base_dia'] === null || $detalle['precio_base_dia'] < 0) {
@@ -187,6 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'fecha_pago' => $detalle['fecha_pago'],
                         'tipo_comprobante' => $detalle['tipo_comprobante'],
                         'factura_compra' => $detalle['factura_compra'],
+                        'fuente_pago' => $detalle['fuente_pago'],
                         'cantidad_comprada_unidad' => $detalle['cantidad_comprada_unidad'],
                         'cantidad_comprada' => $detalle['cantidad_comprada'],
                         'cantidad_comprada_kg' => $detalle['cantidad_comprada_kg'],
@@ -221,6 +228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 if ($hasFichaCol('factura_compra')) {
                     $dataPago['factura_compra'] = $resumenPago['factura_compra'];
+                }
+                if ($hasFichaCol('fuente_pago')) {
+                    $dataPago['fuente_pago'] = $resumenPago['fuente_pago'];
                 }
                 if ($hasFichaCol('cantidad_comprada_unidad')) {
                     $dataPago['cantidad_comprada_unidad'] = 'KG';
@@ -344,7 +354,8 @@ ob_start();
         <?php
         $proveedorNombreDetalle = trim((string)($detalle['proveedor_nombre'] ?? 'Proveedor'));
         $tipoComprobanteActual = strtoupper((string)($detalle['tipo_comprobante'] ?? ''));
-        $formaPagoActual = strtoupper((string)($detalle['forma_pago'] ?? ''));
+        $fuentePagoActual = strtoupper((string)($detalle['fuente_pago'] ?? ''));
+        $formasPagoActuales = Helpers::normalizePagoFormas($detalle['forma_pago'] ?? '');
         $cantidadUnidadActual = strtoupper((string)($detalle['cantidad_comprada_unidad'] ?? 'KG'));
         ?>
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 js-pago-detalle">
@@ -396,16 +407,35 @@ ob_start();
                            class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 js-factura">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Forma de pago <span class="text-red-500">*</span></label>
-                    <select name="pago_detalle[<?= $indice ?>][forma_pago]"
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Fuente de pago <span class="text-red-500">*</span></label>
+                    <select name="pago_detalle[<?= $indice ?>][fuente_pago]"
                             required
-                            class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 js-forma">
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 js-fuente">
                         <option value="">Seleccione</option>
-                        <option value="EFECTIVO" <?= $formaPagoActual === 'EFECTIVO' ? 'selected' : '' ?>>Efectivo</option>
-                        <option value="TRANSFERENCIA" <?= $formaPagoActual === 'TRANSFERENCIA' ? 'selected' : '' ?>>Transferencia</option>
-                        <option value="CHEQUE" <?= $formaPagoActual === 'CHEQUE' ? 'selected' : '' ?>>Cheque</option>
-                        <option value="OTROS" <?= $formaPagoActual === 'OTROS' ? 'selected' : '' ?>>Otros</option>
+                        <option value="MEGABLESSING" <?= $fuentePagoActual === 'MEGABLESSING' ? 'selected' : '' ?>>Megablessing</option>
+                        <option value="BELLA" <?= $fuentePagoActual === 'BELLA' ? 'selected' : '' ?>>Bella</option>
                     </select>
+                </div>
+                <div class="xl:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Forma de pago <span class="text-red-500">*</span></label>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                        <?php foreach ([
+                            'EFECTIVO' => 'Efectivo',
+                            'TRANSFERENCIA' => 'Transferencia',
+                            'CHEQUE' => 'Cheque',
+                            'OTROS' => 'Otros',
+                            'REMANENTE' => 'Remanente',
+                        ] as $formaValue => $formaLabel): ?>
+                        <label class="inline-flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            <input type="checkbox"
+                                   name="pago_detalle[<?= $indice ?>][forma_pago][]"
+                                   value="<?= htmlspecialchars($formaValue) ?>"
+                                   <?= in_array($formaValue, $formasPagoActuales, true) ? 'checked' : '' ?>
+                                   class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 js-forma">
+                            <span><?= htmlspecialchars($formaLabel) ?></span>
+                        </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Cantidad comprada <span class="text-red-500">*</span></label>

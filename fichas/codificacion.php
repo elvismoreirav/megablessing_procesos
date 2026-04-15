@@ -44,9 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!preg_match('/^[A-Z0-9\-]+$/', $codificacion)) {
         $error = 'La codificacion solo permite letras, numeros y guion (-)';
     } else {
-        $existe = $db->fetchOne("SELECT id FROM fichas_registro WHERE codificacion = ? AND id <> ?", [$codificacion, $id]);
+        $existe = $db->fetchOne(
+            "SELECT id FROM fichas_registro WHERE codificacion = ? AND id <> ? AND lote_id <> ?",
+            [$codificacion, $id, (int)($ficha['lote_id'] ?? 0)]
+        );
         if ($existe) {
-            $error = 'Ya existe otra ficha con esta codificacion';
+            $error = 'Ya existe una ficha de otro lote con esta codificacion';
         }
     }
 
@@ -130,7 +133,7 @@ ob_start();
     <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
         <div class="flex items-center gap-3">
             <i class="fas fa-info-circle text-blue-600"></i>
-            <span class="text-blue-800">El código base corresponde al lote creado para la ruta. La codificación final identifica esta ficha y puede conservar la base agregando un sufijo.</span>
+            <span class="text-blue-800">El código base corresponde al lote creado para la ruta. Varias fichas del mismo lote pueden compartir la codificación o conservar la base agregando un sufijo.</span>
         </div>
     </div>
     <?php endif; ?>

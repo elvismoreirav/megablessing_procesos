@@ -57,6 +57,22 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- fuente_pago
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE fichas_registro ADD COLUMN fuente_pago ENUM(''MEGABLESSING'',''BELLA'') NULL AFTER factura_compra',
+        'SELECT ''fuente_pago ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'fichas_registro'
+      AND COLUMN_NAME = 'fuente_pago'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- cantidad_comprada_unidad
 SET @sql = (
     SELECT IF(
@@ -97,7 +113,7 @@ MODIFY COLUMN calidad_registro ENUM('SECO','SEMISECO','ESCURRIDO','BABA') NULL;
 SET @sql = (
     SELECT IF(
         COUNT(*) = 0,
-        'ALTER TABLE fichas_registro ADD COLUMN forma_pago ENUM(''EFECTIVO'',''TRANSFERENCIA'',''CHEQUE'',''OTROS'') NULL AFTER cantidad_comprada',
+        'ALTER TABLE fichas_registro ADD COLUMN forma_pago VARCHAR(120) NULL AFTER cantidad_comprada',
         'SELECT ''forma_pago ya existe'' AS info'
     )
     FROM INFORMATION_SCHEMA.COLUMNS
@@ -108,3 +124,6 @@ SET @sql = (
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+ALTER TABLE fichas_registro
+MODIFY COLUMN forma_pago VARCHAR(120) NULL;

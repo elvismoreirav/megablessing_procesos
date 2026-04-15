@@ -182,9 +182,9 @@ $diasTranscurridos = $fechaInicio->diff($hoy)->days + 1;
 // Horas de control (cada 2 horas, bloque diurno y nocturno)
 $horasControl = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '00:00', '02:00', '04:00'];
 
-// Preparar datos para Handsontable (7 días de control)
+// Preparar datos para Handsontable (10 días de control)
 $diasControl = [];
-for ($i = 0; $i < 7; $i++) {
+for ($i = 0; $i < 10; $i++) {
     $fechaDia = (clone $fechaInicio)->modify('+' . $i . ' days');
     $fechaStr = $fechaDia->format('Y-m-d');
     
