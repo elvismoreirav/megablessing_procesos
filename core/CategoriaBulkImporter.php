@@ -9,7 +9,7 @@ class CategoriaBulkImporter
 
     private PDO $db;
     private array $providerColumns = [];
-    private array $allowedTypes = ['MERCADO', 'BODEGA', 'RUTA', 'PRODUCTOR'];
+    private array $allowedTypes = ['COMERCIAL', 'RUTA', 'PRODUCTOR'];
     private array $currentCategories = [];
 
     public function __construct(?PDO $db = null)
@@ -61,7 +61,7 @@ class CategoriaBulkImporter
                     ['campo', 'obligatorio', 'descripcion', 'ejemplo'],
                     ['codigo', 'SI', 'Codigo unico de la categoria o ruta.', 'CA'],
                     ['nombre', 'SI', 'Nombre visible de la categoria.', 'Centro de Acopio'],
-                    ['tipos_permitidos', 'SI', 'Lista separada por coma o punto y coma con valores MERCADO, BODEGA, RUTA o PRODUCTOR.', 'BODEGA;RUTA'],
+                    ['tipos_permitidos', 'SI', 'Lista separada por coma o punto y coma con valores COMERCIAL, RUTA o PRODUCTOR.', 'COMERCIAL;RUTA'],
                     ['activo', 'NO', 'SI o NO. Si se omite se crea en SI.', 'SI'],
                     ['nota', 'NO', 'La hoja importada es solo "' . self::SHEET_NAME . '".', ''],
                 ],
@@ -276,7 +276,7 @@ class CategoriaBulkImporter
         $value = ConfigBulkImportUtils::normalizeKey($value);
 
         return match ($value) {
-            'CA', 'CENTRO_DE_ACOPIO', 'CENTRO ACOPIO', 'CENTRO DE ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'BODEGA',
+            'MERCADO', 'COMERCIALES', 'COMERCIAL', 'BODEGA', 'CA', 'CENTRO_DE_ACOPIO', 'CENTRO ACOPIO', 'CENTRO DE ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'COMERCIAL',
             default => $value,
         };
     }

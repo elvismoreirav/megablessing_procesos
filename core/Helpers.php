@@ -12,7 +12,7 @@ class Helpers {
      * Prioridad:
      * 1) Código de la categoría semilla (M, CA, ES, FM, VP)
      * 2) Mapeo por categoría textual
-     * 3) Mapeo por tipo (MERCADO, CENTRO DE ACOPIO, RUTA, PRODUCTOR)
+     * 3) Mapeo por tipo (COMERCIAL, RUTA, PRODUCTOR)
      */
     public static function resolveProveedorLotePrefix($proveedorRef) {
         $db = Database::getInstance();
@@ -36,6 +36,8 @@ class Helpers {
 
         $codigosCategoriaValidos = ['M', 'CA', 'ES', 'FM', 'VP'];
         $categoriaMap = [
+            'COMERCIAL' => 'M',
+            'COMERCIALES' => 'M',
             'MERCADO' => 'M',
             'BODEGA' => 'CA',
             'CENTRO DE ACOPIO' => 'CA',
@@ -44,6 +46,8 @@ class Helpers {
             'VIA PEDERNALES' => 'VP',
         ];
         $tipoMap = [
+            'COMERCIAL' => 'M',
+            'COMERCIALES' => 'M',
             'MERCADO' => 'M',
             'BODEGA' => 'CA',
             'CENTRO DE ACOPIO' => 'CA',
@@ -225,6 +229,82 @@ class Helpers {
 
         // Fallback si se agotaron letras simples.
         return $baseCode . '-Z';
+    }
+
+    /**
+     * Normaliza la codificación de ficha de registro.
+     * Formato objetivo: FREG-001
+     */
+    public static function normalizeFichaRegistroCode($code): string {
+        $code = strtoupper(trim((string)$code));
+        if ($code === '') {
+            return '';
+        }
+
+        $code = str_replace(['_', ' '], ['', ''], $code);
+        $code = preg_replace('/[^A-Z0-9\-]/', '', $code);
+
+        if (preg_match('/^FREG-?([0-9]+)$/', $code, $matches)) {
+            $numero = (int)$matches[1];
+            $width = max(3, strlen((string)$numero));
+            return 'FREG-' . str_pad((string)$numero, $width, '0', STR_PAD_LEFT);
+        }
+
+        return preg_replace('/-+/', '-', $code);
+    }
+
+    /**
+     * Valida el formato de la codificación de ficha de registro.
+     */
+    public static function isValidFichaRegistroCode($code): bool {
+        return preg_match('/^FREG-\d{3,}$/', trim((string)$code)) === 1;
+    }
+
+    /**
+     * Genera el siguiente correlativo de ficha de registro.
+     */
+    public static function generateFichaRegistroCode(): string {
+        $db = Database::getInstance();
+        $row = $db->fetchOne(
+            "SELECT codificacion
+             FROM fichas_registro
+             WHERE codificacion REGEXP '^FREG-[0-9]+$'
+             ORDER BY CAST(SUBSTRING(codificacion, 6) AS UNSIGNED) DESC, id DESC
+             LIMIT 1"
+        );
+
+        $nextNumber = 1;
+        if (!empty($row['codificacion'])) {
+            $codigoActual = self::normalizeFichaRegistroCode((string)$row['codificacion']);
+            if (preg_match('/^FREG-(\d+)$/', $codigoActual, $matches)) {
+                $nextNumber = (int)$matches[1] + 1;
+            }
+        }
+
+        $width = max(3, strlen((string)$nextNumber));
+        return 'FREG-' . str_pad((string)$nextNumber, $width, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Genera el siguiente correlativo de cliente.
+     * Formato objetivo: CLI0001
+     */
+    public static function generateClienteCode(): string {
+        $db = Database::getInstance();
+        $row = $db->fetchOne(
+            "SELECT codigo
+             FROM clientes
+             WHERE codigo REGEXP '^CLI[0-9]+$'
+             ORDER BY CAST(SUBSTRING(codigo, 4) AS UNSIGNED) DESC, id DESC
+             LIMIT 1"
+        );
+
+        $nextNumber = 1;
+        if (!empty($row['codigo']) && preg_match('/^CLI(\d+)$/', (string)$row['codigo'], $matches)) {
+            $nextNumber = (int)$matches[1] + 1;
+        }
+
+        return 'CLI' . str_pad((string)$nextNumber, 4, '0', STR_PAD_LEFT);
     }
 
     

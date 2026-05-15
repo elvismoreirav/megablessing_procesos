@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS `proveedores` (
     `codigo_identificacion` VARCHAR(20),
     `nombre` VARCHAR(100) NOT NULL,
     `cedula_ruc` VARCHAR(20),
-    `tipo` ENUM('MERCADO','BODEGA','RUTA','PRODUCTOR') NOT NULL,
+    `tipo` ENUM('COMERCIAL','RUTA','PRODUCTOR') NOT NULL,
     `categoria` VARCHAR(100),
     `tipos_permitidos` VARCHAR(120),
     `es_categoria` TINYINT(1) NOT NULL DEFAULT 0,
@@ -80,6 +80,59 @@ CREATE TABLE IF NOT EXISTS `proveedores` (
     `contacto` VARCHAR(100),
     `activo` TINYINT(1) DEFAULT 1,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Clientes comerciales
+CREATE TABLE IF NOT EXISTS `clientes` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `codigo` VARCHAR(20) NOT NULL UNIQUE,
+    `nombre` VARCHAR(150) NOT NULL,
+    `ruc_taxes` VARCHAR(30) NULL,
+    `representante_nombre` VARCHAR(120) NULL,
+    `telefono` VARCHAR(50) NULL,
+    `email` VARCHAR(120) NULL,
+    `pagina_web` VARCHAR(255) NULL,
+    `pais` VARCHAR(100) NULL,
+    `direccion` TEXT NULL,
+    `activo` TINYINT(1) NOT NULL DEFAULT 1,
+    `usuario_id` INT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_clientes_activo` (`activo`),
+    INDEX `idx_clientes_pais` (`pais`),
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Muestras comerciales
+CREATE TABLE IF NOT EXISTS `muestras_comerciales` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `tipo_muestra` ENUM('RECIBIDA','ENVIADA') NOT NULL,
+    `proveedor_id` INT NULL,
+    `proveedor_nombre` VARCHAR(150) NULL,
+    `cliente_id` INT NULL,
+    `cliente_nombre` VARCHAR(150) NULL,
+    `producto` ENUM('CACAO_GRANO','MANTECA_CACAO','POLVO_CACAO','NIBS_CACAO') NOT NULL,
+    `volumen` DECIMAL(10,2) NOT NULL,
+    `unidad_volumen` ENUM('KG','QQ') NOT NULL DEFAULT 'KG',
+    `variedad` ENUM('FINO_AROMA','CCN51_GRADO_1','CCN51_GRADO_2','CCN51_GRADO_3') NOT NULL,
+    `origen` VARCHAR(150) NOT NULL,
+    `destino` VARCHAR(150) NULL,
+    `fecha_recepcion` DATE NULL,
+    `fecha_envio` DATE NULL,
+    `fecha_arribo` DATE NULL,
+    `enlace_resultados_laboratorio` VARCHAR(500) NULL,
+    `observaciones` TEXT NULL,
+    `usuario_id` INT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_muestras_tipo` (`tipo_muestra`),
+    INDEX `idx_muestras_fecha_recepcion` (`fecha_recepcion`),
+    INDEX `idx_muestras_fecha_envio` (`fecha_envio`),
+    INDEX `idx_muestras_proveedor` (`proveedor_id`),
+    INDEX `idx_muestras_cliente` (`cliente_id`),
+    FOREIGN KEY (`proveedor_id`) REFERENCES `proveedores`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`cliente_id`) REFERENCES `clientes`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Variedades de Cacao
@@ -484,6 +537,7 @@ CREATE TABLE IF NOT EXISTS `registros_calidad_salida` (
     `certificaciones_texto` VARCHAR(255),
     `otra_certificacion` VARCHAR(120),
     `observaciones` TEXT,
+    `enlace_resultados_drive` VARCHAR(500),
     `usuario_id` INT,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -542,8 +596,8 @@ INSERT INTO `usuarios` (`nombre`, `email`, `password`, `rol_id`) VALUES
 
 -- Categorías base de proveedores
 INSERT INTO `proveedores` (`codigo`, `codigo_identificacion`, `nombre`, `tipo`, `categoria`, `es_categoria`) VALUES
-('M', NULL, 'Mercado', 'MERCADO', 'MERCADO', 1),
-('CA', NULL, 'Centro de Acopio', 'BODEGA', 'CENTRO DE ACOPIO', 1),
+('M', NULL, 'Comerciales', 'COMERCIAL', 'COMERCIALES', 1),
+('CA', NULL, 'Centro de Acopio', 'COMERCIAL', 'CENTRO DE ACOPIO', 1),
 ('ES', NULL, 'Esmeraldas', 'RUTA', 'ESMERALDAS', 1),
 ('FM', NULL, 'Flor de Manabí', 'RUTA', 'FLOR DE MANABI', 1),
 ('VP', NULL, 'Vía Pedernales', 'RUTA', 'VIA PEDERNALES', 1);

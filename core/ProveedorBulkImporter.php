@@ -13,7 +13,7 @@ class ProveedorBulkImporter
     private array $categoriesByCode = [];
     private array $categoriesByName = [];
     private array $categoriesByInternal = [];
-    private array $allowedTypes = ['MERCADO', 'BODEGA', 'RUTA', 'PRODUCTOR'];
+    private array $allowedTypes = ['COMERCIAL', 'RUTA', 'PRODUCTOR'];
     private array $certificationCodes = [
         'ORGANICA' => 'Organica',
         'FAIR_TRADE' => 'Fair Trade',
@@ -118,7 +118,7 @@ class ProveedorBulkImporter
                 'rows' => [
                     ['campo', 'obligatorio', 'descripcion', 'ejemplo'],
                     ['nombre', 'SI', 'Nombre o razon social del proveedor.', 'Finca Los Robles'],
-                    ['tipo', 'SI', 'Use MERCADO, BODEGA, RUTA o PRODUCTOR.', 'PRODUCTOR'],
+                    ['tipo', 'SI', 'Use COMERCIAL, RUTA o PRODUCTOR.', 'PRODUCTOR'],
                     ['categoria_codigo', 'SI', 'Codigo de la categoria existente en el catalogo.', 'CA'],
                     ['cedula_ruc', 'NO', 'Cedula o RUC de 10 o 13 digitos. Si existe se usa para detectar repetidos.', '0999999999001'],
                     ['email', 'NO', 'Correo del proveedor.', 'proveedor@correo.com'],
@@ -283,13 +283,47 @@ class ProveedorBulkImporter
                 // Continuar en modo compatibilidad.
             }
         }
+
+        try {
+            $this->db->exec("ALTER TABLE proveedores MODIFY COLUMN tipo ENUM('MERCADO','BODEGA','COMERCIAL','RUTA','PRODUCTOR') NOT NULL");
+        } catch (Throwable $e) {
+            // Continuar si el enum ya está actualizado o el motor no permite el cambio temporal.
+        }
+
+        try {
+            $this->db->exec(
+                "UPDATE proveedores
+                 SET categoria = 'COMERCIALES'
+                 WHERE UPPER(COALESCE(tipo, '')) = 'MERCADO'
+                    OR UPPER(COALESCE(categoria, '')) = 'MERCADO'"
+            );
+            $this->db->exec(
+                "UPDATE proveedores
+                 SET categoria = 'CENTRO DE ACOPIO'
+                 WHERE UPPER(COALESCE(tipo, '')) IN ('BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)')
+                    OR UPPER(COALESCE(categoria, '')) = 'BODEGA'"
+            );
+            $this->db->exec(
+                "UPDATE proveedores
+                 SET tipo = 'COMERCIAL'
+                 WHERE UPPER(COALESCE(tipo, '')) IN ('MERCADO', 'COMERCIAL', 'COMERCIALES', 'BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)')"
+            );
+        } catch (Throwable $e) {
+            // Continuar aunque la migración no se pueda aplicar aquí.
+        }
+
+        try {
+            $this->db->exec("ALTER TABLE proveedores MODIFY COLUMN tipo ENUM('COMERCIAL','RUTA','PRODUCTOR') NOT NULL");
+        } catch (Throwable $e) {
+            // Continuar si aún hay datos legados o el motor no permite acotar el enum ahora.
+        }
     }
 
     private function loadCategories(): void
     {
         $seedRows = [
-            ['codigo' => 'M', 'nombre' => 'Mercado', 'tipo' => 'MERCADO', 'categoria' => 'MERCADO', 'tipos_permitidos' => 'MERCADO', 'activo' => 1],
-            ['codigo' => 'CA', 'nombre' => 'Centro de Acopio', 'tipo' => 'BODEGA', 'categoria' => 'CENTRO DE ACOPIO', 'tipos_permitidos' => 'BODEGA', 'activo' => 1],
+            ['codigo' => 'M', 'nombre' => 'Comerciales', 'tipo' => 'COMERCIAL', 'categoria' => 'COMERCIALES', 'tipos_permitidos' => 'COMERCIAL', 'activo' => 1],
+            ['codigo' => 'CA', 'nombre' => 'Centro de Acopio', 'tipo' => 'COMERCIAL', 'categoria' => 'CENTRO DE ACOPIO', 'tipos_permitidos' => 'COMERCIAL', 'activo' => 1],
             ['codigo' => 'ES', 'nombre' => 'Esmeraldas', 'tipo' => 'RUTA', 'categoria' => 'ESMERALDAS', 'tipos_permitidos' => 'RUTA', 'activo' => 1],
             ['codigo' => 'FM', 'nombre' => 'Flor de Manabi', 'tipo' => 'RUTA', 'categoria' => 'FLOR DE MANABI', 'tipos_permitidos' => 'RUTA', 'activo' => 1],
             ['codigo' => 'VP', 'nombre' => 'Via Pedernales', 'tipo' => 'RUTA', 'categoria' => 'VIA PEDERNALES', 'tipos_permitidos' => 'RUTA', 'activo' => 1],
@@ -875,7 +909,7 @@ class ProveedorBulkImporter
         $value = $this->normalizeKey($value);
 
         return match ($value) {
-            'CA', 'CENTRO_DE_ACOPIO', 'CENTRO ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'BODEGA',
+            'MERCADO', 'COMERCIALES', 'COMERCIAL', 'BODEGA', 'CA', 'CENTRO_DE_ACOPIO', 'CENTRO ACOPIO', 'CENTRO DE ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'COMERCIAL',
             default => $value,
         };
     }
@@ -946,9 +980,8 @@ class ProveedorBulkImporter
     private function typeLabel(string $type): string
     {
         return match ($type) {
-            'MERCADO' => 'Mercado',
-            'BODEGA' => 'Centro de Acopio',
-            'RUTA' => 'Ruta',
+            'COMERCIAL' => 'Comerciales',
+            'RUTA' => 'Rutas',
             'PRODUCTOR' => 'Productor',
             default => $type,
         };

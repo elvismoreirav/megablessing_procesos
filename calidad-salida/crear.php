@@ -10,6 +10,9 @@ requireAuth();
 $db = Database::getInstance();
 $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
 $errors = [];
+$colsCalidadSalida = $tablaExiste ? array_column($db->fetchAll("SHOW COLUMNS FROM registros_calidad_salida"), 'Field') : [];
+$hasCalidadCol = static fn(string $name): bool => in_array($name, $colsCalidadSalida, true);
+$hasEnlaceResultadosDrive = $hasCalidadCol('enlace_resultados_drive');
 
 $normalizar = static function (string $valor): string {
     $valor = strtoupper(trim($valor));
@@ -118,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tablaExiste) {
     $certificacionesInput = $_POST['certificaciones'] ?? [];
     $otraCertificacion = trim((string)($_POST['otra_certificacion'] ?? ''));
     $observaciones = trim((string)($_POST['observaciones'] ?? ''));
+    $enlaceResultadosDrive = trim((string)($_POST['enlace_resultados_drive'] ?? ''));
 
     if (!is_array($certificacionesInput)) {
         $certificacionesInput = [];
@@ -135,6 +139,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tablaExiste) {
 
     if ($fichasConforman === '') {
         $errors[] = 'Debe indicar las fichas de registro que conforman el lote.';
+    }
+
+    if ($enlaceResultadosDrive !== '' && filter_var($enlaceResultadosDrive, FILTER_VALIDATE_URL) === false) {
+        $errors[] = 'El enlace de análisis y resultados debe ser una URL válida.';
+    }
+
+    if ($enlaceResultadosDrive !== '' && !$hasEnlaceResultadosDrive) {
+        $errors[] = 'Falta ejecutar el patch de base de datos para habilitar el enlace de análisis y resultados.';
     }
 
     $certificacionesSeleccionadas = array_values(array_intersect(array_keys($opcionesCertificaciones), $certificacionesInput));
@@ -199,7 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tablaExiste) {
                 $certificacionesTexto[] = $otraCertificacion;
             }
 
-            $registroId = (int)$db->insert('registros_calidad_salida', [
+            $insertData = [
                 'lote_id' => $loteId,
                 'fecha_registro' => $fechaRegistro,
                 'fichas_conforman_lote' => $fichasConforman,
@@ -214,7 +226,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tablaExiste) {
                 'otra_certificacion' => $otraCertificacion !== '' ? $otraCertificacion : null,
                 'observaciones' => $observaciones !== '' ? $observaciones : null,
                 'usuario_id' => Auth::id(),
-            ]);
+            ];
+
+            if ($hasEnlaceResultadosDrive) {
+                $insertData['enlace_resultados_drive'] = $enlaceResultadosDrive !== '' ? $enlaceResultadosDrive : null;
+            }
+
+            $registroId = (int)$db->insert('registros_calidad_salida', $insertData);
 
             $db->update('lotes', [
                 'estado_proceso' => 'EMPAQUETADO',
@@ -295,6 +313,16 @@ ob_start();
         <div class="card-body">
             <p class="text-sm font-medium text-emerald-800">
                 Prueba de corte completada. Continúe con esta ficha para habilitar el lote en Empaquetado.
+            </p>
+        </div>
+    </div>
+<?php endif; ?>
+
+<?php if ($tablaExiste && !$hasEnlaceResultadosDrive): ?>
+    <div class="card mb-6 border border-amber-200 bg-amber-50/70">
+        <div class="card-body">
+            <p class="text-sm text-amber-800">
+                Para guardar el enlace de análisis y resultados, ejecute el patch <code>database/patch_calidad_salida_enlace_resultados.sql</code>.
             </p>
         </div>
     </div>
@@ -434,6 +462,14 @@ ob_start();
                 <label class="form-label">Observaciones</label>
                 <textarea name="observaciones" class="form-control" rows="3"
                           placeholder="Notas adicionales de calidad de salida"><?= htmlspecialchars($_POST['observaciones'] ?? '') ?></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Análisis y resultados</label>
+                <input type="url" name="enlace_resultados_drive" class="form-control"
+                       placeholder="https://drive.google.com/..."
+                       value="<?= htmlspecialchars($_POST['enlace_resultados_drive'] ?? '') ?>">
+                <p class="text-xs text-warmgray mt-1">Ingrese el enlace de Drive donde se almacenan los análisis y resultados del lote.</p>
             </div>
 
             <div class="p-4 rounded-lg border border-blue-200 bg-blue-50">

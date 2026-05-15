@@ -70,11 +70,9 @@ $buildPublicUrl = static function (string $path): string {
 };
 
 $codigoEtiqueta = trim((string)($ficha['codificacion'] ?? ''));
+$loteCodigoEtiqueta = trim((string)($ficha['lote_codigo'] ?? ''));
 if ($codigoEtiqueta === '') {
-    $codigoEtiqueta = trim((string)($ficha['lote_codigo'] ?? ''));
-}
-if ($codigoEtiqueta === '') {
-    $codigoEtiqueta = 'SIN-CODIGO';
+    $codigoEtiqueta = 'SIN-CODIGO-FICHA';
 }
 
 $logoPath = trim((string)($empresa['logo'] ?? ''));
@@ -108,11 +106,12 @@ ob_start();
 
         <div class="border border-black">
             <div class="border-b border-black px-6 py-5 text-center">
-                <div class="text-2xl font-bold tracking-wide">CODIGO DE LOTE: <?= htmlspecialchars($codigoEtiqueta) ?></div>
+                <div class="text-2xl font-bold tracking-wide">FICHA DE REGISTRO: <?= htmlspecialchars($codigoEtiqueta) ?></div>
+                <div class="text-sm font-medium tracking-wide mt-2">LOTE: <?= htmlspecialchars($loteCodigoEtiqueta !== '' ? $loteCodigoEtiqueta : 'SIN LOTE') ?></div>
             </div>
             <div class="border-b border-black px-6 py-6 flex items-center justify-center">
                     <img src="<?= htmlspecialchars($qrImage) ?>"
-                         alt="QR lote <?= htmlspecialchars($codigoEtiqueta) ?>"
+                         alt="QR ficha <?= htmlspecialchars($codigoEtiqueta) ?>"
                          class="w-56 h-56 object-contain"
                          loading="eager"
                          decoding="sync">

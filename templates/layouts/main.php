@@ -18,6 +18,8 @@ $canFermentacion = Auth::hasModuleAccess('fermentacion');
 $canSecado = Auth::hasModuleAccess('secado');
 $canPruebaCorte = Auth::hasModuleAccess('prueba_corte');
 $canCalidadSalida = Auth::hasModuleAccess('calidad_salida');
+$canClientes = Auth::hasModuleAccess('clientes');
+$canMuestras = Auth::hasModuleAccess('muestras');
 $canReportes = Auth::hasModuleAccess('reportes');
 $canIndicadores = Auth::hasModuleAccess('indicadores');
 $canProveedores = Auth::hasModuleAccess('proveedores');
@@ -30,6 +32,7 @@ $canUsuarios = Auth::canManageUsers();
 $canConfigBulkImport = ConfigBulkImportRegistry::canAccessAnyModule();
 $showRecepcionSection = $canRecepcion || $canPagos || $canCodificacion || $canEtiqueta;
 $showPostcosechaSection = $canLotes || $canFermentacion || $canSecado || $canPruebaCorte || $canCalidadSalida;
+$showComercialSection = $canClientes || $canMuestras;
 $showReportesSection = $canReportes || $canIndicadores;
 $showConfiguracionSection = $canConfigurationPanel || $canProveedores || $canAdminConfiguration || $canConfigVariedades || $canConfigCajones || $canConfigSecadoras || $canConfigBulkImport || $canUsuarios;
 $isRecepcionBulkPage = $currentDir === 'fichas' && in_array($currentPage, ['carga-masiva', 'formato-carga-masiva'], true);
@@ -184,7 +187,7 @@ $requiresSheetJs = isset($requiresSheetJs)
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
                 </svg>
-                Codificación de Lote
+                Codificación de Ficha
             </a>
             <?php endif; ?>
             <?php if ($canEtiqueta): ?>
@@ -243,6 +246,26 @@ $requiresSheetJs = isset($requiresSheetJs)
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m4 2a8 8 0 11-16 0 8 8 0 0116 0z"/>
                 </svg>
                 Calidad de salida
+            </a>
+            <?php endif; ?>
+            <?php endif; ?>
+
+            <?php if ($showComercialSection): ?>
+            <div class="sidebar-section-title">Procesos Comerciales</div>
+            <?php if ($canClientes): ?>
+            <a href="<?= APP_URL ?>/comercial/clientes.php" class="sidebar-link <?= $currentDir === 'comercial' && $currentPage === 'clientes' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Clientes
+            </a>
+            <?php endif; ?>
+            <?php if ($canMuestras): ?>
+            <a href="<?= APP_URL ?>/comercial/muestras.php?vista=recibidas" class="sidebar-link <?= $currentDir === 'comercial' && $currentPage === 'muestras' ? 'active' : '' ?>">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h10M7 12h10m-7 5h7M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"/>
+                </svg>
+                Muestras
             </a>
             <?php endif; ?>
             <?php endif; ?>

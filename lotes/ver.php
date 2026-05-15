@@ -378,7 +378,7 @@ ob_start();
                             </a>
                             <a href="<?= $rutaCodificacion ?>"
                                class="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 <?= $tieneFichaRegistro ? 'hover:bg-gray-50' : 'opacity-60 cursor-not-allowed pointer-events-none' ?>">
-                                <span class="font-medium text-gray-800">Codificación de Lote</span>
+                                <span class="font-medium text-gray-800">Codificación de Ficha</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneCodificacion ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneCodificacion ? 'Codificado' : 'Pendiente' ?>
                                 </span>
@@ -488,7 +488,7 @@ ob_start();
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.53 0 1.04.21 1.41.59l6 6a2 2 0 010 2.82l-4.18 4.18a2 2 0 01-2.82 0l-6-6A2 2 0 016 9V4a1 1 0 011-1z"/>
                                 </svg>
-                                Codificación de Lote
+                                Codificación de Ficha
                             </a>
                             <a href="<?= $rutaEtiqueta ?>" class="btn w-full justify-start <?= $tieneFichaRegistro ? 'btn-outline' : 'btn-outline opacity-50 cursor-not-allowed pointer-events-none' ?>">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

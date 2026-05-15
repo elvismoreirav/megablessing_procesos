@@ -809,7 +809,7 @@ ob_start();
                     </div>
                     <?php if ($ficha['codificacion']): ?>
                     <div>
-                        <dt class="text-sm text-gray-500">Codificación</dt>
+                        <dt class="text-sm text-gray-500">Código de ficha</dt>
                         <dd class="font-mono font-medium text-gray-900"><?= htmlspecialchars($ficha['codificacion']) ?></dd>
                     </div>
                     <?php endif; ?>
@@ -911,7 +911,7 @@ ob_start();
                                 </span>
                             </a>
                             <a href="<?= $rutaCodificacion ?>" class="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                                <span class="text-gray-700">c. Codificación de Lote</span>
+                                <span class="text-gray-700">c. Codificación de Ficha</span>
                                 <span class="text-xs px-2 py-1 rounded-full <?= $tieneCodificacion ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
                                     <?= $tieneCodificacion ? 'Codificado' : 'Pendiente' ?>
                                 </span>

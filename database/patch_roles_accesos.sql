@@ -13,6 +13,7 @@ SELECT
     'Acceso total al sistema.',
     '{"all": true}',
     1
+FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'administrador'
 );
@@ -32,6 +33,7 @@ SELECT
     'Gestiona ficha de recepción, codificación e impresión de etiqueta.',
     '{"recepcion": true, "codificacion": true, "etiqueta": true}',
     1
+FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) IN ('recepcion', 'recepción')
 );
@@ -49,8 +51,9 @@ INSERT INTO roles (nombre, descripcion, permisos, activo)
 SELECT
     'Operaciones',
     'Gestiona procesos de centro de acopio y planta.',
-    '{"recepcion": true, "codificacion": true, "etiqueta": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true}',
+    '{"recepcion": true, "codificacion": true, "etiqueta": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "muestras": true}',
     1
+FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'operaciones'
 );
@@ -59,7 +62,7 @@ UPDATE roles
 SET
     nombre = 'Operaciones',
     descripcion = 'Gestiona procesos de centro de acopio y planta.',
-    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true}',
+    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "muestras": true}',
     activo = 1
 WHERE LOWER(nombre) = 'operaciones';
 
@@ -67,9 +70,10 @@ WHERE LOWER(nombre) = 'operaciones';
 INSERT INTO roles (nombre, descripcion, permisos, activo)
 SELECT
     'Pagos',
-    'Gestiona registro de pagos y acceso a proveedores.',
-    '{"pagos": true, "codificacion": true, "etiqueta": true, "proveedores": true}',
+    'Gestiona registro de pagos y procesos comerciales.',
+    '{"pagos": true, "codificacion": true, "etiqueta": true, "proveedores": true, "clientes": true, "muestras": true}',
     1
+FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'pagos'
 );
@@ -77,8 +81,8 @@ WHERE NOT EXISTS (
 UPDATE roles
 SET
     nombre = 'Pagos',
-    descripcion = 'Gestiona registro de pagos y acceso a proveedores.',
-    permisos = '{"pagos": true, "codificacion": true, "etiqueta": true, "proveedores": true}',
+    descripcion = 'Gestiona registro de pagos y procesos comerciales.',
+    permisos = '{"pagos": true, "codificacion": true, "etiqueta": true, "proveedores": true, "clientes": true, "muestras": true}',
     activo = 1
 WHERE LOWER(nombre) = 'pagos';
 
@@ -87,8 +91,9 @@ INSERT INTO roles (nombre, descripcion, permisos, activo)
 SELECT
     'Supervisor Planta',
     'Supervisa los procesos operativos de planta.',
-    '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}',
+    '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "muestras": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}',
     1
+FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'supervisor planta'
 );
@@ -97,7 +102,7 @@ UPDATE roles
 SET
     nombre = 'Supervisor Planta',
     descripcion = 'Supervisa los procesos operativos de planta.',
-    permisos = '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}',
+    permisos = '{"lotes": true, "fermentacion": true, "secado": true, "prueba_corte": true, "calidad_salida": true, "muestras": true, "configuracion_panel": true, "configuracion_variedades": true, "configuracion_cajones": true, "configuracion_secadoras": true}',
     activo = 1
 WHERE LOWER(nombre) = 'supervisor planta';
 
@@ -106,8 +111,9 @@ INSERT INTO roles (nombre, descripcion, permisos, activo)
 SELECT
     'Supervisor Centro de Acopio',
     'Supervisa recepción y abastecimiento del centro de acopio.',
-    '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "configuracion_panel": true, "configuracion_variedades": true}',
+    '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "clientes": true, "muestras": true, "configuracion_panel": true, "configuracion_variedades": true}',
     1
+FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM roles WHERE LOWER(nombre) = 'supervisor centro de acopio'
 );
@@ -116,7 +122,7 @@ UPDATE roles
 SET
     nombre = 'Supervisor Centro de Acopio',
     descripcion = 'Supervisa recepción y abastecimiento del centro de acopio.',
-    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "configuracion_panel": true, "configuracion_variedades": true}',
+    permisos = '{"recepcion": true, "codificacion": true, "etiqueta": true, "proveedores": true, "clientes": true, "muestras": true, "configuracion_panel": true, "configuracion_variedades": true}',
     activo = 1
 WHERE LOWER(nombre) = 'supervisor centro de acopio';
 

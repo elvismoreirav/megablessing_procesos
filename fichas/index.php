@@ -36,8 +36,8 @@ $vistaConfig = [
         'descripcion' => 'Registro y consulta de pagos relacionados a cada ficha de recepción.'
     ],
     'codificacion' => [
-        'titulo' => 'Codificación de Lote',
-        'descripcion' => 'Fichas pendientes por codificación para trazabilidad.'
+        'titulo' => 'Codificación de Ficha',
+        'descripcion' => 'Asigne a cada ficha un correlativo FREG independiente del código de lote.'
     ],
     'etiqueta' => [
         'titulo' => 'Imprimir Etiqueta',
@@ -64,7 +64,7 @@ if ($vistaActual === 'pagos') {
     $accionPrincipalLabel = 'Ir a Recepción';
     $accionPrincipalIcon = 'fa-arrow-right';
     $emptyStateTitulo = 'No hay fichas pendientes de codificación';
-    $emptyStateDescripcion = 'Complete la recepción y luego registre la codificación del lote.';
+    $emptyStateDescripcion = 'Complete la recepción y luego registre la codificación FREG de cada ficha.';
     $emptyStateBoton = 'Ir a Recepción';
 } elseif ($vistaActual === 'etiqueta') {
     $accionPrincipalHref = APP_URL . '/fichas/index.php?vista=codificacion';
@@ -270,7 +270,7 @@ ob_start();
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-gray-500 mb-1">Buscar</label>
                 <input type="text" name="buscar" value="<?= htmlspecialchars($filtroBusqueda) ?>"
-                       placeholder="Código, producto..."
+                       placeholder="Código ficha, lote, producto..."
                        class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
             </div>
             
@@ -327,7 +327,7 @@ ob_start();
                         <?php if ($mostrarColumnaLote): ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lote</th>
                         <?php endif; ?>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Codificación</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Código Ficha</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Proveedor/Ruta</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha Entrada</th>
@@ -458,7 +458,7 @@ ob_start();
                                 </a>
                                 <a href="<?= $rutaEdicion ?>" 
                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-md transition-colors"
-                                   title="<?= $vistaActual === 'pagos' ? 'Registrar pago' : ($vistaActual === 'codificacion' ? 'Codificar lote' : ($vistaActual === 'etiqueta' ? 'Imprimir etiqueta' : 'Editar')) ?>">
+                                   title="<?= $vistaActual === 'pagos' ? 'Registrar pago' : ($vistaActual === 'codificacion' ? 'Codificar ficha' : ($vistaActual === 'etiqueta' ? 'Imprimir etiqueta' : 'Editar')) ?>">
                                     <?= $vistaActual === 'codificacion' ? 'Codificar' : ($vistaActual === 'etiqueta' ? 'Imprimir' : 'Editar') ?>
                                 </a>
                                 <?php if ($vistaActual === 'recepcion' && $puedeImprimirTicketCompra): ?>

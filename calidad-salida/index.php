@@ -9,6 +9,9 @@ requireAuth();
 
 $db = Database::getInstance();
 $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+$colsCalidadSalida = $tablaExiste ? array_column($db->fetchAll("SHOW COLUMNS FROM registros_calidad_salida"), 'Field') : [];
+$hasCalidadCol = static fn(string $name): bool => in_array($name, $colsCalidadSalida, true);
+$hasEnlaceResultadosDrive = $hasCalidadCol('enlace_resultados_drive');
 
 // Filtros
 $filtroGrado = $_GET['grado'] ?? '';
@@ -62,6 +65,16 @@ ob_start();
         </div>
     </div>
 <?php else: ?>
+
+<?php if (!$hasEnlaceResultadosDrive): ?>
+    <div class="card mb-6 border border-amber-200 bg-amber-50/70">
+        <div class="card-body">
+            <p class="text-sm text-amber-800">
+                Para registrar el enlace de análisis y resultados en este módulo, ejecute el patch <code>database/patch_calidad_salida_enlace_resultados.sql</code>.
+            </p>
+        </div>
+    </div>
+<?php endif; ?>
 
 <!-- Filtros -->
 <div class="card mb-6">

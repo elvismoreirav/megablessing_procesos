@@ -54,6 +54,7 @@ class Auth {
                     'secado' => true,
                     'prueba_corte' => true,
                     'calidad_salida' => true,
+                    'muestras' => true,
                 ],
             ],
             [
@@ -64,6 +65,8 @@ class Auth {
                     'codificacion' => true,
                     'etiqueta' => true,
                     'proveedores' => true,
+                    'clientes' => true,
+                    'muestras' => true,
                 ],
             ],
             [
@@ -75,6 +78,7 @@ class Auth {
                     'secado' => true,
                     'prueba_corte' => true,
                     'calidad_salida' => true,
+                    'muestras' => true,
                     'configuracion_panel' => true,
                     'configuracion_variedades' => true,
                     'configuracion_cajones' => true,
@@ -89,6 +93,8 @@ class Auth {
                     'codificacion' => true,
                     'etiqueta' => true,
                     'proveedores' => true,
+                    'clientes' => true,
+                    'muestras' => true,
                     'configuracion_panel' => true,
                     'configuracion_variedades' => true,
                 ],
@@ -104,6 +110,8 @@ class Auth {
             'etiqueta',
             'pagos',
             'proveedores',
+            'clientes',
+            'muestras',
             'lotes',
             'fermentacion',
             'secado',
@@ -191,11 +199,12 @@ class Auth {
                 'secado',
                 'prueba_corte',
                 'calidad_salida',
+                'muestras',
             ];
         }
 
         if ($roleKey === 'pagos') {
-            return ['dashboard', 'pagos', 'codificacion', 'etiqueta', 'proveedores'];
+            return ['dashboard', 'pagos', 'codificacion', 'etiqueta', 'proveedores', 'clientes', 'muestras'];
         }
 
         if ($roleKey === 'supervisor planta') {
@@ -206,6 +215,7 @@ class Auth {
                 'secado',
                 'prueba_corte',
                 'calidad_salida',
+                'muestras',
                 'configuracion_panel',
                 'configuracion_variedades',
                 'configuracion_cajones',
@@ -220,6 +230,8 @@ class Auth {
                 'codificacion',
                 'etiqueta',
                 'proveedores',
+                'clientes',
+                'muestras',
                 'configuracion_panel',
                 'configuracion_variedades',
             ];
@@ -376,6 +388,14 @@ class Auth {
 
         if ($matches('/configuracion/proveedores.php')) {
             return ['proveedores'];
+        }
+
+        if ($matches('/comercial/clientes.php')) {
+            return ['clientes'];
+        }
+
+        if ($matches('/comercial/muestras.php')) {
+            return ['muestras'];
         }
 
         if ($matches('/configuracion/variedades.php')) {

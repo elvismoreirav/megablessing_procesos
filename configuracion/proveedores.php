@@ -36,19 +36,18 @@ $normalizarCategoria = static function (string $valor): string {
 $normalizarTipoProveedor = static function (string $valor): string {
     $valor = strtoupper(trim($valor));
     return match ($valor) {
-        'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'BODEGA',
+        'MERCADO', 'COMERCIAL', 'COMERCIALES', 'BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)' => 'COMERCIAL',
         default => $valor,
     };
 };
 
-$tiposProveedor = ['MERCADO', 'BODEGA', 'RUTA', 'PRODUCTOR'];
+$tiposProveedor = ['COMERCIAL', 'RUTA', 'PRODUCTOR'];
 $tipoLabels = [
-    'MERCADO' => 'Mercado',
-    'BODEGA' => 'Centro de Acopio',
-    'RUTA' => 'Ruta',
+    'COMERCIAL' => 'Comerciales',
+    'RUTA' => 'Rutas',
     'PRODUCTOR' => 'Productor',
 ];
-$parseUpperList = static function ($value, array $allowList = []): array {
+$parseUpperList = static function ($value, array $allowList = []) use ($normalizarTipoProveedor): array {
     $items = [];
     if (is_array($value)) {
         $items = $value;
@@ -58,7 +57,7 @@ $parseUpperList = static function ($value, array $allowList = []): array {
 
     $result = [];
     foreach ($items as $item) {
-        $val = strtoupper(trim((string)$item));
+        $val = $normalizarTipoProveedor((string)$item);
         if ($val === '') {
             continue;
         }
@@ -135,8 +134,8 @@ $guardarDocumentoCertificaciones = static function (array $file, ?string $actual
     return $dirRel . '/' . $baseName;
 };
 $categoriasSeed = [
-    ['codigo' => 'M', 'nombre' => 'Mercado', 'tipo' => 'MERCADO', 'categoria' => 'MERCADO'],
-    ['codigo' => 'CA', 'nombre' => 'Centro de Acopio', 'tipo' => 'BODEGA', 'categoria' => 'CENTRO DE ACOPIO'],
+    ['codigo' => 'M', 'nombre' => 'Comerciales', 'tipo' => 'COMERCIAL', 'categoria' => 'COMERCIALES'],
+    ['codigo' => 'CA', 'nombre' => 'Centro de Acopio', 'tipo' => 'COMERCIAL', 'categoria' => 'CENTRO DE ACOPIO'],
     ['codigo' => 'ES', 'nombre' => 'Esmeraldas', 'tipo' => 'RUTA', 'categoria' => 'ESMERALDAS'],
     ['codigo' => 'FM', 'nombre' => 'Flor de Manabí', 'tipo' => 'RUTA', 'categoria' => 'FLOR DE MANABI'],
     ['codigo' => 'VP', 'nombre' => 'Vía Pedernales', 'tipo' => 'RUTA', 'categoria' => 'VIA PEDERNALES'],
@@ -219,29 +218,60 @@ foreach ($schemaStatements as $statement) {
 $colsProveedores = $getTableColumns($db, 'proveedores');
 
 try {
+    $db->exec("ALTER TABLE proveedores MODIFY COLUMN tipo ENUM('MERCADO','BODEGA','COMERCIAL','RUTA','PRODUCTOR') NOT NULL");
+} catch (Throwable $e) {
+    // Compatibilidad: continuar si no se puede ampliar temporalmente el enum.
+}
+
+try {
+    if ($hasProvCol('categoria')) {
+        $db->exec(
+            "UPDATE proveedores
+             SET categoria = 'COMERCIALES'
+             WHERE UPPER(COALESCE(tipo, '')) = 'MERCADO'
+                OR UPPER(COALESCE(categoria, '')) = 'MERCADO'"
+        );
+        $db->exec(
+            "UPDATE proveedores
+             SET categoria = 'CENTRO DE ACOPIO'
+             WHERE UPPER(COALESCE(tipo, '')) IN ('BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)')
+                OR UPPER(COALESCE(categoria, '')) = 'BODEGA'"
+        );
+    }
+
     $db->exec(
         "UPDATE proveedores
-         SET tipo = 'BODEGA'
-         WHERE UPPER(COALESCE(tipo, '')) IN ('CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO')"
+         SET tipo = 'COMERCIAL'
+         WHERE UPPER(COALESCE(tipo, '')) IN ('MERCADO', 'COMERCIAL', 'COMERCIALES', 'BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)')"
     );
-
-    if ($hasProvCol('categoria')) {
-        $db->prepare(
-            "UPDATE proveedores
-             SET categoria = ?
-             WHERE UPPER(COALESCE(categoria, '')) = 'BODEGA'"
-        )->execute(['CENTRO DE ACOPIO']);
-    }
 
     if ($hasProvCol('es_categoria') && $hasProvCol('categoria')) {
         $db->prepare(
             "UPDATE proveedores
+             SET codigo = 'M',
+                 nombre = 'Comerciales',
+                 tipo = 'COMERCIAL',
+                 categoria = 'COMERCIALES',
+                 es_categoria = 1" . ($hasProvCol('tipos_permitidos') ? ",
+                 tipos_permitidos = 'COMERCIAL'" : "") . "
+             WHERE UPPER(COALESCE(codigo, '')) = 'M'
+                OR (
+                    es_categoria = 1
+                    AND (
+                        UPPER(COALESCE(categoria, '')) IN ('MERCADO', 'COMERCIALES')
+                        OR UPPER(COALESCE(nombre, '')) IN ('MERCADO', 'COMERCIALES', 'COMERCIAL')
+                    )
+               )"
+        )->execute();
+
+        $db->prepare(
+            "UPDATE proveedores
              SET codigo = 'CA',
                  nombre = 'Centro de Acopio',
-                 tipo = 'BODEGA',
+                 tipo = 'COMERCIAL',
                  categoria = 'CENTRO DE ACOPIO',
                  es_categoria = 1" . ($hasProvCol('tipos_permitidos') ? ",
-                 tipos_permitidos = 'BODEGA'" : "") . "
+                 tipos_permitidos = 'COMERCIAL'" : "") . "
              WHERE UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
                 OR (
                     es_categoria = 1
@@ -252,8 +282,40 @@ try {
                )"
         )->execute();
     }
+
+    if ($hasProvCol('tipos_permitidos')) {
+        $db->exec(
+            "UPDATE proveedores
+             SET tipos_permitidos = TRIM(BOTH ',' FROM
+                 REPLACE(
+                     REPLACE(
+                         REPLACE(
+                             REPLACE(
+                                 REPLACE(
+                                     CONCAT(',', REPLACE(REPLACE(UPPER(COALESCE(tipos_permitidos, '')), ';', ','), ' ', ''), ','),
+                                     ',MERCADO,', ',COMERCIAL,'
+                                 ),
+                                 ',COMERCIALES,', ',COMERCIAL,'
+                             ),
+                             ',BODEGA,', ',COMERCIAL,'
+                         ),
+                         ',COMERCIAL,COMERCIAL,', ',COMERCIAL,'
+                     ),
+                     ',,', ','
+                 )
+             )
+             WHERE tipos_permitidos IS NOT NULL
+               AND TRIM(tipos_permitidos) <> ''"
+        );
+    }
 } catch (Throwable $e) {
     // Compatibilidad: si la migración no aplica, continuar con la parametrización existente.
+}
+
+try {
+    $db->exec("ALTER TABLE proveedores MODIFY COLUMN tipo ENUM('COMERCIAL','RUTA','PRODUCTOR') NOT NULL");
+} catch (Throwable $e) {
+    // Compatibilidad: continuar si el motor no permite acotar el enum en este momento.
 }
 
 if (in_array('tipos_permitidos', $colsProveedores, true)) {
@@ -681,7 +743,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create':
                 $codigo = '';
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipo = $normalizarTipoProveedor((string)($_POST['tipo'] ?? 'MERCADO'));
+                $tipo = $normalizarTipoProveedor((string)($_POST['tipo'] ?? 'COMERCIAL'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
                 $cedulaRuc = preg_replace('/\s+/', '', trim($_POST['cedula_ruc'] ?? ''));
                 $codigoIdentificacion = '';
@@ -857,7 +919,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = (int)($_POST['id'] ?? 0);
                 $codigo = '';
                 $nombre = trim($_POST['nombre'] ?? '');
-                $tipo = $normalizarTipoProveedor((string)($_POST['tipo'] ?? 'MERCADO'));
+                $tipo = $normalizarTipoProveedor((string)($_POST['tipo'] ?? 'COMERCIAL'));
                 $categoria = $normalizarCategoria((string)($_POST['categoria'] ?? ''));
                 $cedulaRuc = preg_replace('/\s+/', '', trim($_POST['cedula_ruc'] ?? ''));
                 $codigoIdentificacion = strtoupper(trim($_POST['codigo_identificacion'] ?? ''));
@@ -1062,13 +1124,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Registro no encontrado');
                 }
 
-                $stmt = $db->prepare("SELECT COUNT(*) FROM lotes WHERE proveedor_id = ?");
-                $stmt->execute([$id]);
-                if ((int)$stmt->fetchColumn() > 0) {
-                    throw new Exception('No se puede eliminar: tiene lotes asociados. Desactive el registro en su lugar.');
-                }
-
                 if ($hasProvCol('es_categoria') && (int)($registro['es_categoria'] ?? 0) === 1) {
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM lotes WHERE proveedor_id = ?");
+                    $stmt->execute([$id]);
+                    $totalLotesDirectos = (int)$stmt->fetchColumn();
+                    if ($totalLotesDirectos > 0) {
+                        throw new Exception('No se puede eliminar: la categoría o ruta tiene lotes asociados.');
+                    }
+
                     $catKey = $normalizarCategoria((string)($registro['categoria'] ?? $registro['nombre'] ?? ''));
                     if ($catKey !== '') {
                         $stmt = $db->prepare(
@@ -1078,6 +1141,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ((int)$stmt->fetchColumn() > 0) {
                             throw new Exception('No se puede eliminar: la categoría tiene proveedores asociados.');
                         }
+                    }
+                } else {
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM lotes WHERE proveedor_id = ?");
+                    $stmt->execute([$id]);
+                    if ((int)$stmt->fetchColumn() > 0) {
+                        throw new Exception('No se puede eliminar: tiene lotes asociados. Desactive el registro en su lugar.');
                     }
                 }
 
@@ -1095,6 +1164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $stmt = $db->prepare("DELETE FROM proveedores WHERE id = ?");
                 $stmt->execute([$id]);
+                if ($stmt->rowCount() < 1) {
+                    throw new Exception('No se pudo eliminar el registro seleccionado.');
+                }
 
                 $mensajeEliminacion = ($hasProvCol('es_categoria') && (int)($registro['es_categoria'] ?? 0) === 1)
                     ? 'Categoría o ruta eliminada'
@@ -1232,8 +1304,7 @@ if ($hasProvCol('es_categoria')) {
             SUM(es_categoria = 1) as categorias,
             SUM(es_categoria = 0 OR es_categoria IS NULL) as total,
             SUM((es_categoria = 0 OR es_categoria IS NULL) AND activo = 1) as activos,
-            SUM((es_categoria = 0 OR es_categoria IS NULL) AND tipo = 'MERCADO') as mercado,
-            SUM((es_categoria = 0 OR es_categoria IS NULL) AND tipo = 'BODEGA') as bodega,
+            SUM((es_categoria = 0 OR es_categoria IS NULL) AND tipo = 'COMERCIAL') as comercial,
             SUM((es_categoria = 0 OR es_categoria IS NULL) AND tipo = 'RUTA') as ruta,
             SUM((es_categoria = 0 OR es_categoria IS NULL) AND tipo = 'PRODUCTOR') as productor
         FROM proveedores
@@ -1243,8 +1314,7 @@ if ($hasProvCol('es_categoria')) {
         SELECT 
             COUNT(*) as total,
             SUM(activo = 1) as activos,
-            SUM(tipo = 'MERCADO') as mercado,
-            SUM(tipo = 'BODEGA') as bodega,
+            SUM(tipo = 'COMERCIAL') as comercial,
             SUM(tipo = 'RUTA') as ruta,
             SUM(tipo = 'PRODUCTOR') as productor
         FROM proveedores
@@ -1274,7 +1344,7 @@ ob_start();
     </div>
 
     <!-- Estadísticas -->
-    <div class="grid grid-cols-2 md:grid-cols-7 gap-4 mb-8">
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
         <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-primary"><?= number_format($stats['total']) ?></div>
             <div class="text-sm text-warmgray">Proveedores</div>
@@ -1288,16 +1358,12 @@ ob_start();
             <div class="text-sm text-warmgray">Activos</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
-            <div class="text-3xl font-bold text-blue-600"><?= number_format($stats['mercado'] ?? 0) ?></div>
-            <div class="text-sm text-warmgray">Mercado</div>
-        </div>
-        <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
-            <div class="text-3xl font-bold text-amber-600"><?= number_format($stats['bodega'] ?? 0) ?></div>
-            <div class="text-sm text-warmgray">Centro de Acopio</div>
+            <div class="text-3xl font-bold text-blue-600"><?= number_format($stats['comercial'] ?? 0) ?></div>
+            <div class="text-sm text-warmgray">Comerciales</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-purple-600"><?= number_format($stats['ruta'] ?? 0) ?></div>
-            <div class="text-sm text-warmgray">Ruta</div>
+            <div class="text-sm text-warmgray">Rutas</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-olive/20 p-4 text-center">
             <div class="text-3xl font-bold text-teal-600"><?= number_format($stats['productor'] ?? 0) ?></div>
@@ -1422,9 +1488,8 @@ ob_start();
             </div>
             <select name="tipo" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary">
                 <option value="">Todos los tipos</option>
-                <option value="MERCADO" <?= $tipo_filter === 'MERCADO' ? 'selected' : '' ?>>Mercado</option>
-                <option value="BODEGA" <?= $tipo_filter === 'BODEGA' ? 'selected' : '' ?>>Centro de Acopio</option>
-                <option value="RUTA" <?= $tipo_filter === 'RUTA' ? 'selected' : '' ?>>Ruta</option>
+                <option value="COMERCIAL" <?= $tipo_filter === 'COMERCIAL' ? 'selected' : '' ?>>Comerciales</option>
+                <option value="RUTA" <?= $tipo_filter === 'RUTA' ? 'selected' : '' ?>>Rutas</option>
                 <option value="PRODUCTOR" <?= $tipo_filter === 'PRODUCTOR' ? 'selected' : '' ?>>Productor</option>
             </select>
             <?php if ($hasProvCol('categoria')): ?>
@@ -1531,8 +1596,7 @@ ob_start();
                             <?php
                             $tipoProveedorFila = $normalizarTipoProveedor((string)($prov['tipo'] ?? ''));
                             $tipoColors = [
-                                'MERCADO' => 'bg-blue-100 text-blue-800',
-                                'BODEGA' => 'bg-amber-100 text-amber-800',
+                                'COMERCIAL' => 'bg-blue-100 text-blue-800',
                                 'RUTA' => 'bg-purple-100 text-purple-800',
                                 'PRODUCTOR' => 'bg-teal-100 text-teal-800'
                             ];
@@ -1641,9 +1705,8 @@ ob_start();
                         <label class="block text-sm font-medium text-gray-700 mb-1">Tipo *</label>
                         <select id="tipo" name="tipo" required
                                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                            <option value="MERCADO">Mercado</option>
-                            <option value="BODEGA">Centro de Acopio</option>
-                            <option value="RUTA">Ruta</option>
+                            <option value="COMERCIAL">Comerciales</option>
+                            <option value="RUTA">Rutas</option>
                             <option value="PRODUCTOR">Productor</option>
                         </select>
                     </div>
@@ -1831,18 +1894,14 @@ ob_start();
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Tipos permitidos *</label>
-                    <div id="categoriaTiposPermitidos" class="grid grid-cols-2 gap-2 text-sm">
+                    <div id="categoriaTiposPermitidos" class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
                         <label class="inline-flex items-center gap-2">
-                            <input type="checkbox" name="tipos_permitidos[]" value="MERCADO" class="rounded border-gray-300 text-primary focus:ring-primary">
-                            <span>Mercado</span>
-                        </label>
-                        <label class="inline-flex items-center gap-2">
-                            <input type="checkbox" name="tipos_permitidos[]" value="BODEGA" class="rounded border-gray-300 text-primary focus:ring-primary">
-                            <span>Centro de Acopio</span>
+                            <input type="checkbox" name="tipos_permitidos[]" value="COMERCIAL" class="rounded border-gray-300 text-primary focus:ring-primary">
+                            <span>Comerciales</span>
                         </label>
                         <label class="inline-flex items-center gap-2">
                             <input type="checkbox" name="tipos_permitidos[]" value="RUTA" class="rounded border-gray-300 text-primary focus:ring-primary">
-                            <span>Ruta</span>
+                            <span>Rutas</span>
                         </label>
                         <label class="inline-flex items-center gap-2">
                             <input type="checkbox" name="tipos_permitidos[]" value="PRODUCTOR" class="rounded border-gray-300 text-primary focus:ring-primary">
@@ -1895,8 +1954,8 @@ const categoriaLabels = <?= json_encode($categoriaLabels, JSON_UNESCAPED_UNICODE
 
 function normalizeTipoProveedor(tipo = '') {
     const value = String(tipo || '').trim().toUpperCase();
-    if (['CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)'].includes(value)) {
-        return 'BODEGA';
+    if (['MERCADO', 'COMERCIAL', 'COMERCIALES', 'BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO', 'CENTRO DE ACOPIO (CA)'].includes(value)) {
+        return 'COMERCIAL';
     }
     return value;
 }
@@ -2130,7 +2189,7 @@ function openCategoriaModal(mode, id = null) {
         title.textContent = 'Nueva Categoría/Tipo';
         action.value = 'create_category';
         submitBtn.textContent = 'Crear categoría';
-        marcarTiposCategoriaSeleccionados(['RUTA']);
+        marcarTiposCategoriaSeleccionados(['COMERCIAL']);
     } else if (mode === 'edit' && id) {
         title.textContent = 'Editar Categoría/Tipo';
         action.value = 'update_category';
@@ -2265,21 +2324,40 @@ async function deleteRegistro(id, nombre, esCategoria = false) {
         ? await App.confirm(mensaje, titulo)
         : confirm(mensaje);
     if (!confirmed) return;
-    
-    fetch(proveedoresUrl, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `action=delete&id=${id}&_csrf=${encodeURIComponent(csrfToken)}`
-    })
-    .then(r => r.json())
-    .then(data => {
+
+    try {
+        const response = await fetch(proveedoresUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: `action=delete&id=${encodeURIComponent(id)}&_csrf=${encodeURIComponent(csrfToken)}`
+        });
+
+        const rawText = await response.text();
+        let data = null;
+        try {
+            data = JSON.parse(rawText);
+        } catch (error) {
+            throw new Error('La respuesta del servidor no fue válida. Recargue la página e intente de nuevo.');
+        }
+
+        if (!response.ok) {
+            throw new Error(data?.message || 'No se pudo completar la eliminación.');
+        }
+
         if (data.success) {
             showNotification(data.message, 'success');
             setTimeout(() => location.reload(), 500);
-        } else {
-            showNotification(data.message, 'error');
+            return;
         }
-    });
+
+        showNotification(data.message || 'No se pudo eliminar el registro.', 'error');
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo eliminar el registro.';
+        showNotification(message, 'error');
+    }
 }
 
 async function deleteProveedor(id, nombre) {

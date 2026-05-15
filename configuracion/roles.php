@@ -98,11 +98,12 @@ $rolesDefinition = [
             'Secado',
             'Prueba de corte',
             'Calidad de salida',
+            'Muestras comerciales',
         ]
     ],
     'pagos' => [
         'nombre' => 'Pagos',
-        'descripcion' => 'Acceso a pagos, codificación, etiqueta y proveedores.',
+        'descripcion' => 'Acceso a pagos y procesos comerciales.',
         'color' => 'teal',
         'icono' => 'fa-money-bill-wave',
         'permisos' => [
@@ -110,6 +111,8 @@ $rolesDefinition = [
             'Codificación de lote',
             'Imprimir etiqueta',
             'Configuración: Proveedores',
+            'Procesos comerciales: Clientes',
+            'Procesos comerciales: Muestras',
         ]
     ],
     'supervisor_planta' => [
@@ -123,6 +126,7 @@ $rolesDefinition = [
             'Secado',
             'Prueba de corte',
             'Calidad de salida',
+            'Muestras comerciales',
             'Configuración: Variedades, cajones y secadoras',
             'No puede gestionar usuarios ni parámetros globales',
         ]
@@ -137,6 +141,8 @@ $rolesDefinition = [
             'Codificación de lote',
             'Imprimir etiqueta',
             'Configuración: Proveedores y variedades',
+            'Procesos comerciales: Clientes',
+            'Procesos comerciales: Muestras',
             'No puede gestionar usuarios ni parámetros globales',
         ]
     ],
@@ -254,6 +260,8 @@ ob_start();
                         'Codificación de lote' => [true, true, true, true, false, true],
                         'Registro de pagos' => [true, false, false, true, false, false],
                         'Configuración - Proveedores' => [true, false, false, true, false, true],
+                        'Procesos comerciales - Clientes' => [true, false, false, true, false, true],
+                        'Procesos comerciales - Muestras' => [true, false, true, true, true, true],
                         'Configuración - Variedades' => [true, false, false, false, true, true],
                         'Configuración - Cajones/Secadoras' => [true, false, false, false, true, false],
                         'Verificación de lote' => [true, false, true, false, true, false],

@@ -390,7 +390,7 @@ ob_start();
                 <ol class="space-y-2 text-sm text-emerald-900">
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=recepcion" class="hover:underline"> Recepción (Ficha de Recepción)</a></li>
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=pagos" class="hover:underline">Registro de Pagos</a></li>
-                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="hover:underline">Codificación de Lote</a></li>
+                    <li><a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="hover:underline">Codificación de Ficha</a></li>
                     <li><a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="hover:underline">Imprimir Etiqueta</a></li>
                 </ol>
             </div>
@@ -414,7 +414,7 @@ ob_start();
                 Registro de Pagos
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=codificacion" class="btn btn-outline">
-                Codificación de Lote
+                Codificación de Ficha
             </a>
             <a href="<?= APP_URL ?>/fichas/index.php?vista=etiqueta" class="btn btn-outline">
                 Imprimir Etiqueta

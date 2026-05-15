@@ -202,7 +202,7 @@ $calificacionMap = [
             <?php
             $codigoVisual = trim((string)($registro['codificacion'] ?? ''));
             if ($codigoVisual === '') {
-                $codigoVisual = (string)$registro['lote_codigo'];
+                $codigoVisual = 'SIN-CODIGO-FICHA';
             }
             $calificacionRaw = isset($registro['calificacion_humedad']) ? (int)$registro['calificacion_humedad'] : null;
             $calificacionTxt = $calificacionRaw === null ? '—' : ($calificacionMap[$calificacionRaw] ?? ($calificacionRaw . '%'));
@@ -217,7 +217,7 @@ $calificacionMap = [
                 $mermaTxt = number_format($mermaCalc, 2) . '%';
             }
             ?>
-            <h1 class="title">Ficha de Lote: <?= htmlspecialchars($codigoVisual) ?></h1>
+            <h1 class="title">Ficha de Registro: <?= htmlspecialchars($codigoVisual) ?></h1>
             <p class="subtitle">Lote base: <?= htmlspecialchars((string)$registro['lote_codigo']) ?> · Ficha #<?= (int)$registro['ficha_id'] ?></p>
             <span class="badge">Consulta de trazabilidad (sin datos comerciales)</span>
             <div class="warning">Informacion comercial restringida: este visor no muestra precios ni valores de compra.</div>

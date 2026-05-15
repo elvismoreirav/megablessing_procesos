@@ -292,8 +292,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $lote_id = intval($_POST['lote_id'] ?? 0);
     $producto = trim($_POST['producto'] ?? '');
     $codificacion = $esFormularioRecepcion
-        ? trim((string)($ficha['codificacion'] ?? ''))
-        : trim($_POST['codificacion'] ?? '');
+        ? Helpers::normalizeFichaRegistroCode((string)($ficha['codificacion'] ?? ''))
+        : Helpers::normalizeFichaRegistroCode($_POST['codificacion'] ?? '');
     $proveedor_id = intval($_POST['proveedor_id'] ?? 0);
     $proveedor_ids = array_values(array_unique(array_filter(
         array_map('intval', (array)($_POST['proveedor_ids'] ?? [])),
@@ -603,14 +603,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Verificar codificación única fuera del lote actual (excluyendo la ficha actual).
+    if (!$error && $codificacion && !Helpers::isValidFichaRegistroCode($codificacion)) {
+        $error = 'La codificación de la ficha debe tener el formato FREG-001';
+    }
+
+    // Verificar codificación única (excluyendo la ficha actual).
     if (!$error && $codificacion) {
         $existe = $db->fetchOne(
-            "SELECT id FROM fichas_registro WHERE codificacion = ? AND id != ? AND lote_id <> ?",
-            [$codificacion, $id, $lote_id]
+            "SELECT id FROM fichas_registro WHERE codificacion = ? AND id != ?",
+            [$codificacion, $id]
         );
         if ($existe) {
-            $error = 'Ya existe una ficha de otro lote con esta codificación';
+            $error = 'Ya existe otra ficha con esta codificación';
         }
     }
 
@@ -809,11 +813,12 @@ ob_start();
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Codificación</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Código de ficha</label>
                         <input type="text" name="codificacion" 
-                               value="<?= htmlspecialchars($formData['codificacion'] ?? '') ?>"
-                               placeholder="Código único de la ficha"
+                               value="<?= htmlspecialchars(Helpers::normalizeFichaRegistroCode((string)($formData['codificacion'] ?? ''))) ?>"
+                               placeholder="FREG-001"
                                class="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                        <p class="text-xs text-gray-500 mt-1">Use el formato FREG-001 para identificar la ficha de registro.</p>
                     </div>
                 </div>
                 <?php else: ?>

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS registros_calidad_salida (
     certificaciones_texto VARCHAR(255),
     otra_certificacion VARCHAR(120),
     observaciones TEXT,
+    enlace_resultados_drive VARCHAR(500),
     usuario_id INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -62,3 +63,19 @@ SET @sql = (
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE registros_calidad_salida ADD COLUMN enlace_resultados_drive VARCHAR(500) NULL AFTER observaciones',
+        'SELECT ''enlace_resultados_drive ya existe'' AS info'
+    )
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @db_name
+      AND TABLE_NAME = 'registros_calidad_salida'
+      AND COLUMN_NAME = 'enlace_resultados_drive'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SHOW COLUMNS FROM registros_calidad_salida LIKE 'enlace_resultados_drive';

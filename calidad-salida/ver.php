@@ -9,6 +9,9 @@ requireAuth();
 
 $db = Database::getInstance();
 $tablaExiste = (bool)$db->fetch("SHOW TABLES LIKE 'registros_calidad_salida'");
+$colsCalidadSalida = $tablaExiste ? array_column($db->fetchAll("SHOW COLUMNS FROM registros_calidad_salida"), 'Field') : [];
+$hasCalidadCol = static fn(string $name): bool => in_array($name, $colsCalidadSalida, true);
+$hasEnlaceResultadosDrive = $hasCalidadCol('enlace_resultados_drive');
 
 if (!$tablaExiste) {
     setFlash('warning', 'Falta ejecutar el patch para habilitar Calidad de salida.');
@@ -186,6 +189,18 @@ ob_start();
             <div class="mt-6">
                 <label class="form-label">Observaciones</label>
                 <div class="form-control bg-olive/10 min-h-[90px]"><?= nl2br(htmlspecialchars($registro['observaciones'])) ?></div>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($hasEnlaceResultadosDrive && !empty($registro['enlace_resultados_drive'])): ?>
+            <div class="mt-6">
+                <label class="form-label">Análisis y resultados</label>
+                <div class="form-control bg-olive/10">
+                    <a href="<?= htmlspecialchars($registro['enlace_resultados_drive']) ?>" target="_blank" rel="noopener noreferrer"
+                       class="text-primary font-medium hover:underline break-all">
+                        <?= htmlspecialchars($registro['enlace_resultados_drive']) ?>
+                    </a>
+                </div>
             </div>
             <?php endif; ?>
         </div>

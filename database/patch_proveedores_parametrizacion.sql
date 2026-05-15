@@ -10,6 +10,9 @@
 
 SET @db_name = DATABASE();
 
+ALTER TABLE proveedores
+    MODIFY COLUMN tipo ENUM('MERCADO','BODEGA','COMERCIAL','RUTA','PRODUCTOR') NOT NULL;
+
 -- Ajustar longitud de codigo interno (si usa codigos largos)
 ALTER TABLE proveedores MODIFY COLUMN codigo VARCHAR(20) NOT NULL;
 
@@ -271,13 +274,23 @@ DEALLOCATE PREPARE stmt;
 
 -- Sugerencia de categorias por defecto para registros existentes
 UPDATE proveedores
-SET tipo = 'BODEGA'
-WHERE UPPER(COALESCE(tipo, '')) IN ('CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO');
+SET categoria = 'COMERCIALES'
+WHERE UPPER(COALESCE(tipo, '')) = 'MERCADO'
+   OR UPPER(COALESCE(categoria, '')) = 'MERCADO';
+
+UPDATE proveedores
+SET categoria = 'CENTRO DE ACOPIO'
+WHERE UPPER(COALESCE(tipo, '')) IN ('BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO')
+   OR UPPER(COALESCE(categoria, '')) = 'BODEGA';
+
+UPDATE proveedores
+SET tipo = 'COMERCIAL'
+WHERE UPPER(COALESCE(tipo, '')) IN ('MERCADO', 'COMERCIAL', 'COMERCIALES', 'BODEGA', 'CA', 'CENTRO DE ACOPIO', 'CENTRO_ACOPIO');
 
 UPDATE proveedores
 SET categoria = CASE
-    WHEN tipo = 'MERCADO' THEN 'MERCADO'
-    WHEN tipo = 'BODEGA' THEN 'CENTRO DE ACOPIO'
+    WHEN tipo = 'COMERCIAL' AND UPPER(COALESCE(nombre, '')) IN ('CENTRO DE ACOPIO', 'BODEGA') THEN 'CENTRO DE ACOPIO'
+    WHEN tipo = 'COMERCIAL' AND UPPER(COALESCE(categoria, '')) = '' THEN 'COMERCIALES'
     WHEN tipo = 'PRODUCTOR' THEN 'PRODUCTOR'
     WHEN tipo = 'RUTA' AND UPPER(nombre) LIKE '%ESMERALDAS%' THEN 'ESMERALDAS'
     WHEN tipo = 'RUTA' AND (UPPER(nombre) LIKE '%FLOR%' OR UPPER(nombre) LIKE '%MANABI%') THEN 'FLOR DE MANABI'
@@ -293,9 +306,28 @@ SET categoria = 'CENTRO DE ACOPIO'
 WHERE UPPER(COALESCE(categoria, '')) = 'BODEGA';
 
 UPDATE proveedores
+SET categoria = 'COMERCIALES'
+WHERE UPPER(COALESCE(categoria, '')) = 'MERCADO';
+
+UPDATE proveedores
+SET codigo = 'M',
+    nombre = 'Comerciales',
+    tipo = 'COMERCIAL',
+    categoria = 'COMERCIALES',
+    es_categoria = 1
+WHERE UPPER(COALESCE(codigo, '')) = 'M'
+   OR (
+       es_categoria = 1
+       AND (
+           UPPER(COALESCE(categoria, '')) IN ('MERCADO', 'COMERCIALES')
+           OR UPPER(COALESCE(nombre, '')) IN ('MERCADO', 'COMERCIALES', 'COMERCIAL')
+       )
+   );
+
+UPDATE proveedores
 SET codigo = 'CA',
     nombre = 'Centro de Acopio',
-    tipo = 'BODEGA',
+    tipo = 'COMERCIAL',
     categoria = 'CENTRO DE ACOPIO',
     es_categoria = 1
 WHERE UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
@@ -317,3 +349,28 @@ UPDATE proveedores
 SET tipos_permitidos = UPPER(tipo)
 WHERE es_categoria = 1
   AND (tipos_permitidos IS NULL OR TRIM(tipos_permitidos) = '');
+
+UPDATE proveedores
+SET tipos_permitidos = TRIM(BOTH ',' FROM
+    REPLACE(
+        REPLACE(
+            REPLACE(
+                REPLACE(
+                    REPLACE(
+                        CONCAT(',', REPLACE(REPLACE(UPPER(COALESCE(tipos_permitidos, '')), ';', ','), ' ', ''), ','),
+                        ',MERCADO,', ',COMERCIAL,'
+                    ),
+                    ',COMERCIALES,', ',COMERCIAL,'
+                ),
+                ',BODEGA,', ',COMERCIAL,'
+            ),
+            ',COMERCIAL,COMERCIAL,', ',COMERCIAL,'
+        ),
+        ',,', ','
+    )
+)
+WHERE tipos_permitidos IS NOT NULL
+  AND TRIM(tipos_permitidos) <> '';
+
+ALTER TABLE proveedores
+    MODIFY COLUMN tipo ENUM('COMERCIAL','RUTA','PRODUCTOR') NOT NULL;
