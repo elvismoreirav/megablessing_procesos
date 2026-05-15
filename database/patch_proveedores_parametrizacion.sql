@@ -309,20 +309,68 @@ UPDATE proveedores
 SET categoria = 'COMERCIALES'
 WHERE UPPER(COALESCE(categoria, '')) = 'MERCADO';
 
+SET @cat_comerciales_id = (
+    SELECT id
+    FROM proveedores
+    WHERE UPPER(COALESCE(codigo, '')) = 'M'
+       OR (
+           es_categoria = 1
+           AND (
+               UPPER(COALESCE(categoria, '')) IN ('MERCADO', 'COMERCIALES')
+               OR UPPER(COALESCE(nombre, '')) IN ('MERCADO', 'COMERCIALES', 'COMERCIAL')
+           )
+       )
+    ORDER BY CASE WHEN UPPER(COALESCE(codigo, '')) = 'M' THEN 0 ELSE 1 END, id
+    LIMIT 1
+);
+
+UPDATE proveedores
+SET tipo = 'COMERCIAL',
+    categoria = 'COMERCIALES'
+WHERE (
+        UPPER(COALESCE(codigo, '')) = 'M'
+        OR UPPER(COALESCE(categoria, '')) IN ('MERCADO', 'COMERCIALES')
+        OR UPPER(COALESCE(nombre, '')) IN ('MERCADO', 'COMERCIALES', 'COMERCIAL')
+      )
+  AND id <> COALESCE(@cat_comerciales_id, 0);
+
 UPDATE proveedores
 SET codigo = 'M',
     nombre = 'Comerciales',
     tipo = 'COMERCIAL',
     categoria = 'COMERCIALES',
     es_categoria = 1
-WHERE UPPER(COALESCE(codigo, '')) = 'M'
-   OR (
-       es_categoria = 1
-       AND (
-           UPPER(COALESCE(categoria, '')) IN ('MERCADO', 'COMERCIALES')
-           OR UPPER(COALESCE(nombre, '')) IN ('MERCADO', 'COMERCIALES', 'COMERCIAL')
+WHERE id = @cat_comerciales_id;
+
+INSERT INTO proveedores (codigo, nombre, tipo, categoria, es_categoria, activo)
+SELECT 'M', 'Comerciales', 'COMERCIAL', 'COMERCIALES', 1, 1
+FROM DUAL
+WHERE @cat_comerciales_id IS NULL;
+
+SET @cat_acopio_id = (
+    SELECT id
+    FROM proveedores
+    WHERE UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
+       OR (
+           es_categoria = 1
+           AND (
+               UPPER(COALESCE(categoria, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+               OR UPPER(COALESCE(nombre, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+           )
        )
-   );
+    ORDER BY CASE WHEN UPPER(COALESCE(codigo, '')) = 'CA' THEN 0 WHEN UPPER(COALESCE(codigo, '')) = 'B' THEN 1 ELSE 2 END, id
+    LIMIT 1
+);
+
+UPDATE proveedores
+SET tipo = 'COMERCIAL',
+    categoria = 'CENTRO DE ACOPIO'
+WHERE (
+        UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
+        OR UPPER(COALESCE(categoria, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+        OR UPPER(COALESCE(nombre, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
+      )
+  AND id <> COALESCE(@cat_acopio_id, 0);
 
 UPDATE proveedores
 SET codigo = 'CA',
@@ -330,14 +378,12 @@ SET codigo = 'CA',
     tipo = 'COMERCIAL',
     categoria = 'CENTRO DE ACOPIO',
     es_categoria = 1
-WHERE UPPER(COALESCE(codigo, '')) IN ('B', 'CA')
-   OR (
-       es_categoria = 1
-       AND (
-           UPPER(COALESCE(categoria, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
-           OR UPPER(COALESCE(nombre, '')) IN ('BODEGA', 'CENTRO DE ACOPIO')
-       )
-   );
+WHERE id = @cat_acopio_id;
+
+INSERT INTO proveedores (codigo, nombre, tipo, categoria, es_categoria, activo)
+SELECT 'CA', 'Centro de Acopio', 'COMERCIAL', 'CENTRO DE ACOPIO', 1, 1
+FROM DUAL
+WHERE @cat_acopio_id IS NULL;
 
 -- Marcar categorias base ya existentes
 UPDATE proveedores

@@ -55,6 +55,23 @@ class Database {
     public function fetchAll($sql, $params = []) {
         return $this->query($sql, $params)->fetchAll();
     }
+
+    public function tableExists(string $table): bool {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $table)) {
+            return false;
+        }
+
+        $row = $this->fetch(
+            "SELECT 1
+             FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = :table
+             LIMIT 1",
+            ['table' => $table]
+        );
+
+        return (bool)$row;
+    }
     
     public function insert($table, $data) {
         $columns = implode(', ', array_keys($data));

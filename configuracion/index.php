@@ -24,7 +24,7 @@ $canSecadoras = Auth::canManageSecadoras();
 $canBulkImport = ConfigBulkImportRegistry::canAccessAnyModule();
 Helpers::ensureCajonesFermentacionCatalog((int)(Helpers::getParametros('GENERAL')['cajones_fermentacion_objetivo'] ?? 6));
 $tableExists = static function (string $table) use ($db): bool {
-    return (bool)$db->fetchOne("SHOW TABLES LIKE ?", [$table]);
+    return $db->tableExists($table);
 };
 $tablaCajones = $tableExists('cajones_fermentacion') ? 'cajones_fermentacion' : 'cajones';
 
